@@ -7,10 +7,10 @@ import {
   useState,
 } from 'react';
 import type { ReactNode } from 'react';
+import { PaperProvider } from 'react-native-paper';
 import { lightTheme, darkTheme } from './tokens';
+import { paperLightTheme, paperDarkTheme } from './paperTheme';
 import type { Theme } from './tokens';
-
-// ── Public hook return type ──────────────────────────────────
 
 export interface ThemeContextValue {
   theme: Theme;
@@ -18,24 +18,15 @@ export interface ThemeContextValue {
   toggleTheme: () => void;
 }
 
-// ── Context (undefined sentinel — forces useTheme to guard) ──
-
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
-
-// ── Helpers ──────────────────────────────────────────────────
 
 const DARK_MQ = '(prefers-color-scheme: dark)';
 
-/** Read system preference. SSR-safe: defaults to light. */
 function getSystemPrefersDark(): boolean {
   if (typeof window === 'undefined') return false;
   return window.matchMedia(DARK_MQ).matches;
 }
 
-/**
- * Set `data-theme` on <html> and update the `<meta name="theme-color">`
- * tag so the browser chrome matches the app background.
- */
 function applyRootMeta(isDark: boolean): void {
   if (typeof document === 'undefined') return;
 
@@ -63,29 +54,18 @@ function applyRootMeta(isDark: boolean): void {
   meta.content = t.bg.base;
 }
 
-// ── Provider ─────────────────────────────────────────────────
-
 export interface ThemeProviderProps {
   children: ReactNode;
 }
 
-/**
- * Provides the current `Theme` to the tree.
- *
- * Defaults to **light** (the primary theme per the design doc) and
- * reacts to the system `prefers-color-scheme` media query so the
- * app follows OS-level appearance changes.
- */
 export function ThemeProvider({ children }: ThemeProviderProps) {
   const [isDark, setIsDark] = useState<boolean>(getSystemPrefersDark);
-
   const [userOverride, setUserOverride] = useState<boolean>(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const mql = window.matchMedia(DARK_MQ);
-
     const handler = (e: MediaQueryListEvent) => {
       if (!userOverride) {
         setIsDark(e.matches);
@@ -114,12 +94,16 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     [isDark, toggleTheme],
   );
 
+  const paperTheme = isDark ? paperDarkTheme : paperLightTheme;
+
   return (
-    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+    <ThemeContext.Provider value={value}>
+      <PaperProvider theme={paperTheme}>
+        {children}
+      </PaperProvider>
+    </ThemeContext.Provider>
   );
 }
-
-// ── Hook ─────────────────────────────────────────────────────
 
 export function useTheme(): ThemeContextValue {
   const ctx = useContext(ThemeContext);
