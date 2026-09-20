@@ -1,0 +1,11 @@
+[project]
+name = "moby"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "langchain>=1.4.0",
+    "langgraph>=1.2.11",
+    "openai>=3.16.2",
+]

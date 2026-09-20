@@ -1,0 +1,942 @@
+openapi: 3.1.0
+info:
+  title: Disaster Early-Warning API
+  version: 0.2.0
+  description: >
+    Contract v1. Region-aware by design; US is the only enabled region in v1.
+
+    CHANGELOG
+    0.2.0 — Additive only, no breaking changes:
+      + GET /events/{id}/brief        (Ultra situational brief, async)
+      + GET /regions/{region}/cascade (Ultra cascade analysis)
+      + GET /guidance/manifest        (offline card sync)
+      + GET /guidance/cards
+      + GET /config                   (feature flags — supports flag discipline)
+      + Event.brief_status
+    0.1.0 — Initial frozen contract.
+
+servers:
+  - url: https://api.example.dev/v1
+    description: Development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: auth
+  - name: reports
+  - name: alerts
+  - name: analysis
+  - name: guidance
+  - name: subscriptions
+  - name: mesh
+  - name: review
+  - name: config
+
+paths:
+
+  # ---------- config ----------
+
+  /config:
+    get:
+      tags: [config]
+      security: []
+      summary: Client feature flags and runtime config
+      description: >
+        Clients MUST gate post-core features on these flags rather than shipping
+        them unconditionally. Supports the feature-flag discipline in the plan:
+        a half-built feature is flagged off, not half-shown.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClientConfig' }
+
+  # ---------- auth ----------
+
+  /auth/register:
+    post:
+      tags: [auth]
+      security: []
+      summary: Create a user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, home_region]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12 }
+                display_name: { type: string, maxLength: 64 }
+                home_region: { $ref: '#/components/schemas/RegionCode' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokens' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      security: []
+      summary: Exchange credentials for tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokens' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      security: []
+      summary: Refresh an access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokens' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /me:
+    get:
+      tags: [auth]
+      summary: Current user profile
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+
+  /me/devices:
+    post:
+      tags: [auth]
+      summary: Register a push token for this device
+      description: >
+        push_provider is explicit rather than inferred so non-FCM regions can be
+        added later without a contract change.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_id, push_provider, push_token, platform]
+              properties:
+                device_id: { type: string, description: Stable client-generated UUID }
+                push_provider: { type: string, enum: [fcm, apns] }
+                push_token: { type: string }
+                platform: { type: string, enum: [ios, android] }
+      responses:
+        '204': { description: Registered }
+
+  # ---------- reports ----------
+
+  /reports:
+    post:
+      tags: [reports]
+      summary: Submit a manual ground report
+      description: >
+        Written to storage before processing, so a 202 means durably received.
+        client_event_id is the idempotency key — retries are safe.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportSubmission' }
+      responses:
+        '202':
+          description: Accepted for processing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportAccepted' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /events/{event_id}:
+    get:
+      tags: [reports]
+      summary: Fused event detail
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /events/{event_id}/confirm:
+    post:
+      tags: [reports]
+      summary: Confirm or deny an existing event (proximity prompt response)
+      description: >
+        Binary response tied to an existing event rather than a new report, so
+        confirmations never spawn duplicate look-alike events. observed_at_location
+        indicates the responder actually reached the reported coordinates — a
+        negative response only carries downgrade weight when this is true.
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [response, observed_at_location, observed_at]
+              properties:
+                response: { type: string, enum: [confirm, deny, unsure] }
+                observed_at_location: { type: boolean }
+                observed_at: { type: string, format: date-time }
+                location: { $ref: '#/components/schemas/GeoPoint' }
+      responses:
+        '204': { description: Recorded }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------- analysis (Ultra, async) ----------
+
+  /events/{event_id}/brief:
+    get:
+      tags: [analysis]
+      summary: Situational brief for an event
+      description: >
+        Generated asynchronously on Ultra after the fast alert has already been sent.
+        Returns 202 with status "pending" while generation is in flight — clients
+        should render the alert immediately and let the brief arrive behind it.
+        Never block alert display on this endpoint.
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Brief ready
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SituationalBrief' }
+        '202':
+          description: Generation in flight
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [pending] }
+                  retry_after_seconds: { type: integer }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /regions/{region}/cascade:
+    get:
+      tags: [analysis]
+      summary: Active compound-hazard assessment for a region
+      description: >
+        Ultra reasons across all active regional events to detect cascading systems
+        (quake to landslide to river dam to flood) that no single-event view surfaces.
+        Only produced when a region has 2+ active events above Tier 0; otherwise 204.
+      parameters:
+        - name: region
+          in: path
+          required: true
+          schema: { $ref: '#/components/schemas/RegionCode' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CascadeAssessment' }
+        '204': { description: No active cascade assessment for this region }
+
+  # ---------- guidance (offline) ----------
+
+  /guidance/manifest:
+    get:
+      tags: [guidance]
+      summary: Manifest of available guidance card bundles
+      description: >
+        Clients sync bundles while connected so cards remain readable with zero
+        signal. Compare local content_hash against the manifest to decide what to
+        re-download. Cards are authored by Ultra from official sources.
+      parameters:
+        - name: region
+          in: query
+          schema: { $ref: '#/components/schemas/RegionCode' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  bundles:
+                    type: array
+                    items: { $ref: '#/components/schemas/GuidanceBundle' }
+
+  /guidance/cards:
+    get:
+      tags: [guidance]
+      summary: Guidance cards for a region and hazard
+      parameters:
+        - name: region
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/RegionCode' }
+        - name: hazard_type
+          in: query
+          schema: { $ref: '#/components/schemas/HazardType' }
+        - name: bundle_version
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cards:
+                    type: array
+                    items: { $ref: '#/components/schemas/GuidanceCard' }
+
+  # ---------- alerts ----------
+
+  /alerts:
+    get:
+      tags: [alerts]
+      summary: Active alerts
+      description: >
+        Returns Tier 2 (public) alerts by default. Lower tiers are visible only to
+        reviewers, or to subscribers who opt into early/unverified signals.
+      parameters:
+        - name: region
+          in: query
+          schema: { $ref: '#/components/schemas/RegionCode' }
+        - name: lat
+          in: query
+          schema: { type: number, format: double }
+        - name: lon
+          in: query
+          schema: { type: number, format: double }
+        - name: radius_km
+          in: query
+          schema: { type: number, default: 50, maximum: 500 }
+        - name: min_tier
+          in: query
+          schema: { type: integer, enum: [0, 1, 2], default: 2 }
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts:
+                    type: array
+                    items: { $ref: '#/components/schemas/Alert' }
+
+  /alerts/{alert_id}:
+    get:
+      tags: [alerts]
+      summary: Alert detail
+      parameters:
+        - name: alert_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Alert' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ---------- subscriptions ----------
+
+  /subscriptions:
+    get:
+      tags: [subscriptions]
+      summary: List region subscriptions
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Subscription' }
+    post:
+      tags: [subscriptions]
+      summary: Subscribe to an area
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [region, center, radius_km]
+              properties:
+                region: { $ref: '#/components/schemas/RegionCode' }
+                label: { type: string, maxLength: 64 }
+                center: { $ref: '#/components/schemas/GeoPoint' }
+                radius_km: { type: number, maximum: 500 }
+                min_severity:
+                  type: string
+                  enum: [low, medium, high, critical]
+                  default: medium
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subscription' }
+
+  /subscriptions/{subscription_id}:
+    delete:
+      tags: [subscriptions]
+      summary: Remove a subscription
+      parameters:
+        - name: subscription_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Deleted }
+
+  # ---------- mesh ----------
+
+  /mesh/sync:
+    post:
+      tags: [mesh]
+      summary: Upload mesh-relayed records from a gateway device
+      description: >
+        Idempotent on event_id. A repeated event_id is never a duplicate event — it
+        either no-ops or adds a relay hash to the existing record. Safe to retry
+        until acknowledged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_id, records]
+              properties:
+                device_id: { type: string }
+                records:
+                  type: array
+                  maxItems: 200
+                  items: { $ref: '#/components/schemas/MeshRecord' }
+      responses:
+        '200':
+          description: Sync result — acked ids may be cleared from the local queue
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  acknowledged:
+                    type: array
+                    items: { type: string }
+                  rejected:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        event_id: { type: string }
+                        reason: { type: string }
+
+  /mesh/alerts:
+    get:
+      tags: [mesh]
+      summary: Active alerts in compact form for mesh injection
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema: { type: number, format: double }
+        - name: lon
+          in: query
+          required: true
+          schema: { type: number, format: double }
+        - name: radius_km
+          in: query
+          schema: { type: number, default: 100 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  records:
+                    type: array
+                    items: { $ref: '#/components/schemas/MeshRecord' }
+
+  # ---------- review ----------
+
+  /review/queue:
+    get:
+      tags: [review]
+      summary: Events awaiting human review
+      description: Reviewer role required. Severity-floor items sort first.
+      parameters:
+        - name: region
+          in: query
+          schema: { $ref: '#/components/schemas/RegionCode' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ReviewItem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /review/{event_id}/decision:
+    post:
+      tags: [review]
+      summary: Approve, reject, or hold an event
+      description: Resumes the paused LangGraph checkpoint for this event.
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [approve, reject, hold] }
+                note: { type: string, maxLength: 500 }
+                override_severity:
+                  type: string
+                  enum: [low, medium, high, critical]
+      responses:
+        '204': { description: Recorded }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Authentication required or invalid
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Insufficient role
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Already exists
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+
+    ClientConfig:
+      type: object
+      required: [flags, min_supported_client]
+      properties:
+        min_supported_client: { type: string }
+        flags:
+          type: object
+          description: >
+            Post-core features. Clients gate UI on these. Absent or false means
+            the feature is not shown at all — never partially rendered.
+          properties:
+            situational_brief: { type: boolean, default: false }
+            cascade_analysis: { type: boolean, default: false }
+            offline_guidance_cards: { type: boolean, default: false }
+            on_device_assistant: { type: boolean, default: false }
+            mesh_relay: { type: boolean, default: false }
+            proximity_confirmation: { type: boolean, default: false }
+            early_tier_opt_in: { type: boolean, default: false }
+
+    RegionCode:
+      type: string
+      description: >
+        Enabled regions. v1 ships US only; CN is reserved and rejected at runtime
+        until its feed, coordinate-frame and push work lands.
+      enum: [US, CN]
+
+    CoordinateFrame:
+      type: string
+      description: >
+        Declared per region so clients never assume WGS-84. v1 is always WGS84.
+      enum: [WGS84, GCJ02]
+
+    GeoPoint:
+      type: object
+      required: [lat, lon]
+      properties:
+        lat: { type: number, format: double, minimum: -90, maximum: 90 }
+        lon: { type: number, format: double, minimum: -180, maximum: 180 }
+        accuracy_m: { type: number }
+        frame:
+          allOf: [{ $ref: '#/components/schemas/CoordinateFrame' }]
+          default: WGS84
+
+    HazardType:
+      type: string
+      enum: [flood, fire, earthquake, storm, landslide, other]
+
+    ObservedEffect:
+      type: string
+      description: Controlled vocabulary — lets fusion match reports of the same phenomenon.
+      enum:
+        - rising_water
+        - structural_damage
+        - smoke_or_fire_visible
+        - ground_shaking
+        - blocked_road
+        - other
+
+    Severity:
+      type: string
+      enum: [low, medium, high, critical]
+
+    SourceType:
+      type: string
+      enum: [official, manual, mesh]
+
+    AuthTokens:
+      type: object
+      required: [access_token, refresh_token, expires_in]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        expires_in: { type: integer, description: Seconds }
+
+    User:
+      type: object
+      required: [user_id, email, roles, home_region]
+      properties:
+        user_id: { type: string }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        roles:
+          type: array
+          items: { type: string, enum: [subscriber, reporter, reviewer, admin] }
+        home_region: { $ref: '#/components/schemas/RegionCode' }
+        created_at: { type: string, format: date-time }
+
+    ReportSubmission:
+      type: object
+      required: [client_event_id, hazard_type, severity, location, observed_at]
+      properties:
+        client_event_id:
+          type: string
+          description: Client-generated UUID. Idempotency key — safe to retry.
+        hazard_type: { $ref: '#/components/schemas/HazardType' }
+        observed_effect: { $ref: '#/components/schemas/ObservedEffect' }
+        severity: { $ref: '#/components/schemas/Severity' }
+        location: { $ref: '#/components/schemas/GeoPoint' }
+        observed_at: { type: string, format: date-time }
+        note:
+          type: string
+          maxLength: 1000
+          description: Free text. Parsed by the structuring agent; never relayed over mesh.
+        captured_offline:
+          type: boolean
+          default: false
+          description: True if queued on-device before connectivity returned.
+
+    ReportAccepted:
+      type: object
+      required: [client_event_id, event_id, tier]
+      properties:
+        client_event_id: { type: string }
+        event_id: { type: string, description: Fused event this report was attached to }
+        tier: { type: integer, enum: [0, 1, 2] }
+        merged_into_existing: { type: boolean }
+
+    Event:
+      type: object
+      required: [event_id, source, hazard_type, severity, location, tier, confidence]
+      properties:
+        event_id: { type: string }
+        source: { $ref: '#/components/schemas/SourceType' }
+        region: { $ref: '#/components/schemas/RegionCode' }
+        hazard_type: { $ref: '#/components/schemas/HazardType' }
+        observed_effect: { $ref: '#/components/schemas/ObservedEffect' }
+        severity: { $ref: '#/components/schemas/Severity' }
+        location: { $ref: '#/components/schemas/GeoPoint' }
+        first_reported_at: { type: string, format: date-time }
+        last_updated_at: { type: string, format: date-time }
+        tier:
+          type: integer
+          enum: [0, 1, 2]
+          description: 0 unverified, 1 corroborated, 2 confirmed (public alert)
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        specificity_score: { type: number, minimum: 0, maximum: 1 }
+        distinct_reporter_count:
+          type: integer
+          description: Distinct originators only — relay hops never increment this.
+        confirm_count: { type: integer }
+        deny_count: { type: integer }
+        official_match_id:
+          type: string
+          nullable: true
+          description: Matching NOAA/USGS/EONET/GDACS event, if any.
+        reviewer_decision:
+          type: string
+          nullable: true
+          enum: [approve, reject, hold]
+        brief_status:
+          type: string
+          description: Situational brief generation state. Clients never block on this.
+          enum: [not_requested, pending, ready, failed]
+          default: not_requested
+        verification_label:
+          type: string
+          description: Shown verbatim in UI — unverified reports must never render as official.
+          enum: [unverified_report, corroborated_report, official_confirmed]
+
+    Alert:
+      type: object
+      required: [alert_id, event_id, headline, severity, issued_at, verification_label]
+      properties:
+        alert_id: { type: string }
+        event_id: { type: string }
+        headline: { type: string, maxLength: 120 }
+        body: { type: string, maxLength: 600 }
+        severity: { $ref: '#/components/schemas/Severity' }
+        location: { $ref: '#/components/schemas/GeoPoint' }
+        affected_radius_km: { type: number }
+        issued_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        verification_label:
+          type: string
+          enum: [unverified_report, corroborated_report, official_confirmed]
+        source_attribution:
+          type: string
+          description: e.g. "NOAA/NWS" or "Community reports"
+
+    SituationalBrief:
+      type: object
+      required: [event_id, generated_at, model, summary, uncertainty]
+      properties:
+        event_id: { type: string }
+        generated_at: { type: string, format: date-time }
+        model: { type: string, description: e.g. nemotron-3-ultra }
+        summary:
+          type: string
+          description: What is likely happening, in plain language.
+        likely_progression:
+          type: string
+          description: Plausible near-term development. Explicitly an estimate.
+        exposed_areas:
+          type: array
+          description: Downstream or adjacent areas that may be affected.
+          items:
+            type: object
+            properties:
+              description: { type: string }
+              location: { $ref: '#/components/schemas/GeoPoint' }
+              rationale: { type: string }
+        official_guidance:
+          type: string
+          description: Guidance drawn from matched official sources, attributed.
+        uncertainty:
+          type: string
+          description: >
+            Required. What the brief does not know and where it may be wrong.
+            Clients MUST display this — never render a brief as certainty.
+        sources:
+          type: array
+          items: { type: string }
+
+    CascadeAssessment:
+      type: object
+      required: [region, generated_at, is_cascade, event_ids, reasoning]
+      properties:
+        region: { $ref: '#/components/schemas/RegionCode' }
+        generated_at: { type: string, format: date-time }
+        model: { type: string }
+        is_cascade:
+          type: boolean
+          description: Whether active events appear to be one compound system.
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        event_ids:
+          type: array
+          items: { type: string }
+        chain:
+          type: array
+          description: Proposed causal ordering, if a cascade is detected.
+          items:
+            type: object
+            properties:
+              event_id: { type: string }
+              role: { type: string, description: e.g. trigger, amplifier, consequence }
+        reasoning: { type: string }
+        uncertainty: { type: string }
+
+    GuidanceBundle:
+      type: object
+      required: [bundle_id, region, version, content_hash, size_bytes, generated_at]
+      properties:
+        bundle_id: { type: string }
+        region: { $ref: '#/components/schemas/RegionCode' }
+        hazard_types:
+          type: array
+          items: { $ref: '#/components/schemas/HazardType' }
+        version: { type: string }
+        content_hash: { type: string, description: Compare against local copy to decide re-download }
+        size_bytes: { type: integer }
+        generated_at: { type: string, format: date-time }
+        card_count: { type: integer }
+
+    GuidanceCard:
+      type: object
+      required: [card_id, hazard_type, title, body, source_name, source_url, last_reviewed_at]
+      properties:
+        card_id: { type: string }
+        hazard_type: { $ref: '#/components/schemas/HazardType' }
+        applies_when:
+          type: string
+          description: Short condition string used for local retrieval matching.
+        title: { type: string, maxLength: 120 }
+        body:
+          type: string
+          description: >
+            Actionable guidance traceable to the cited official source. Content is
+            synthesized by Ultra from official material, not authored freely.
+        priority:
+          type: integer
+          description: Lower is more urgent. Drives static fallback ordering.
+        source_name: { type: string, description: e.g. FEMA, American Red Cross, NWS }
+        source_url: { type: string }
+        last_reviewed_at:
+          type: string
+          format: date-time
+          description: >
+            MUST be displayed. Offline guidance goes stale and the user needs to see how old it is.
+        is_critical_fallback:
+          type: boolean
+          default: false
+          description: >
+            Included in the hard-coded, model-independent fallback set. These render
+            even if retrieval or the on-device model is unavailable.
+
+    MeshRecord:
+      type: object
+      description: >
+        JSON mirror of the ~28-byte binary record relayed over BLE. The wire format
+        is CBOR/packed-binary; this shape is only used at the gateway sync boundary.
+      required: [event_id, hazard_type, lat_e6, lon_e6, severity, hop_count, timestamp, reporter_hash]
+      properties:
+        event_id: { type: string, description: 8-byte truncated hash, hex-encoded }
+        hazard_type: { type: integer, minimum: 0, maximum: 255 }
+        lat_e6: { type: integer, description: Degrees times 1e6 }
+        lon_e6: { type: integer, description: Degrees times 1e6 }
+        severity: { type: integer, minimum: 0, maximum: 255 }
+        confidence: { type: integer, minimum: 0, maximum: 255 }
+        hop_count: { type: integer, minimum: 0, maximum: 255 }
+        timestamp: { type: integer, description: Unix epoch seconds }
+        reporter_hash: { type: string, description: 4-byte anonymized originator, hex-encoded }
+        relayed_by:
+          type: array
+          description: Relay hashes observed by this gateway. Never counted as corroboration.
+          items: { type: string }
+
+    Subscription:
+      type: object
+      required: [subscription_id, region, center, radius_km, min_severity]
+      properties:
+        subscription_id: { type: string }
+        region: { $ref: '#/components/schemas/RegionCode' }
+        label: { type: string }
+        center: { $ref: '#/components/schemas/GeoPoint' }
+        radius_km: { type: number }
+        min_severity: { $ref: '#/components/schemas/Severity' }
+
+    ReviewItem:
+      type: object
+      required: [event_id, event, queued_at, reason]
+      properties:
+        event_id: { type: string }
+        event: { $ref: '#/components/schemas/Event' }
+        queued_at: { type: string, format: date-time }
+        reason:
+          type: string
+          enum: [tier1_corroborated, severity_floor, conflicting_reports, low_confidence]
+        contributing_reports:
+          type: array
+          items: { $ref: '#/components/schemas/ReportSubmission' }
+        adjudicator_rationale:
+          type: string
+          description: >
+            If the agentic adjudicator deferred or hit its budget, its reasoning is
+            surfaced here so the reviewer sees why.
