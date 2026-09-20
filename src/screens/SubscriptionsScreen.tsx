@@ -1,9 +1,9 @@
-import { useState, useEffect, type CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing, radius } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
-import type { Subscription, Severity } from '@/api/types';
-import { api } from '@/api/client';
+import { useSubscriptions } from '@/hooks/useSubscriptions';
+import type { Severity } from '@/api/types';
 
 interface SubscriptionsScreenProps {
   onBack: () => void;
@@ -19,33 +19,8 @@ function formatSeverity(s: Severity): string {
 
 export function SubscriptionsScreen({ onBack }: SubscriptionsScreenProps) {
   const { theme } = useTheme();
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const r = useResponsive();
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const data = await api.getSubscriptions();
-        setSubscriptions(data);
-      } catch {
-        setError('Could not load your subscriptions.');
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
-
-  const handleDelete = async (id: string) => {
-    try {
-      await api.deleteSubscription(id);
-      setSubscriptions((prev) => prev.filter((s) => s.subscription_id !== id));
-    } catch {
-      setError('Could not remove subscription. Try again.');
-    }
-  };
+  const { subscriptions, loading, error, deleteError, deleteSubscription } = useSubscriptions();
 
   const styles: Record<string, CSSProperties> = {
     container: {
@@ -162,7 +137,9 @@ export function SubscriptionsScreen({ onBack }: SubscriptionsScreenProps) {
 
       <div style={styles.scrollArea}>
         {loading && <p style={styles.statusText}>Loading subscriptions</p>}
-        {error && <p style={styles.statusText}>{error}</p>}
+        {(error || deleteError) && (
+          <p style={styles.statusText}>{error || deleteError}</p>
+        )}
 
         {!loading && !error && subscriptions.length === 0 && (
           <div style={styles.emptyState}>
@@ -181,7 +158,7 @@ export function SubscriptionsScreen({ onBack }: SubscriptionsScreenProps) {
             </p>
             <button
               style={styles.deleteBtn}
-              onClick={() => handleDelete(sub.subscription_id)}
+              onClick={() => deleteSubscription(sub.subscription_id)}
               aria-label={`Remove subscription for ${sub.label ?? 'this area'}`}
             >
               Remove

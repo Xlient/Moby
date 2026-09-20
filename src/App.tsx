@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useAuth } from '@/auth/AuthContext';
+import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { api } from '@/api/client';
 import { typography } from '@/theme/tokens';
 import { BottomTabs } from '@/components/BottomTabs';
@@ -50,8 +51,11 @@ const SHOW_TABS: Set<string> = new Set(['home', 'assistant', 'settings']);
 export function App() {
   const { theme } = useTheme();
   const { maxContent } = useResponsive();
-  const { user, loading, getIdToken } = useAuth();
+  const { user, loading: authLoading, getIdToken, isConfigured: authConfigured } = useAuth();
+  const { isEnabled } = useFeatureFlags();
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
+
+  const showAssistant = isEnabled('on_device_assistant');
 
   useEffect(() => {
     api.setTokenProvider(user ? getIdToken : null);
@@ -107,7 +111,7 @@ export function App() {
     },
   };
 
-  if (loading) {
+  if (authLoading) {
     return (
       <div style={styles.shell}>
         <div style={styles.loadingContainer}>
@@ -117,7 +121,7 @@ export function App() {
     );
   }
 
-  if (!user) {
+  if (authConfigured && !user) {
     return (
       <div style={styles.shell}>
         <AuthScreen />
@@ -146,7 +150,7 @@ export function App() {
           />
         )}
         {screen.name === 'map' && <MapScreen />}
-        {screen.name === 'assistant' && <AssistantScreen />}
+        {screen.name === 'assistant' && showAssistant && <AssistantScreen />}
         {screen.name === 'settings' && (
           <SettingsScreen
             onTrustReview={() => setScreen({ name: 'trust-review' })}
@@ -169,6 +173,7 @@ export function App() {
         <BottomTabs
           activeTab={getActiveTab(screen)}
           onTabChange={handleTabChange}
+          showAssistant={showAssistant}
         />
       )}
     </div>

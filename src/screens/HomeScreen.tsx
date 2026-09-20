@@ -4,8 +4,10 @@ import { typography, spacing, radius } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
 import { StatusStrip } from '@/components/StatusStrip';
 import { AlertCard } from '@/components/AlertCard';
+import { AlertArrival } from '@/components/AlertArrival';
 import { useAlerts } from '@/hooks/useAlerts';
-import { mockSubscriptions } from '@/api/mock-data';
+import { useNewAlertIds } from '@/hooks/useNewAlertIds';
+import { useSubscriptions } from '@/hooks/useSubscriptions';
 import type { Alert } from '@/api/types';
 
 interface HomeScreenProps {
@@ -51,6 +53,8 @@ export function HomeScreen({ onAlertPress, onGuidancePress, onReportPress, onMap
   const r = useResponsive();
   const [locationAvailable] = useState(true);
 
+  const { subscriptions } = useSubscriptions();
+
   const { alerts, loading, error, isOffline, cachedAt } = useAlerts(37.7749, -122.4194, 50);
 
   const activeAlerts = alerts.filter(
@@ -58,6 +62,8 @@ export function HomeScreen({ onAlertPress, onGuidancePress, onReportPress, onMap
       a.verification_label === 'official_confirmed' &&
       (!a.expires_at || new Date(a.expires_at).getTime() > Date.now())
   );
+
+  const newAlertIds = useNewAlertIds(activeAlerts.map((a) => a.alert_id));
 
   const nearbyAlerts = getNearbyAlerts(alerts);
   const recentAlerts = getRecentAlerts(alerts);
@@ -197,7 +203,7 @@ export function HomeScreen({ onAlertPress, onGuidancePress, onReportPress, onMap
     <div style={styles.container}>
       <div style={styles.scrollArea}>
         <StatusStrip
-          areaCount={mockSubscriptions.length}
+          areaCount={subscriptions.length}
           updatedMinutesAgo={updatedMinutesAgo}
           isOffline={isOffline}
           loading={loading}
@@ -212,12 +218,13 @@ export function HomeScreen({ onAlertPress, onGuidancePress, onReportPress, onMap
           <div style={styles.section}>
             <div style={styles.alertList}>
               {activeAlerts.map((alert) => (
-                <AlertCard
-                  key={alert.alert_id}
-                  alert={alert}
-                  distanceKm={3.2}
-                  onPress={() => onAlertPress(alert.alert_id)}
-                />
+                <AlertArrival key={alert.alert_id} isNew={newAlertIds.has(alert.alert_id)}>
+                  <AlertCard
+                    alert={alert}
+                    distanceKm={3.2}
+                    onPress={() => onAlertPress(alert.alert_id)}
+                  />
+                </AlertArrival>
               ))}
             </div>
           </div>

@@ -21,7 +21,7 @@ import {
   getMockBrief,
   getMockGuidanceCards,
   getMockSubscriptions,
-} from './mock-data';
+} from './fixtures';
 
 // ── Configuration ────────────────────────────────────────────────────
 

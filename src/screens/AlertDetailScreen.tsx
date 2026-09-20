@@ -2,6 +2,7 @@ import { useMemo, type CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
+import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { AlertCard } from '@/components/AlertCard';
 import { BriefPanel } from '@/components/BriefPanel';
 import { useBrief } from '@/hooks/useBrief';
@@ -15,6 +16,7 @@ interface AlertDetailScreenProps {
 export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
+  const { isEnabled } = useFeatureFlags();
   const { alerts } = useAlerts();
 
   const alert = useMemo(
@@ -111,7 +113,7 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
       ) : (
         <div style={styles.scrollArea}>
           <AlertCard alert={alert} distanceKm={3.2} />
-          <BriefPanel state={briefState} />
+          {isEnabled('situational_brief') && <BriefPanel state={briefState} />}
         </div>
       )}
     </div>

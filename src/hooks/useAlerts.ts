@@ -1,27 +1,25 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import type { Alert } from '@/api/types';
 import { useOnlineStatus } from './useOnlineStatus';
 
-const CACHE_KEY = 'cached-alerts';
-const CACHE_TS_KEY = 'cached-alerts-ts';
+const ALERTS_CACHE_KEY = 'cached-alerts';
+const ALERTS_CACHE_TS_KEY = 'cached-alerts-ts';
 
-function getCachedAlerts(): { alerts: Alert[]; cachedAt: string | null } {
+function getPersistedAlerts(): { alerts: Alert[]; cachedAt: string | null } {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    const ts = localStorage.getItem(CACHE_TS_KEY);
-    if (raw) {
-      return { alerts: JSON.parse(raw) as Alert[], cachedAt: ts };
-    }
-  } catch { /* corrupted cache — ignore */ }
+    const raw = localStorage.getItem(ALERTS_CACHE_KEY);
+    const ts = localStorage.getItem(ALERTS_CACHE_TS_KEY);
+    if (raw) return { alerts: JSON.parse(raw) as Alert[], cachedAt: ts };
+  } catch { /* corrupted */ }
   return { alerts: [], cachedAt: null };
 }
 
-function cacheAlerts(alerts: Alert[]): void {
+function persistAlerts(alerts: Alert[]): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(alerts));
-    localStorage.setItem(CACHE_TS_KEY, new Date().toISOString());
-  } catch { /* quota exceeded — acceptable */ }
+    localStorage.setItem(ALERTS_CACHE_KEY, JSON.stringify(alerts));
+    localStorage.setItem(ALERTS_CACHE_TS_KEY, new Date().toISOString());
+  } catch { /* quota */ }
 }
 
 export interface UseAlertsResult {
@@ -30,57 +28,42 @@ export interface UseAlertsResult {
   error: string | null;
   isOffline: boolean;
   cachedAt: string | null;
-  refetch: () => Promise<void>;
+  refetch: () => void;
 }
 
 export function useAlerts(lat?: number, lon?: number, radiusKm?: number): UseAlertsResult {
   const isOnline = useOnlineStatus();
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchAlerts = useCallback(async () => {
-    if (!isOnline) {
-      const cached = getCachedAlerts();
-      setAlerts(cached.alerts);
-      setCachedAt(cached.cachedAt);
-      setLoading(false);
-      return;
-    }
+  const persisted = getPersistedAlerts();
 
-    setLoading(true);
-    setError(null);
-    try {
+  const query = useQuery({
+    queryKey: ['alerts', lat, lon, radiusKm],
+    queryFn: async () => {
       const data = await api.getAlerts({ lat, lon, radius_km: radiusKm });
       const list = data.alerts ?? [];
-      setAlerts(list);
-      cacheAlerts(list);
-      setCachedAt(new Date().toISOString());
-      setError(null);
-    } catch {
-      const cached = getCachedAlerts();
-      if (cached.alerts.length > 0) {
-        setAlerts(cached.alerts);
-        setCachedAt(cached.cachedAt);
-      } else {
-        setError('Could not load alerts. Check your connection and try again.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [isOnline, lat, lon, radiusKm]);
+      persistAlerts(list);
+      return list;
+    },
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    placeholderData: persisted.alerts.length > 0 ? persisted.alerts : undefined,
+    enabled: isOnline,
+  });
 
-  useEffect(() => {
-    fetchAlerts();
-  }, [fetchAlerts]);
+  const alerts = query.data ?? persisted.alerts;
+  const cachedAt = query.dataUpdatedAt
+    ? new Date(query.dataUpdatedAt).toISOString()
+    : persisted.cachedAt;
 
   return {
     alerts,
-    loading,
-    error,
+    loading: query.isLoading && !query.isPlaceholderData,
+    error: query.error && alerts.length === 0
+      ? 'Could not load alerts. Check your connection and try again.'
+      : null,
     isOffline: !isOnline,
     cachedAt,
-    refetch: fetchAlerts,
+    refetch: () => { queryClient.invalidateQueries({ queryKey: ['alerts'] }); },
   };
 }

@@ -11,6 +11,7 @@ interface Tab {
 interface BottomTabsProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
+  showAssistant?: boolean;
 }
 
 function HomeIcon({ color }: { color: string }) {
@@ -62,8 +63,12 @@ const TABS: Tab[] = [
   { id: 'settings', label: 'Settings', icon: (c) => <SettingsIcon color={c} /> },
 ];
 
-export function BottomTabs({ activeTab, onTabChange }: BottomTabsProps) {
+export function BottomTabs({ activeTab, onTabChange, showAssistant = true }: BottomTabsProps) {
   const { theme } = useTheme();
+
+  const visibleTabs = showAssistant
+    ? TABS
+    : TABS.filter((t) => t.id !== 'assistant');
 
   const styles: Record<string, CSSProperties> = {
     bar: {
@@ -96,7 +101,7 @@ export function BottomTabs({ activeTab, onTabChange }: BottomTabsProps) {
 
   return (
     <nav style={styles.bar} role="tablist" aria-label="Main navigation">
-      {TABS.map((tab) => {
+      {visibleTabs.map((tab) => {
         const active = activeTab === tab.id;
         const color = active ? theme.text.primary : theme.text.faint;
         return (

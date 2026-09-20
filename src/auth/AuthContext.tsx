@@ -14,11 +14,12 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
 } from 'firebase/auth';
-import { auth } from '@/api/firebase';
+import { auth, isFirebaseConfigured } from '@/api/firebase';
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
+  isConfigured: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -52,9 +53,10 @@ function friendlyError(code: string): string {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(isFirebaseConfigured);
 
   useEffect(() => {
+    if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setLoading(false);
@@ -63,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
+    if (!auth) throw new Error('Authentication is not configured.');
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err: any) {
@@ -71,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = useCallback(async (email: string, password: string) => {
+    if (!auth) throw new Error('Authentication is not configured.');
     try {
       await createUserWithEmailAndPassword(auth, email, password);
     } catch (err: any) {
@@ -79,16 +83,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOutFn = useCallback(async () => {
+    if (!auth) return;
     await firebaseSignOut(auth);
   }, []);
 
   const getIdToken = useCallback(async (): Promise<string | null> => {
-    if (!auth.currentUser) return null;
+    if (!auth?.currentUser) return null;
     return auth.currentUser.getIdToken();
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loading, signIn, signUp, signOut: signOutFn, getIdToken }),
+    () => ({
+      user,
+      loading,
+      isConfigured: isFirebaseConfigured,
+      signIn,
+      signUp,
+      signOut: signOutFn,
+      getIdToken,
+    }),
     [user, loading, signIn, signUp, signOutFn, getIdToken],
   );
 
