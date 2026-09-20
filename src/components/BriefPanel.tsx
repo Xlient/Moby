@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing, radius } from '@/theme/tokens';
+import { useResponsive } from '@/hooks/useResponsive';
 import type { SituationalBrief } from '@/api/types';
 
 interface BriefPanelProps {
@@ -13,16 +14,17 @@ interface BriefPanelProps {
 
 export function BriefPanel({ state }: BriefPanelProps) {
   const { theme } = useTheme();
+  const r = useResponsive();
 
   const styles: Record<string, CSSProperties> = {
     container: {
       backgroundColor: theme.bg.raised,
       borderRadius: radius.card,
-      padding: spacing.alertCardPadding,
+      padding: r.cardPadding,
       marginTop: spacing.scale[3],
     },
     heading: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: 0,
       fontVariantNumeric: undefined,
@@ -42,7 +44,7 @@ export function BriefPanel({ state }: BriefPanelProps) {
       margin: `${spacing.scale[4]}px 0 ${spacing.scale[1]}px 0`,
     },
     uncertainty: {
-      backgroundColor: theme.bg.sunken,
+      backgroundColor: theme.bg.recessed,
       borderRadius: radius.chip,
       padding: spacing.scale[3],
       marginTop: spacing.scale[4],

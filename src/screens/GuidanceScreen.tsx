@@ -4,6 +4,7 @@ import { typography, spacing } from '@/theme/tokens';
 import { GuidanceCard } from '@/components/GuidanceCard';
 import { useGuidanceCards } from '@/hooks/useGuidanceCards';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface GuidanceScreenProps {
   onBack: () => void;
@@ -13,6 +14,7 @@ export function GuidanceScreen({ onBack }: GuidanceScreenProps) {
   const { theme } = useTheme();
   const isOnline = useOnlineStatus();
   const { cards, loading, error, isStale, cachedAt } = useGuidanceCards();
+  const r = useResponsive();
 
   const styles: Record<string, CSSProperties> = {
     container: {
@@ -23,7 +25,7 @@ export function GuidanceScreen({ onBack }: GuidanceScreenProps) {
     header: {
       display: 'flex',
       alignItems: 'center',
-      padding: `${spacing.scale[2]}px ${spacing.screenGutter}px`,
+      padding: `${spacing.scale[2]}px ${r.gutter}px`,
       borderBottom: `1px solid ${theme.line.hairline}`,
       backgroundColor: theme.bg.raised,
       minHeight: spacing.minTapTarget + 8,
@@ -42,7 +44,7 @@ export function GuidanceScreen({ onBack }: GuidanceScreenProps) {
       marginRight: spacing.scale[2],
     },
     headerTitle: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: 0,
       fontVariantNumeric: undefined,
@@ -51,7 +53,7 @@ export function GuidanceScreen({ onBack }: GuidanceScreenProps) {
       flex: 1,
       overflowY: 'auto',
       WebkitOverflowScrolling: 'touch',
-      padding: spacing.screenGutter,
+      padding: r.gutter,
     },
     list: {
       display: 'flex',
@@ -62,7 +64,7 @@ export function GuidanceScreen({ onBack }: GuidanceScreenProps) {
       ...typography.body,
       color: theme.text.secondary,
       textAlign: 'center',
-      padding: `${spacing.sectionGap}px 0`,
+      padding: `${r.sectionGap}px 0`,
       fontVariantNumeric: undefined,
     },
     offlineNote: {
@@ -78,10 +80,10 @@ export function GuidanceScreen({ onBack }: GuidanceScreenProps) {
       justifyContent: 'center',
       flex: 1,
       textAlign: 'center',
-      padding: spacing.sectionGap,
+      padding: r.sectionGap,
     },
     emptyTitle: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: 0,
       fontVariantNumeric: undefined,

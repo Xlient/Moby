@@ -1,6 +1,7 @@
 import { useState, useCallback, type CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing, radius } from '@/theme/tokens';
+import { useResponsive } from '@/hooks/useResponsive';
 import { SeverityIndicator } from '@/components/SeverityIndicator';
 import type { HazardType, Severity } from '@/api/types';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -25,6 +26,7 @@ const SEVERITY_OPTIONS: Severity[] = ['low', 'medium', 'high', 'critical'];
 export function ReportScreen({ onBack }: ReportScreenProps) {
   const { theme } = useTheme();
   const isOnline = useOnlineStatus();
+  const r = useResponsive();
 
   const [step, setStep] = useState<Step>('hazard');
   const [, setHazard] = useState<HazardType | null>(null);
@@ -58,7 +60,7 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
     header: {
       display: 'flex',
       alignItems: 'center',
-      padding: `${spacing.scale[2]}px ${spacing.screenGutter}px`,
+      padding: `${spacing.scale[2]}px ${r.gutter}px`,
       borderBottom: `1px solid ${theme.line.hairline}`,
       backgroundColor: theme.bg.raised,
       minHeight: spacing.minTapTarget + 8,
@@ -77,7 +79,7 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
       marginRight: spacing.scale[2],
     },
     headerTitle: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: 0,
       fontVariantNumeric: undefined,
@@ -85,10 +87,10 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
     content: {
       flex: 1,
       overflowY: 'auto',
-      padding: spacing.screenGutter,
+      padding: r.gutter,
     },
     stepTitle: {
-      ...typography.title,
+      ...r.title,
       color: theme.text.primary,
       margin: `0 0 ${spacing.scale[4]}px 0`,
       fontVariantNumeric: undefined,
@@ -98,7 +100,7 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
       alignItems: 'center',
       width: '100%',
       minHeight: spacing.minTapTarget + 8,
-      padding: `${spacing.scale[2]}px ${spacing.cardPadding}px`,
+      padding: `${spacing.scale[2]}px ${r.cardPadding}px`,
       backgroundColor: theme.bg.raised,
       border: `1px solid ${theme.line.hairline}`,
       borderRadius: radius.card,
@@ -113,7 +115,7 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
     textarea: {
       width: '100%',
       minHeight: 120,
-      padding: spacing.cardPadding,
+      padding: r.cardPadding,
       backgroundColor: theme.bg.raised,
       border: `1px solid ${theme.line.hairline}`,
       borderRadius: radius.card,
@@ -148,10 +150,10 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
       justifyContent: 'center',
       flex: 1,
       textAlign: 'center',
-      padding: spacing.sectionGap,
+      padding: r.sectionGap,
     },
     successTitle: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: `${spacing.scale[3]}px 0 0 0`,
       fontVariantNumeric: undefined,
@@ -270,8 +272,8 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
         {step === 'submitted' && (
           <div style={styles.successContainer}>
             <svg width="64" height="64" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-              <circle cx="32" cy="32" r="28" stroke={theme.status.clear} strokeWidth="3" fill="none" />
-              <path d="M22 33l7 7 13-13" stroke={theme.status.clear} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              <circle cx="32" cy="32" r="28" stroke={theme.accent.calm} strokeWidth="3" fill="none" />
+              <path d="M22 33l7 7 13-13" stroke={theme.accent.calm} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
             </svg>
             <h3 style={styles.successTitle}>
               {isOnline ? 'Report submitted' : 'Report queued'}
@@ -281,7 +283,7 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
                 ? 'Your report has been received and will be reviewed.'
                 : 'Queued \u2014 will send when you have signal.'}
             </p>
-            <button style={{ ...styles.submitBtn, marginTop: spacing.sectionGap }} onClick={onBack}>
+            <button style={{ ...styles.submitBtn, marginTop: r.sectionGap }} onClick={onBack}>
               Done
             </button>
           </div>

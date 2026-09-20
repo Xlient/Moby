@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react';
 import type { ReactNode } from 'react';
-import { darkTheme, lightTheme } from './tokens';
+import { lightTheme, darkTheme } from './tokens';
 import type { Theme } from './tokens';
 
 // ── Public hook return type ──────────────────────────────────
@@ -26,9 +26,9 @@ const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 const DARK_MQ = '(prefers-color-scheme: dark)';
 
-/** Read system preference. SSR-safe: defaults to dark. */
+/** Read system preference. SSR-safe: defaults to light. */
 function getSystemPrefersDark(): boolean {
-  if (typeof window === 'undefined') return true;
+  if (typeof window === 'undefined') return false;
   return window.matchMedia(DARK_MQ).matches;
 }
 
@@ -39,14 +39,19 @@ function getSystemPrefersDark(): boolean {
 function applyRootMeta(isDark: boolean): void {
   if (typeof document === 'undefined') return;
 
-  // data-theme attribute
+  const t = isDark ? darkTheme : lightTheme;
+
   document.documentElement.setAttribute(
     'data-theme',
     isDark ? 'dark' : 'light',
   );
 
-  // meta theme-color
-  const themeColor = isDark ? darkTheme.bg.base : lightTheme.bg.base;
+  const root = document.documentElement.style;
+  root.setProperty('--focus-ring', t.severity.low);
+  root.setProperty('--scrollbar-thumb', t.line.hairline);
+  document.body.style.backgroundColor = t.bg.base;
+  document.body.style.color = t.text.primary;
+
   let meta = document.querySelector<HTMLMetaElement>(
     'meta[name="theme-color"]',
   );
@@ -55,7 +60,7 @@ function applyRootMeta(isDark: boolean): void {
     meta.name = 'theme-color';
     document.head.appendChild(meta);
   }
-  meta.content = themeColor;
+  meta.content = t.bg.base;
 }
 
 // ── Provider ─────────────────────────────────────────────────
@@ -67,18 +72,15 @@ export interface ThemeProviderProps {
 /**
  * Provides the current `Theme` to the tree.
  *
- * Defaults to **dark** (the primary theme per the design doc) and
+ * Defaults to **light** (the primary theme per the design doc) and
  * reacts to the system `prefers-color-scheme` media query so the
  * app follows OS-level appearance changes.
  */
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  // Initialise from system preference (dark wins when undetectable / SSR)
   const [isDark, setIsDark] = useState<boolean>(getSystemPrefersDark);
 
-  // Track whether the user has explicitly toggled (overrides system pref)
   const [userOverride, setUserOverride] = useState<boolean>(false);
 
-  // ── Sync with system preference when no manual override ────
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -94,18 +96,15 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     return () => mql.removeEventListener('change', handler);
   }, [userOverride]);
 
-  // ── Keep DOM in sync ───────────────────────────────────────
   useEffect(() => {
     applyRootMeta(isDark);
   }, [isDark]);
 
-  // ── Toggle callback ────────────────────────────────────────
   const toggleTheme = useCallback(() => {
     setUserOverride(true);
     setIsDark((prev) => !prev);
   }, []);
 
-  // ── Memoised context value ─────────────────────────────────
   const value = useMemo<ThemeContextValue>(
     () => ({
       theme: isDark ? darkTheme : lightTheme,
@@ -122,11 +121,6 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
 
 // ── Hook ─────────────────────────────────────────────────────
 
-/**
- * Access the current theme, dark-mode flag, and toggle function.
- *
- * Must be called inside a `<ThemeProvider>`.
- */
 export function useTheme(): ThemeContextValue {
   const ctx = useContext(ThemeContext);
   if (ctx === undefined) {

@@ -27,11 +27,11 @@ function HomeIcon({ color }: { color: string }) {
   );
 }
 
-function MapIcon({ color }: { color: string }) {
+function AssistantIcon({ color }: { color: string }) {
   return (
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
-        d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4zM8 2v16M16 6v16"
+        d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"
         stroke={color}
         strokeWidth="2"
         strokeLinecap="round"
@@ -58,7 +58,7 @@ function SettingsIcon({ color }: { color: string }) {
 
 const TABS: Tab[] = [
   { id: 'home', label: 'Home', icon: (c) => <HomeIcon color={c} /> },
-  { id: 'map', label: 'Map', icon: (c) => <MapIcon color={c} /> },
+  { id: 'assistant', label: 'Assistant', icon: (c) => <AssistantIcon color={c} /> },
   { id: 'settings', label: 'Settings', icon: (c) => <SettingsIcon color={c} /> },
 ];
 

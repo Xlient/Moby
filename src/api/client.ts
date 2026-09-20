@@ -1,6 +1,5 @@
 import type {
   Alert,
-  AuthTokens,
   BriefPending,
   CascadeAssessment,
   ClientConfig,
@@ -57,17 +56,15 @@ export class ApiRequestError extends Error {
 
 export class ApiClient {
   private baseUrl: string;
-  private authToken: string | null;
+  private getToken: (() => Promise<string | null>) | null;
 
-  constructor(baseUrl: string = BASE_URL, authToken: string | null = null) {
-    this.baseUrl = baseUrl.replace(/\/+$/, ''); // strip trailing slash
-    this.authToken = authToken;
+  constructor(baseUrl: string = BASE_URL) {
+    this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.getToken = null;
   }
 
-  // ── Auth helpers ─────────────────────────────────────────────────
-
-  setAuthToken(token: string | null): void {
-    this.authToken = token;
+  setTokenProvider(provider: (() => Promise<string | null>) | null): void {
+    this.getToken = provider;
   }
 
   // ── Generic request plumbing ─────────────────────────────────────
@@ -78,7 +75,6 @@ export class ApiClient {
     options: {
       body?: unknown;
       query?: Record<string, string | number | boolean | undefined>;
-      /** If true, a 204 returns `undefined` instead of parsing JSON. */
       noContent?: boolean;
     } = {},
   ): Promise<T> {
@@ -94,9 +90,14 @@ export class ApiClient {
     const headers: Record<string, string> = {
       'Accept': 'application/json',
     };
-    if (this.authToken) {
-      headers['Authorization'] = `Bearer ${this.authToken}`;
+
+    if (this.getToken) {
+      const token = await this.getToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
     }
+
     if (options.body !== undefined) {
       headers['Content-Type'] = 'application/json';
     }
@@ -141,29 +142,6 @@ export class ApiClient {
   async getConfig(): Promise<ClientConfig> {
     if (USE_MOCK) return getMockConfig();
     return this.request<ClientConfig>('GET', '/config');
-  }
-
-  // ── Auth ─────────────────────────────────────────────────────────
-
-  async register(data: {
-    email: string;
-    password: string;
-    display_name?: string;
-    home_region: RegionCode;
-  }): Promise<AuthTokens> {
-    return this.request<AuthTokens>('POST', '/auth/register', { body: data });
-  }
-
-  async login(email: string, password: string): Promise<AuthTokens> {
-    return this.request<AuthTokens>('POST', '/auth/login', {
-      body: { email, password },
-    });
-  }
-
-  async refreshToken(refreshToken: string): Promise<AuthTokens> {
-    return this.request<AuthTokens>('POST', '/auth/refresh', {
-      body: { refresh_token: refreshToken },
-    });
   }
 
   // ── User ─────────────────────────────────────────────────────────
@@ -243,7 +221,10 @@ export class ApiClient {
 
     const fullUrl = new URL(`${this.baseUrl}${url}`);
     const headers: Record<string, string> = { Accept: 'application/json' };
-    if (this.authToken) headers['Authorization'] = `Bearer ${this.authToken}`;
+    if (this.getToken) {
+      const token = await this.getToken();
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
 
     const res = await fetch(fullUrl.toString(), { method: 'GET', headers });
 
@@ -271,7 +252,10 @@ export class ApiClient {
     const url = `/regions/${encodeURIComponent(region)}/cascade`;
     const fullUrl = new URL(`${this.baseUrl}${url}`);
     const headers: Record<string, string> = { Accept: 'application/json' };
-    if (this.authToken) headers['Authorization'] = `Bearer ${this.authToken}`;
+    if (this.getToken) {
+      const token = await this.getToken();
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
 
     const res = await fetch(fullUrl.toString(), { method: 'GET', headers });
 

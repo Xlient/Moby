@@ -10,10 +10,11 @@
     "generate-types": "openapi-typescript api-contract-v1.yaml -o src/api/generated-types.ts"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
+    "firebase": "^12.19.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0",
-    "@tanstack/react-query": "^5.62.0"
+    "react-router-dom": "^6.28.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

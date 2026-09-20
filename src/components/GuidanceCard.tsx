@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing, radius } from '@/theme/tokens';
+import { useResponsive } from '@/hooks/useResponsive';
 import type { GuidanceCard as GuidanceCardType } from '@/api/types';
 
 interface GuidanceCardProps {
@@ -18,15 +19,16 @@ function formatDate(isoDate: string): string {
 
 export function GuidanceCard({ card, isStale = false }: GuidanceCardProps) {
   const { theme } = useTheme();
+  const r = useResponsive();
 
   const styles: Record<string, CSSProperties> = {
     card: {
       backgroundColor: theme.bg.raised,
       borderRadius: radius.card,
-      padding: spacing.cardPadding,
+      padding: r.cardPadding,
     },
     title: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: 0,
       fontVariantNumeric: undefined,

@@ -1,6 +1,7 @@
 import { useState, useEffect, type CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing, radius } from '@/theme/tokens';
+import { useResponsive } from '@/hooks/useResponsive';
 import type { Subscription, Severity } from '@/api/types';
 import { api } from '@/api/client';
 
@@ -21,6 +22,7 @@ export function SubscriptionsScreen({ onBack }: SubscriptionsScreenProps) {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const r = useResponsive();
 
   useEffect(() => {
     async function load() {
@@ -54,7 +56,7 @@ export function SubscriptionsScreen({ onBack }: SubscriptionsScreenProps) {
     header: {
       display: 'flex',
       alignItems: 'center',
-      padding: `${spacing.scale[2]}px ${spacing.screenGutter}px`,
+      padding: `${spacing.scale[2]}px ${r.gutter}px`,
       borderBottom: `1px solid ${theme.line.hairline}`,
       backgroundColor: theme.bg.raised,
       minHeight: spacing.minTapTarget + 8,
@@ -73,7 +75,7 @@ export function SubscriptionsScreen({ onBack }: SubscriptionsScreenProps) {
       marginRight: spacing.scale[2],
     },
     headerTitle: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: 0,
       fontVariantNumeric: undefined,
@@ -81,16 +83,16 @@ export function SubscriptionsScreen({ onBack }: SubscriptionsScreenProps) {
     scrollArea: {
       flex: 1,
       overflowY: 'auto',
-      padding: spacing.screenGutter,
+      padding: r.gutter,
     },
     card: {
       backgroundColor: theme.bg.raised,
       borderRadius: radius.card,
-      padding: spacing.cardPadding,
+      padding: r.cardPadding,
       marginBottom: spacing.scale[3],
     },
     label: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: 0,
       fontVariantNumeric: undefined,
@@ -120,7 +122,7 @@ export function SubscriptionsScreen({ onBack }: SubscriptionsScreenProps) {
       ...typography.body,
       color: theme.text.secondary,
       textAlign: 'center',
-      padding: `${spacing.sectionGap}px 0`,
+      padding: `${r.sectionGap}px 0`,
       fontVariantNumeric: undefined,
     },
     emptyState: {
@@ -130,10 +132,10 @@ export function SubscriptionsScreen({ onBack }: SubscriptionsScreenProps) {
       justifyContent: 'center',
       flex: 1,
       textAlign: 'center',
-      padding: spacing.sectionGap,
+      padding: r.sectionGap,
     },
     emptyTitle: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: 0,
       fontVariantNumeric: undefined,

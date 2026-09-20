@@ -1,27 +1,36 @@
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing, radius } from '@/theme/tokens';
+import { useResponsive } from '@/hooks/useResponsive';
+import { useAuth } from '@/auth/AuthContext';
 
-export function SettingsScreen() {
+interface SettingsScreenProps {
+  onTrustReview?: () => void;
+}
+
+export function SettingsScreen({ onTrustReview }: SettingsScreenProps) {
   const { theme, isDark, toggleTheme } = useTheme();
+  const r = useResponsive();
+  const { user, signOut } = useAuth();
+  const [signingOut, setSigningOut] = useState(false);
 
   const styles: Record<string, CSSProperties> = {
     container: {
-      padding: spacing.screenGutter,
+      padding: r.gutter,
       overflowY: 'auto',
       height: '100%',
     },
     title: {
-      ...typography.title,
+      ...r.title,
       color: theme.text.primary,
-      margin: `0 0 ${spacing.sectionGap}px 0`,
+      margin: `0 0 ${r.sectionGap}px 0`,
       fontVariantNumeric: undefined,
     },
     section: {
-      marginBottom: spacing.sectionGap,
+      marginBottom: r.sectionGap,
     },
     sectionHeading: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: `0 0 ${spacing.scale[3]}px 0`,
       fontVariantNumeric: undefined,
@@ -48,7 +57,7 @@ export function SettingsScreen() {
       width: 48,
       height: 28,
       borderRadius: 14,
-      backgroundColor: isDark ? theme.text.faint : theme.line.strong,
+      backgroundColor: isDark ? theme.text.faint : theme.line.hairline,
       position: 'relative',
       cursor: 'pointer',
       border: 'none',
@@ -65,19 +74,19 @@ export function SettingsScreen() {
       width: 24,
       height: 24,
       borderRadius: 12,
-      backgroundColor: '#FFFFFF',
+      backgroundColor: theme.bg.raised,
       transition: 'left 0.2s ease',
       boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
     },
     card: {
       backgroundColor: theme.bg.raised,
       borderRadius: radius.card,
-      padding: spacing.cardPadding,
+      padding: r.cardPadding,
     },
     meta: {
       ...typography.meta,
       color: theme.text.faint,
-      marginTop: spacing.sectionGap,
+      marginTop: r.sectionGap,
     },
   };
 
@@ -117,9 +126,46 @@ export function SettingsScreen() {
         </div>
       </div>
 
+      {onTrustReview && (
+        <div style={styles.section}>
+          <h2 style={styles.sectionHeading}>Developer</h2>
+          <div style={styles.card}>
+            <div style={{ ...styles.row, borderBottom: 'none' }}>
+              <button
+                style={{ ...styles.rowLabel, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' as const, fontFamily: typography.body.fontFamily }}
+                onClick={onTrustReview}
+              >
+                Trust treatments review
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <p style={styles.meta}>
         Early Warning System. Data from NOAA, USGS, and community reports.
       </p>
+
+      <div style={styles.section}>
+        <h2 style={styles.sectionHeading}>Account</h2>
+        <div style={styles.card}>
+          <div style={styles.row}>
+            <span style={styles.rowLabel}>{user?.email ?? 'Signed in'}</span>
+          </div>
+          <div style={{ ...styles.row, borderBottom: 'none' }}>
+            <button
+              style={{ ...styles.rowLabel, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' as const, fontFamily: typography.body.fontFamily, color: theme.severity.critical }}
+              onClick={async () => {
+                setSigningOut(true);
+                try { await signOut(); } catch { setSigningOut(false); }
+              }}
+              disabled={signingOut}
+            >
+              {signingOut ? 'Signing out\u2026' : 'Sign out'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

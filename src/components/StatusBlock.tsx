@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing } from '@/theme/tokens';
+import { useResponsive } from '@/hooks/useResponsive';
 import type { Alert } from '@/api/types';
 
 interface StatusBlockProps {
@@ -87,6 +88,7 @@ export function StatusBlock({
   locationAvailable,
 }: StatusBlockProps) {
   const { theme } = useTheme();
+  const r = useResponsive();
 
   const activeAlerts = alerts.filter(
     (a) => !a.expires_at || new Date(a.expires_at).getTime() > Date.now()
@@ -104,11 +106,10 @@ export function StatusBlock({
       alignItems: 'center',
       justifyContent: 'center',
       textAlign: 'center',
-      padding: `${spacing.sectionGap}px ${spacing.screenGutter}px`,
-      minHeight: 200,
+      padding: `${r.sectionGap}px ${r.gutter}px`,
     },
     statusText: {
-      ...typography.display,
+      ...r.title,
       color: theme.text.primary,
       margin: `${spacing.scale[3]}px 0 0 0`,
       fontVariantNumeric: undefined,
@@ -183,7 +184,7 @@ export function StatusBlock({
   if (isOffline && activeAlerts.length === 0) {
     return (
       <div style={styles.container} role="status">
-        <OfflineIcon color={theme.status.offline} />
+        <OfflineIcon color={theme.text.secondary} />
         <p style={styles.statusText}>No saved alerts</p>
         <p style={styles.metaText}>
           {cachedAt ? formatCheckedTime(cachedAt) : 'Connect to check for alerts'}
@@ -195,7 +196,7 @@ export function StatusBlock({
   if (activeAlerts.length === 0) {
     return (
       <div style={styles.container} role="status" aria-label="No active alerts near you">
-        <ClearIcon color={theme.status.clear} />
+        <ClearIcon color={theme.accent.calm} />
         <p style={styles.statusText}>No active alerts near you</p>
         <p style={styles.metaText}>{formatCheckedTime(cachedAt)}</p>
       </div>

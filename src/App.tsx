@@ -1,23 +1,32 @@
-import { useState, useCallback, type CSSProperties } from 'react';
+import { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
+import { useResponsive } from '@/hooks/useResponsive';
+import { useAuth } from '@/auth/AuthContext';
+import { api } from '@/api/client';
+import { typography } from '@/theme/tokens';
 import { BottomTabs } from '@/components/BottomTabs';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { AuthScreen } from '@/screens/AuthScreen';
 import { HomeScreen } from '@/screens/HomeScreen';
 import { AlertDetailScreen } from '@/screens/AlertDetailScreen';
 import { MapScreen } from '@/screens/MapScreen';
 import { SettingsScreen } from '@/screens/SettingsScreen';
+import { AssistantScreen } from '@/screens/AssistantScreen';
 import { GuidanceScreen } from '@/screens/GuidanceScreen';
 import { ReportScreen } from '@/screens/ReportScreen';
 import { SubscriptionsScreen } from '@/screens/SubscriptionsScreen';
+import { TrustReviewScreen } from '@/screens/TrustReviewScreen';
 
 type Screen =
   | { name: 'home' }
-  | { name: 'map' }
+  | { name: 'assistant' }
   | { name: 'settings' }
+  | { name: 'map' }
   | { name: 'alert-detail'; alertId: string }
   | { name: 'guidance' }
   | { name: 'report' }
-  | { name: 'subscriptions' };
+  | { name: 'subscriptions' }
+  | { name: 'trust-review' };
 
 function getActiveTab(screen: Screen): string {
   switch (screen.name) {
@@ -25,20 +34,28 @@ function getActiveTab(screen: Screen): string {
     case 'alert-detail':
     case 'guidance':
     case 'report':
-      return 'home';
     case 'map':
-      return 'map';
+    case 'trust-review':
+      return 'home';
+    case 'assistant':
+      return 'assistant';
     case 'settings':
     case 'subscriptions':
       return 'settings';
   }
 }
 
-const SHOW_TABS: Set<string> = new Set(['home', 'map', 'settings']);
+const SHOW_TABS: Set<string> = new Set(['home', 'assistant', 'settings']);
 
 export function App() {
   const { theme } = useTheme();
+  const { maxContent } = useResponsive();
+  const { user, loading, getIdToken } = useAuth();
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
+
+  useEffect(() => {
+    api.setTokenProvider(user ? getIdToken : null);
+  }, [user, getIdToken]);
 
   const navigateHome = useCallback(() => setScreen({ name: 'home' }), []);
   const navigateToAlert = useCallback((alertId: string) => {
@@ -46,14 +63,15 @@ export function App() {
   }, []);
   const navigateToGuidance = useCallback(() => setScreen({ name: 'guidance' }), []);
   const navigateToReport = useCallback(() => setScreen({ name: 'report' }), []);
+  const navigateToMap = useCallback(() => setScreen({ name: 'map' }), []);
 
   const handleTabChange = useCallback((tab: string) => {
     switch (tab) {
       case 'home':
         setScreen({ name: 'home' });
         break;
-      case 'map':
-        setScreen({ name: 'map' });
+      case 'assistant':
+        setScreen({ name: 'assistant' });
         break;
       case 'settings':
         setScreen({ name: 'settings' });
@@ -67,8 +85,8 @@ export function App() {
       flexDirection: 'column',
       height: '100%',
       backgroundColor: theme.bg.base,
-      maxWidth: 480,
-      margin: '0 auto',
+      maxWidth: maxContent,
+      margin: maxContent ? '0 auto' : undefined,
       position: 'relative',
       overflow: 'hidden',
     },
@@ -76,7 +94,36 @@ export function App() {
       flex: 1,
       overflow: 'hidden',
     },
+    loadingContainer: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100%',
+    },
+    loadingText: {
+      ...typography.body,
+      color: theme.text.faint,
+      fontVariantNumeric: undefined,
+    },
   };
+
+  if (loading) {
+    return (
+      <div style={styles.shell}>
+        <div style={styles.loadingContainer}>
+          <p style={styles.loadingText}>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div style={styles.shell}>
+        <AuthScreen />
+      </div>
+    );
+  }
 
   const showTabs = SHOW_TABS.has(screen.name);
 
@@ -89,6 +136,7 @@ export function App() {
             onAlertPress={navigateToAlert}
             onGuidancePress={navigateToGuidance}
             onReportPress={navigateToReport}
+            onMapPress={navigateToMap}
           />
         )}
         {screen.name === 'alert-detail' && (
@@ -98,7 +146,12 @@ export function App() {
           />
         )}
         {screen.name === 'map' && <MapScreen />}
-        {screen.name === 'settings' && <SettingsScreen />}
+        {screen.name === 'assistant' && <AssistantScreen />}
+        {screen.name === 'settings' && (
+          <SettingsScreen
+            onTrustReview={() => setScreen({ name: 'trust-review' })}
+          />
+        )}
         {screen.name === 'guidance' && (
           <GuidanceScreen onBack={navigateHome} />
         )}
@@ -107,6 +160,9 @@ export function App() {
         )}
         {screen.name === 'subscriptions' && (
           <SubscriptionsScreen onBack={() => setScreen({ name: 'settings' })} />
+        )}
+        {screen.name === 'trust-review' && (
+          <TrustReviewScreen onBack={navigateHome} />
         )}
       </div>
       {showTabs && (

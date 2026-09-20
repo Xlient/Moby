@@ -1,11 +1,13 @@
 import type { CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing } from '@/theme/tokens';
+import { useResponsive } from '@/hooks/useResponsive';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 
 export function MapScreen() {
   const { theme } = useTheme();
   const isOnline = useOnlineStatus();
+  const r = useResponsive();
 
   const styles: Record<string, CSSProperties> = {
     container: {
@@ -14,15 +16,15 @@ export function MapScreen() {
       alignItems: 'center',
       justifyContent: 'center',
       height: '100%',
-      backgroundColor: theme.bg.sunken,
-      padding: spacing.screenGutter,
+      backgroundColor: theme.bg.recessed,
+      padding: r.gutter,
       textAlign: 'center',
     },
     icon: {
       marginBottom: spacing.scale[4],
     },
     title: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: 0,
       fontVariantNumeric: undefined,

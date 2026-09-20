@@ -1,6 +1,7 @@
 import { useMemo, type CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing } from '@/theme/tokens';
+import { useResponsive } from '@/hooks/useResponsive';
 import { AlertCard } from '@/components/AlertCard';
 import { BriefPanel } from '@/components/BriefPanel';
 import { useBrief } from '@/hooks/useBrief';
@@ -13,6 +14,7 @@ interface AlertDetailScreenProps {
 
 export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
   const { theme } = useTheme();
+  const r = useResponsive();
   const { alerts } = useAlerts();
 
   const alert = useMemo(
@@ -31,7 +33,7 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
     header: {
       display: 'flex',
       alignItems: 'center',
-      padding: `${spacing.scale[2]}px ${spacing.screenGutter}px`,
+      padding: `${spacing.scale[2]}px ${r.gutter}px`,
       borderBottom: `1px solid ${theme.line.hairline}`,
       backgroundColor: theme.bg.raised,
       minHeight: spacing.minTapTarget + 8,
@@ -50,7 +52,7 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
       marginRight: spacing.scale[2],
     },
     headerTitle: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: 0,
       fontVariantNumeric: undefined,
@@ -62,7 +64,7 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
       flex: 1,
       overflowY: 'auto',
       WebkitOverflowScrolling: 'touch',
-      padding: spacing.screenGutter,
+      padding: r.gutter,
     },
     notFound: {
       display: 'flex',
@@ -76,9 +78,9 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
       fontVariantNumeric: undefined,
     },
     sectionTitle: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
-      margin: `${spacing.sectionGap}px 0 ${spacing.scale[3]}px 0`,
+      margin: `${r.sectionGap}px 0 ${spacing.scale[3]}px 0`,
       fontVariantNumeric: undefined,
     },
   };

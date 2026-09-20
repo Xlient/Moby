@@ -1,5 +1,6 @@
 import { useTheme } from '@/theme/ThemeContext';
 import { spacing } from '@/theme/tokens';
+import { useResponsive } from '@/hooks/useResponsive';
 import { useOnlineStatus, useOfflineBannerDismiss } from '@/hooks/useOnlineStatus';
 import type { CSSProperties } from 'react';
 
@@ -7,6 +8,7 @@ export function OfflineBanner() {
   const { theme } = useTheme();
   const isOnline = useOnlineStatus();
   const { isDismissed, dismiss } = useOfflineBannerDismiss();
+  const r = useResponsive();
 
   if (isOnline || isDismissed) return null;
 
@@ -15,13 +17,13 @@ export function OfflineBanner() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      backgroundColor: theme.status.offline,
-      padding: `${spacing.scale[1]}px ${spacing.screenGutter}px`,
+      backgroundColor: theme.text.secondary,
+      padding: `${spacing.scale[1]}px ${r.gutter}px`,
       borderRadius: 0,
       minHeight: spacing.minTapTarget,
     },
     text: {
-      color: '#FFFFFF',
+      color: theme.bg.raised,
       fontSize: 14,
       lineHeight: '19px',
       fontWeight: 600,
@@ -30,7 +32,7 @@ export function OfflineBanner() {
     dismissBtn: {
       background: 'none',
       border: 'none',
-      color: '#FFFFFF',
+      color: theme.bg.raised,
       fontSize: 20,
       lineHeight: '20px',
       cursor: 'pointer',

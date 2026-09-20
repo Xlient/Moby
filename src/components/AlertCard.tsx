@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing, radius } from '@/theme/tokens';
+import { useResponsive } from '@/hooks/useResponsive';
 import { TrustRule } from './TrustRule';
 import { SeverityIndicator } from './SeverityIndicator';
 import type { Alert } from '@/api/types';
@@ -41,35 +42,23 @@ function getTrustText(alert: Alert): string {
 export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
   const { theme } = useTheme();
   const expired = isExpired(alert);
-  const isOfficial = alert.verification_label === 'official_confirmed';
   const isUnverified = alert.verification_label === 'unverified_report';
-
-  const cardBg = isUnverified ? theme.bg.base : theme.bg.raised;
-  const cardBorder = isUnverified ? `1px solid ${theme.line.hairline}` : 'none';
-  const opacity = expired ? 0.5 : 1;
+  const isCorroborated = alert.verification_label === 'corroborated_report';
+  const r = useResponsive();
 
   const styles: Record<string, CSSProperties> = {
     card: {
       position: 'relative',
-      backgroundColor: cardBg,
-      border: cardBorder,
+      backgroundColor: isUnverified ? theme.bg.recessed : theme.bg.raised,
+      border: isUnverified ? `1px solid ${theme.line.hairline}` : 'none',
       borderRadius: radius.card,
-      padding: `0 0 0 0`,
-      opacity,
+      boxShadow: isUnverified ? 'none' : theme.shadow,
+      opacity: expired ? 0.5 : 1,
       cursor: onPress ? 'pointer' : 'default',
       overflow: 'hidden',
     },
-    sourceBand: {
-      backgroundColor: theme.text.primary,
-      padding: `${spacing.scale[1]}px ${spacing.alertCardPadding}px ${spacing.scale[1]}px ${spacing.alertCardPadding + 4}px`,
-    },
-    sourceBandText: {
-      ...typography.micro,
-      color: theme.bg.raised,
-      fontVariantNumeric: undefined,
-    },
     content: {
-      padding: `${spacing.scale[2]}px ${spacing.alertCardPadding}px ${spacing.alertCardPadding}px ${spacing.alertCardPadding + 4}px`,
+      padding: `${spacing.scale[2]}px ${r.cardPadding}px ${r.cardPadding}px ${isUnverified ? r.cardPadding : r.cardPadding + 3}px`,
     },
     headerRow: {
       display: 'flex',
@@ -78,7 +67,7 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
       marginBottom: spacing.scale[1],
     },
     headline: {
-      ...typography.heading,
+      ...r.heading,
       color: theme.text.primary,
       margin: 0,
       fontVariantNumeric: undefined,
@@ -100,14 +89,35 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
       ...typography.meta,
       color: theme.text.secondary,
     },
-    trustText: {
-      ...typography.micro,
-      color: theme.text.secondary,
+    trustRow: {
+      display: 'flex',
+      alignItems: 'center',
       marginTop: spacing.scale[2],
+    },
+    pill: {
+      ...typography.label,
+      display: 'inline-flex',
+      alignItems: 'center',
+      padding: `${spacing.scale[0]}px ${spacing.scale[2]}px`,
+      borderRadius: radius.pill,
+      fontVariantNumeric: undefined,
+    },
+    pillFilled: {
+      backgroundColor: theme.text.primary,
+      color: theme.bg.raised,
+    },
+    pillOutline: {
+      backgroundColor: 'transparent',
+      border: `1px solid ${theme.text.secondary}`,
+      color: theme.text.secondary,
+    },
+    trustTextPlain: {
+      ...typography.label,
+      color: theme.text.secondary,
       fontVariantNumeric: undefined,
     },
     expiredBadge: {
-      ...typography.micro,
+      ...typography.label,
       color: theme.text.faint,
       fontVariantNumeric: undefined,
     },
@@ -144,6 +154,36 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
     }
   };
 
+  const trustLabel = getTrustText(alert);
+
+  function renderTrust() {
+    if (isUnverified) {
+      return (
+        <span style={styles.trustTextPlain} aria-label={`Trust level: ${trustLabel}`}>
+          {trustLabel}
+        </span>
+      );
+    }
+    if (isCorroborated) {
+      return (
+        <span
+          style={{ ...styles.pill, ...styles.pillOutline }}
+          aria-label={`Trust level: ${trustLabel}`}
+        >
+          {trustLabel}
+        </span>
+      );
+    }
+    return (
+      <span
+        style={{ ...styles.pill, ...styles.pillFilled }}
+        aria-label={`Trust level: ${trustLabel}`}
+      >
+        {trustLabel}
+      </span>
+    );
+  }
+
   return (
     <div
       style={styles.card}
@@ -154,14 +194,6 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
       tabIndex={onPress ? 0 : undefined}
     >
       <TrustRule verification={alert.verification_label} severity={alert.severity} />
-
-      {isOfficial && (
-        <div style={styles.sourceBand}>
-          <span style={styles.sourceBandText}>
-            {alert.source_attribution ?? 'Official source'}
-          </span>
-        </div>
-      )}
 
       <div style={styles.content}>
         <div style={styles.headerRow}>
@@ -184,8 +216,8 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
           </span>
         </div>
 
-        <div style={styles.trustText} aria-label={`Trust level: ${getTrustText(alert)}`}>
-          {getTrustText(alert)}
+        <div style={styles.trustRow}>
+          {renderTrust()}
         </div>
       </div>
 
