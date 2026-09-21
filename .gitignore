@@ -10,3 +10,5 @@ wheels/
 .venv
 .env
 disaster-alert-agent-plan.md
+design-system-mobile.md
+disaster-alert-agent-plan-v3.md
