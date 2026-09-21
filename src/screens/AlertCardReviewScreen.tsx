@@ -1,7 +1,7 @@
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
-import { typography, spacing } from '@/theme/tokens';
+import { spacing } from '@/theme/tokens';
 import { AlertCard } from '@/components/AlertCard';
 import type { Alert, Severity, VerificationLabel } from '@/api/types';
 
@@ -19,10 +19,11 @@ const VERIFICATION_LABELS: Record<VerificationLabel, string> = {
 };
 
 function makeAlert(severity: Severity, verification: VerificationLabel): Alert {
+  const headline = `${severity.charAt(0).toUpperCase() + severity.slice(1)} severity alert`;
   return {
     alert_id: `${severity}-${verification}`,
     event_id: 'evt-001',
-    headline: `${severity.charAt(0).toUpperCase() + severity.slice(1)} severity ${VERIFICATION_LABELS[verification].toLowerCase()} alert`,
+    headline,
     severity,
     issued_at: new Date(Date.now() - 42 * 60_000).toISOString(),
     verification_label: verification,
@@ -32,7 +33,8 @@ function makeAlert(severity: Severity, verification: VerificationLabel): Alert {
         : verification === 'corroborated_report'
           ? 'Confirmed by 4 nearby'
           : undefined,
-  };
+    location_name: 'River Basin area',
+  } as Alert;
 }
 
 interface AlertCardReviewScreenProps {
@@ -54,7 +56,7 @@ export function AlertCardReviewScreen({ onBack }: AlertCardReviewScreenProps) {
             background: 'none',
             border: 'none',
             color: theme.accent.calm,
-            fontSize: typography.body.fontSize,
+            fontSize: 17,
             fontWeight: 600,
             cursor: 'pointer',
             padding: 0,
@@ -62,14 +64,7 @@ export function AlertCardReviewScreen({ onBack }: AlertCardReviewScreenProps) {
         >
           Back
         </button>
-        <Text
-          style={{
-            color: theme.text.primary,
-            fontSize: typography.title.fontSize,
-            lineHeight: typography.title.lineHeight,
-            fontWeight: '600',
-          }}
-        >
+        <Text variant="titleLarge" style={{ color: theme.text.primary }}>
           Alert Card Review
         </Text>
         <button
@@ -79,7 +74,7 @@ export function AlertCardReviewScreen({ onBack }: AlertCardReviewScreenProps) {
             border: `1px solid ${theme.line.hairline}`,
             borderRadius: 8,
             color: theme.text.primary,
-            fontSize: typography.label.fontSize,
+            fontSize: 13,
             fontWeight: 500,
             cursor: 'pointer',
             padding: '6px 12px',
@@ -89,14 +84,19 @@ export function AlertCardReviewScreen({ onBack }: AlertCardReviewScreenProps) {
         </button>
       </View>
 
+      <Text
+        variant="bodyMedium"
+        style={{ color: theme.text.faint, marginBottom: spacing.scale[4] }}
+      >
+        {SEVERITIES.length} severities x {VERIFICATIONS.length} trust levels = {SEVERITIES.length * VERIFICATIONS.length} combinations
+      </Text>
+
       {VERIFICATIONS.map((verification) => (
         <View key={verification} style={styles.section}>
           <Text
+            variant="titleMedium"
             style={{
               color: theme.text.secondary,
-              fontSize: typography.heading.fontSize,
-              lineHeight: typography.heading.lineHeight,
-              fontWeight: '600',
               marginBottom: spacing.scale[2],
             }}
           >
@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.scale[5],
+    marginBottom: spacing.scale[3],
   },
   section: {
     marginBottom: spacing.scale[5],

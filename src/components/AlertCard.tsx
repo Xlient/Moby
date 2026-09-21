@@ -1,7 +1,7 @@
 import { Surface, Chip, Text } from 'react-native-paper';
-import { View, StyleSheet } from 'react-native';
+import { View, Pressable, StyleSheet } from 'react-native';
 import { useTheme } from '@/theme/ThemeContext';
-import { typography, spacing, radius } from '@/theme/tokens';
+import { spacing, radius } from '@/theme/tokens';
 import { SeverityIndicator } from './SeverityIndicator';
 import type { Alert, VerificationLabel } from '@/api/types';
 
@@ -27,7 +27,7 @@ function getTrustText(alert: Alert): string {
     case 'official_confirmed':
       return alert.source_attribution ?? 'Official source';
     case 'corroborated_report':
-      return alert.source_attribution ?? 'Confirmed by 4 nearby';
+      return alert.source_attribution ?? 'Confirmed by nearby reports';
     case 'unverified_report':
       return 'Unverified \u2014 single report';
   }
@@ -53,14 +53,6 @@ function getSurfaceConfig(
   };
 }
 
-function hasLeftEdge(verification: VerificationLabel): boolean {
-  return verification !== 'unverified_report';
-}
-
-function getLeftEdgeOpacity(verification: VerificationLabel): number {
-  return verification === 'corroborated_report' ? 0.5 : 1;
-}
-
 function TrustDisplay({
   verification,
   alert,
@@ -77,15 +69,12 @@ function TrustDisplay({
       <Chip
         mode="flat"
         style={{
-          backgroundColor: theme.text.primary,
+          backgroundColor: theme.bg.recessed,
           borderRadius: radius.pill,
         }}
         textStyle={{
-          color: theme.bg.raised,
-          fontSize: typography.label.fontSize,
-          lineHeight: typography.label.lineHeight,
-          fontWeight: String(typography.label.fontWeight) as '500',
-          fontVariant: ['tabular-nums'],
+          color: theme.text.primary,
+          fontWeight: '500',
         }}
         compact
       >
@@ -100,15 +89,12 @@ function TrustDisplay({
         mode="outlined"
         style={{
           backgroundColor: 'transparent',
-          borderColor: theme.text.secondary,
+          borderColor: theme.line.hairline,
           borderRadius: radius.pill,
         }}
         textStyle={{
           color: theme.text.secondary,
-          fontSize: typography.label.fontSize,
-          lineHeight: typography.label.lineHeight,
-          fontWeight: String(typography.label.fontWeight) as '500',
-          fontVariant: ['tabular-nums'],
+          fontWeight: '500',
         }}
         compact
       >
@@ -119,26 +105,29 @@ function TrustDisplay({
 
   return (
     <Text
-      style={{
-        color: theme.text.secondary,
-        fontSize: typography.label.fontSize,
-        lineHeight: typography.label.lineHeight,
-        fontWeight: String(typography.label.fontWeight) as '500',
-      }}
+      variant="labelSmall"
+      style={{ color: theme.text.secondary }}
     >
       {trustText}
     </Text>
   );
 }
 
-export function AlertCard({ alert, distanceKm }: AlertCardProps) {
+export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
   const { theme } = useTheme();
   const severityColor = theme.severity[alert.severity];
   const surfaceConfig = getSurfaceConfig(alert.verification_label, theme);
-  const showLeftEdge = hasLeftEdge(alert.verification_label);
-  const leftEdgeOpacity = getLeftEdgeOpacity(alert.verification_label);
+  const isUnverified = alert.verification_label === 'unverified_report';
+  const showLeftEdge = !isUnverified;
+  const leftEdgeOpacity = alert.verification_label === 'corroborated_report' ? 0.5 : 1;
 
-  return (
+  const metaParts: string[] = [];
+  if (alert.location_name) metaParts.push(alert.location_name);
+  if (distanceKm !== undefined) metaParts.push(`${distanceKm.toFixed(1)} km`);
+  metaParts.push(formatTimeAgo(alert.issued_at));
+  const metaText = metaParts.join(' \u00b7 ');
+
+  const card = (
     <Surface
       elevation={surfaceConfig.elevation}
       style={[
@@ -171,57 +160,30 @@ export function AlertCard({ alert, distanceKm }: AlertCardProps) {
           { paddingLeft: showLeftEdge ? spacing.scale[3] + 3 : spacing.scale[3] },
         ]}
       >
-        <SeverityIndicator severity={alert.severity} />
+        <SeverityIndicator severity={alert.severity} neutral={isUnverified} />
 
         <Text
+          variant="titleMedium"
           style={{
             color: theme.text.primary,
-            fontSize: typography.heading.fontSize,
-            lineHeight: typography.heading.lineHeight,
-            fontWeight: String(typography.heading.fontWeight) as '600',
             marginTop: spacing.scale[1],
           }}
-          numberOfLines={3}
+          numberOfLines={2}
         >
           {alert.headline}
         </Text>
 
-        <View style={styles.metaRow}>
-          {alert.source_attribution && (
-            <Text
-              style={{
-                color: theme.text.secondary,
-                fontSize: typography.meta.fontSize,
-                lineHeight: typography.meta.lineHeight,
-                fontVariant: ['tabular-nums'],
-              }}
-            >
-              {alert.source_attribution}
-            </Text>
-          )}
-          {distanceKm !== undefined && (
-            <Text
-              style={{
-                color: theme.text.secondary,
-                fontSize: typography.meta.fontSize,
-                lineHeight: typography.meta.lineHeight,
-                fontVariant: ['tabular-nums'],
-              }}
-            >
-              {distanceKm.toFixed(1)} km
-            </Text>
-          )}
-          <Text
-            style={{
-              color: theme.text.secondary,
-              fontSize: typography.meta.fontSize,
-              lineHeight: typography.meta.lineHeight,
-              fontVariant: ['tabular-nums'],
-            }}
-          >
-            {formatTimeAgo(alert.issued_at)}
-          </Text>
-        </View>
+        <Text
+          variant="bodyMedium"
+          style={{
+            color: theme.text.secondary,
+            fontVariant: ['tabular-nums'],
+            marginTop: spacing.scale[1],
+          }}
+          numberOfLines={1}
+        >
+          {metaText}
+        </Text>
 
         <View style={styles.trustRow}>
           <TrustDisplay
@@ -233,6 +195,20 @@ export function AlertCard({ alert, distanceKm }: AlertCardProps) {
       </View>
     </Surface>
   );
+
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${alert.headline}, ${alert.severity} severity`}
+      >
+        {card}
+      </Pressable>
+    );
+  }
+
+  return card;
 }
 
 const styles = StyleSheet.create({
@@ -251,13 +227,6 @@ const styles = StyleSheet.create({
     padding: spacing.scale[2],
     paddingRight: spacing.scale[3],
     paddingBottom: spacing.scale[3],
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: spacing.scale[2],
-    marginTop: spacing.scale[2],
   },
   trustRow: {
     flexDirection: 'row',

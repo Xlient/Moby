@@ -1,7 +1,9 @@
 import type { components } from './generated-types';
 
 // ── Core domain types ────────────────────────────────────────────────
-export type Alert = components['schemas']['Alert'];
+export type Alert = components['schemas']['Alert'] & {
+  location_name?: string;
+};
 export type Event = components['schemas']['Event'];
 export type Severity = components['schemas']['Severity'];
 export type HazardType = components['schemas']['HazardType'];

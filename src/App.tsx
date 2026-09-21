@@ -73,7 +73,6 @@ export function App() {
   const navigateToAlert = useCallback((alertId: string) => {
     setScreen({ name: 'alert-detail', alertId });
   }, []);
-  const navigateToGuidance = useCallback(() => setScreen({ name: 'guidance' }), []);
   const navigateToReport = useCallback(() => setScreen({ name: 'report' }), []);
   const navigateToMap = useCallback(() => setScreen({ name: 'map' }), []);
 
@@ -144,9 +143,9 @@ export function App() {
       <div style={styles.content}>
         {screen.name === 'home' && (
           <HomeScreen
-            onAlertPress={navigateToAlert}
-            onGuidancePress={navigateToGuidance}
             onReportPress={navigateToReport}
+            onAlertPress={navigateToAlert}
+            onSeeAllPress={navigateHome}
             onMapPress={navigateToMap}
           />
         )}
