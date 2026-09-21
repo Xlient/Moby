@@ -10,6 +10,7 @@ import { AlertCard } from '@/components/AlertCard';
 import { MapPreviewCard } from '@/components/MapPreviewCard';
 import { RadiusPicker, RadiusChip } from '@/components/RadiusPicker';
 import { mockAlerts } from '@/api/fixtures';
+import { USER_CENTER, distanceKm } from '@/screens/MapScreen';
 import type { Alert, Severity } from '@/api/types';
 
 interface HomeScreenProps {
@@ -141,12 +142,21 @@ export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPr
     return () => clearTimeout(timer);
   }, []);
 
+  const filteredAlerts = useMemo(
+    () =>
+      alerts.filter((a) => {
+        if (!a.location) return false;
+        return distanceKm(USER_CENTER.lat, USER_CENTER.lon, a.location.lat, a.location.lon) <= nearbyRadius;
+      }),
+    [alerts, nearbyRadius],
+  );
+
   const sortedAlerts = useMemo(
     () =>
-      [...alerts].sort(
+      [...filteredAlerts].sort(
         (a, b) => (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9),
       ),
-    [alerts],
+    [filteredAlerts],
   );
 
   const visibleAlerts = sortedAlerts.slice(0, MAX_HOME_CARDS);
@@ -216,7 +226,11 @@ export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPr
                 <AlertCard
                   key={alert.alert_id}
                   alert={alert}
-                  distanceKm={3.2}
+                  distanceKm={
+                    alert.location
+                      ? +distanceKm(USER_CENTER.lat, USER_CENTER.lon, alert.location.lat, alert.location.lon).toFixed(1)
+                      : undefined
+                  }
                   onPress={() => onAlertPress(alert.alert_id)}
                 />
               ))}

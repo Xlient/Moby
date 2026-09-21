@@ -155,7 +155,12 @@ export function App() {
             onBack={navigateHome}
           />
         )}
-        {screen.name === 'map' && <MapScreen />}
+        {screen.name === 'map' && (
+          <MapScreen
+            onBack={navigateHome}
+            onAlertDetail={navigateToAlert}
+          />
+        )}
         {screen.name === 'assistant' && showAssistant && <AssistantScreen />}
         {screen.name === 'settings' && (
           <SettingsScreen
