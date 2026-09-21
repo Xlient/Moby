@@ -6,7 +6,6 @@ import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { api } from '@/api/client';
 import { typography } from '@/theme/tokens';
 import { BottomTabs } from '@/components/BottomTabs';
-import { OfflineBanner } from '@/components/OfflineBanner';
 import { AuthScreen } from '@/screens/AuthScreen';
 import { HomeScreen } from '@/screens/HomeScreen';
 import { AlertDetailScreen } from '@/screens/AlertDetailScreen';
@@ -17,6 +16,7 @@ import { GuidanceScreen } from '@/screens/GuidanceScreen';
 import { ReportScreen } from '@/screens/ReportScreen';
 import { SubscriptionsScreen } from '@/screens/SubscriptionsScreen';
 import { TrustReviewScreen } from '@/screens/TrustReviewScreen';
+import { AlertCardReviewScreen } from '@/screens/AlertCardReviewScreen';
 
 type Screen =
   | { name: 'home' }
@@ -27,7 +27,8 @@ type Screen =
   | { name: 'guidance' }
   | { name: 'report' }
   | { name: 'subscriptions' }
-  | { name: 'trust-review' };
+  | { name: 'trust-review' }
+  | { name: 'alert-card-review' };
 
 function getActiveTab(screen: Screen): string {
   switch (screen.name) {
@@ -37,6 +38,7 @@ function getActiveTab(screen: Screen): string {
     case 'report':
     case 'map':
     case 'trust-review':
+    case 'alert-card-review':
       return 'home';
     case 'assistant':
       return 'assistant';
@@ -56,6 +58,12 @@ export function App() {
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
 
   const showAssistant = isEnabled('on_device_assistant');
+
+  useEffect(() => {
+    if (window.location.hash === '#dev-cards') {
+      setScreen({ name: 'alert-card-review' });
+    }
+  }, []);
 
   useEffect(() => {
     api.setTokenProvider(user ? getIdToken : null);
@@ -133,7 +141,6 @@ export function App() {
 
   return (
     <div style={styles.shell}>
-      <OfflineBanner />
       <div style={styles.content}>
         {screen.name === 'home' && (
           <HomeScreen
@@ -167,6 +174,9 @@ export function App() {
         )}
         {screen.name === 'trust-review' && (
           <TrustReviewScreen onBack={navigateHome} />
+        )}
+        {screen.name === 'alert-card-review' && (
+          <AlertCardReviewScreen onBack={navigateHome} />
         )}
       </div>
       {showTabs && (

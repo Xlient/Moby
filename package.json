@@ -26,5 +26,8 @@
     "openapi-typescript": "^7.4.4",
     "typescript": "^5.6.3",
     "vite": "^6.0.0"
+  },
+  "overrides": {
+    "react-native": "npm:react-native-web@^0.19.13"
   }
 }
