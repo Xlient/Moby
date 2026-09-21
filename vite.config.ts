@@ -12,12 +12,16 @@ export default defineConfig({
         __dirname,
         './src/shims/safe-area-context.tsx',
       ),
+      'react-native-vector-icons/MaterialCommunityIcons': path.resolve(
+        __dirname,
+        './src/shims/material-community-icons.tsx',
+      ),
     },
     extensions: ['.web.tsx', '.web.ts', '.web.js', '.tsx', '.ts', '.js'],
   },
   optimizeDeps: {
     include: ['react-native-web', 'react-native-paper'],
-    esbuild: {
+    esbuildOptions: {
       loader: { '.js': 'jsx' },
     },
   },
