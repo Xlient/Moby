@@ -8,4 +8,5 @@ dependencies = [
     "langchain>=1.4.0",
     "langgraph>=1.2.11",
     "openai>=3.16.2",
+    "psycopg[binary]>=3.2",
 ]
