@@ -10,41 +10,5 @@ wheels/
 .env
 .env*.local
 disaster-alert-agent-plan.md
-disaster-alert-agent-plan-v3.md
 design-system-mobile.md
-
-# Node / Expo
-node_modules/
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-.metro-health-check*
-*.tsbuildinfo
-
-# Generated native folders (Continuous Native Generation — configure via app.json)
-/ios
-/android
-
-# Signing material and build output
-*.jks
-*.keystore
-*.p8
-*.p12
-*.key
-*.pem
-*.apk
-*.aab
-
-# OS / editor
-.DS_Store
-.idea/
-
-# Firebase emulator state and debug logs
-.firebase-emulator-data/
-.firebase/
-*-debug.log
-
-# Firebase Admin service-account keys — never commit
-*-firebase-adminsdk-*.json
-service-account*.json
+disaster-alert-agent-plan-v3.md

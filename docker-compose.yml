@@ -1,0 +1,28 @@
+# Local dev database. Extensions are created by db/migrations/0001_extensions.sql
+# (not an init script) so the exact same migrations work on a managed instance.
+#
+#   docker compose up -d --build
+#   uv run --env-file .env python scripts/migrate.py
+services:
+  db:
+    build: ./db
+    image: moby-postgres:17
+    container_name: moby-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: moby
+      POSTGRES_PASSWORD: moby
+      POSTGRES_DB: moby
+    ports:
+      # Bound to loopback only: dev credentials must never be reachable from the LAN.
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
+    volumes:
+      - moby-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moby -d moby"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  moby-pgdata:
