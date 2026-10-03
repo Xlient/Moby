@@ -1,142 +1,305 @@
-import { useState, useCallback, type CSSProperties } from 'react';
+import { useState } from 'react';
+import { ScrollView, View, StyleSheet } from 'react-native';
+import { Avatar, Button, FAB, Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
-import { spacing } from '@/theme/tokens';
-import { StatusBlock } from '@/components/StatusBlock';
+import type { Theme } from '@/theme/tokens';
+import { spacing, radius } from '@/theme/tokens';
+import { useResponsive } from '@/hooks/useResponsive';
+import { useAuth } from '@/auth/AuthContext';
+import { useNearbyAlerts } from '@/hooks/useNearbyAlerts';
 import { AlertCard } from '@/components/AlertCard';
-import { useAlerts } from '@/hooks/useAlerts';
+import { MapPreviewCard } from '@/components/MapPreviewCard';
+import { RadiusPicker } from '@/components/RadiusPicker';
+import { formatTimeAgo } from '@/lib/alerts';
 
 interface HomeScreenProps {
-  onAlertPress: (alertId: string) => void;
-  onGuidancePress: () => void;
   onReportPress: () => void;
+  onAlertPress: (alertId: string) => void;
+  onSeeAllPress: () => void;
+  onMapPress: () => void;
 }
 
-export function HomeScreen({ onAlertPress, onGuidancePress, onReportPress }: HomeScreenProps) {
+const MAX_HOME_CARDS = 3;
+/** Extended FAB height (56) + its bottom offset, so the last card is never covered. */
+const FAB_CLEARANCE = 56 + spacing.scale[3] * 2;
+
+function greetingFor(hour: number): string {
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function EmptyState({
+  theme,
+  radiusKm,
+  checkedAt,
+}: {
+  theme: Theme;
+  radiusKm: number;
+  checkedAt: string | null;
+}) {
+  // The only centered block in the app. It should read as good news.
+  return (
+    <View style={[styles.empty, { backgroundColor: theme.bg.recessed }]}>
+      <Avatar.Icon
+        size={64}
+        icon="shield-check-outline"
+        color={theme.accent.calm}
+        style={{ backgroundColor: theme.bg.raised }}
+      />
+      <Text variant="titleLarge" style={[styles.emptyTitle, { color: theme.text.primary }]}>
+        All quiet nearby
+      </Text>
+      <Text variant="bodyLarge" style={[styles.centered, { color: theme.text.secondary }]}>
+        No alerts or reports within {radiusKm} km. We’ll let you know if anything changes.
+      </Text>
+      {checkedAt && (
+        <Text
+          variant="bodyMedium"
+          style={[styles.emptyChecked, { color: theme.text.faint, fontVariant: ['tabular-nums'] }]}
+        >
+          Checked {formatTimeAgo(checkedAt)}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+/**
+ * Nothing saved and no way to check yet. Must not read as "all clear" — we simply
+ * don't know — but it isn't an alarm either: neutral tone, no warning color.
+ */
+function NotCheckedState({ theme, isOffline }: { theme: Theme; isOffline: boolean }) {
+  return (
+    <View style={[styles.notChecked, { backgroundColor: theme.bg.recessed }]}>
+      <Text variant="titleMedium" style={{ color: theme.text.primary }}>
+        {isOffline ? 'Can’t check for alerts yet' : 'Checking for alerts…'}
+      </Text>
+      {isOffline && (
+        <Text variant="bodyLarge" style={[styles.notCheckedBody, { color: theme.text.secondary }]}>
+          You’re offline and nothing has been saved on this phone yet. We’ll look as soon as you
+          have signal. Official channels like radio and local sirens still apply.
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function LoadingCards({ theme }: { theme: Theme }) {
+  return (
+    <View style={styles.cards} accessibilityLabel="Loading alerts">
+      {[0, 1].map((i) => (
+        <View key={i} style={[styles.skeleton, { backgroundColor: theme.bg.recessed }]}>
+          <View style={[styles.skeletonLine, { width: '55%', backgroundColor: theme.line.hairline }]} />
+          <View style={[styles.skeletonLine, { width: '80%', backgroundColor: theme.line.hairline }]} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
+export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPress }: HomeScreenProps) {
   const { theme } = useTheme();
-  const [locationAvailable] = useState(true);
+  const r = useResponsive();
+  const { firstName } = useAuth();
+  const { nearby, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt } = useNearbyAlerts();
+  const [pickerVisible, setPickerVisible] = useState(false);
 
-  const { alerts, loading, error, isOffline, cachedAt, refetch } = useAlerts(
-    37.7749,
-    -122.4194,
-    50,
-  );
+  const greeting = firstName
+    ? `${greetingFor(new Date().getHours())}, ${firstName}`
+    : greetingFor(new Date().getHours());
+  // Offline changes the subline only — no banner (spec v3, H1).
+  const subline = isOffline ? 'Offline — showing saved info' : `Watching within ${radiusKm} km`;
 
-  const activeAlerts = alerts.filter(
-    (a) => !a.expires_at || new Date(a.expires_at).getTime() > Date.now()
-  );
-
-  const handleRefresh = useCallback(() => {
-    refetch();
-  }, [refetch]);
-
-  const styles: Record<string, CSSProperties> = {
-    container: {
-      display: 'flex',
-      flexDirection: 'column',
-      minHeight: '100%',
-    },
-    scrollArea: {
-      flex: 1,
-      overflowY: 'auto',
-      WebkitOverflowScrolling: 'touch',
-    },
-    alertList: {
-      padding: `0 ${spacing.screenGutter}px`,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: spacing.scale[3],
-      paddingBottom: spacing.scale[4],
-    },
-    actions: {
-      display: 'flex',
-      borderTop: `1px solid ${theme.line.hairline}`,
-      backgroundColor: theme.bg.raised,
-    },
-    actionBtn: {
-      flex: 1,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: spacing.minTapTarget + 8,
-      background: 'none',
-      border: 'none',
-      color: theme.text.primary,
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      fontSize: 16,
-      fontWeight: 600,
-      cursor: 'pointer',
-    },
-    actionDivider: {
-      width: 1,
-      backgroundColor: theme.line.hairline,
-    },
-    refreshHint: {
-      textAlign: 'center',
-      color: theme.text.faint,
-      fontSize: 13,
-      padding: `${spacing.scale[2]}px 0`,
-      cursor: 'pointer',
-      background: 'none',
-      border: 'none',
-      width: '100%',
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      minHeight: spacing.minTapTarget,
-    },
-  };
+  const visible = nearby.slice(0, MAX_HOME_CARDS);
+  const hasMore = nearby.length > MAX_HOME_CARDS;
 
   return (
-    <div style={styles.container}>
-      <div style={styles.scrollArea}>
-        <StatusBlock
-          alerts={alerts}
-          loading={loading}
-          error={error}
-          isOffline={isOffline}
-          cachedAt={cachedAt}
-          locationAvailable={locationAvailable}
-        />
+    <View style={[styles.container, { backgroundColor: theme.bg.base }]}>
+      {/* One vertical scroll; nothing inside it scrolls on its own. */}
+      <ScrollView
+        contentContainerStyle={{
+          paddingTop: spacing.scale[3],
+          paddingHorizontal: r.gutter,
+          paddingBottom: FAB_CLEARANCE + spacing.scale[3],
+        }}
+      >
+        <View style={styles.section}>
+          <Text variant="headlineMedium" accessibilityRole="header" style={{ color: theme.text.primary }}>
+            {greeting}
+          </Text>
+          <View style={styles.sublineRow}>
+            <View
+              style={[styles.dot, { backgroundColor: isOffline ? theme.text.faint : theme.accent.calm }]}
+            />
+            <Text variant="bodyLarge" style={[styles.subline, { color: theme.text.secondary }]}>
+              {subline}
+            </Text>
+          </View>
+        </View>
 
-        {activeAlerts.length > 0 && (
-          <div style={styles.alertList}>
-            {activeAlerts.map((alert) => (
-              <AlertCard
-                key={alert.alert_id}
-                alert={alert}
-                distanceKm={3.2}
-                onPress={() => onAlertPress(alert.alert_id)}
-              />
-            ))}
-          </div>
-        )}
+        <View style={styles.section}>
+          <Text variant="titleMedium" accessibilityRole="header" style={[styles.sectionTitle, { color: theme.text.primary }]}>
+            Alerts near you
+          </Text>
 
-        {!loading && (
-          <button
-            style={styles.refreshHint}
-            onClick={handleRefresh}
-            aria-label="Refresh alerts"
-          >
-            Tap to refresh
-          </button>
-        )}
-      </div>
+          {isOffline && cachedAt && nearby.length > 0 && (
+            <Text
+              variant="bodyMedium"
+              style={[styles.savedNote, { color: theme.text.secondary, fontVariant: ['tabular-nums'] }]}
+            >
+              Saved {formatTimeAgo(cachedAt)}
+            </Text>
+          )}
 
-      <div style={styles.actions}>
-        <button
-          style={styles.actionBtn}
-          onClick={onGuidancePress}
-          aria-label="View safety guidance"
-        >
-          Guidance
-        </button>
-        <div style={styles.actionDivider} />
-        <button
-          style={styles.actionBtn}
-          onClick={onReportPress}
-          aria-label="Submit a hazard report"
-        >
-          Report
-        </button>
-      </div>
-    </div>
+          {loading ? (
+            <LoadingCards theme={theme} />
+          ) : error ? (
+            <Text variant="bodyLarge" style={{ color: theme.text.secondary }}>
+              {error}
+            </Text>
+          ) : visible.length === 0 && !cachedAt ? (
+            <NotCheckedState theme={theme} isOffline={isOffline} />
+          ) : visible.length === 0 ? (
+            <EmptyState theme={theme} radiusKm={radiusKm} checkedAt={cachedAt} />
+          ) : (
+            <View style={styles.cards}>
+              {visible.map(({ alert, distanceKm }) => (
+                <AlertCard
+                  key={alert.alert_id}
+                  alert={alert}
+                  distanceKm={distanceKm}
+                  onPress={() => onAlertPress(alert.alert_id)}
+                />
+              ))}
+            </View>
+          )}
+
+          {!loading && hasMore && (
+            <Button
+              mode="text"
+              onPress={onSeeAllPress}
+              style={styles.seeAll}
+              contentStyle={styles.tapTarget}
+              textColor={theme.text.primary}
+              accessibilityLabel={`See all ${nearby.length} alerts`}
+            >
+              See all alerts
+            </Button>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text variant="titleMedium" accessibilityRole="header" style={[styles.sectionTitle, { color: theme.text.primary }]}>
+            Map
+          </Text>
+          <MapPreviewCard
+            nearby={nearby}
+            radiusKm={radiusKm}
+            isOffline={isOffline}
+            onPress={onMapPress}
+            onRadiusPress={() => setPickerVisible(true)}
+          />
+        </View>
+      </ScrollView>
+
+      <FAB
+        icon="plus"
+        label="Report"
+        onPress={onReportPress}
+        accessibilityLabel="Report a hazard"
+        style={[styles.fab, { right: r.gutter }]}
+      />
+
+      <RadiusPicker
+        visible={pickerVisible}
+        selected={radiusKm}
+        onSelect={(value) => {
+          setRadiusKm(value);
+          setPickerVisible(false);
+        }}
+        onDismiss={() => setPickerVisible(false)}
+      />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  // Fixed rhythm (spec 6.1): 24 between sections, 12 between cards.
+  section: {
+    marginBottom: spacing.sectionGap,
+  },
+  sectionTitle: {
+    marginBottom: spacing.scale[2],
+  },
+  sublineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.scale[0],
+    gap: spacing.scale[1],
+  },
+  subline: {
+    flexShrink: 1,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  savedNote: {
+    marginTop: -spacing.scale[1],
+    marginBottom: spacing.scale[2],
+  },
+  cards: {
+    gap: spacing.scale[2],
+  },
+  empty: {
+    alignItems: 'center',
+    borderRadius: 16,
+    paddingVertical: spacing.scale[6],
+    paddingHorizontal: spacing.scale[4],
+  },
+  emptyTitle: {
+    marginTop: spacing.scale[3],
+    marginBottom: spacing.scale[1],
+    textAlign: 'center',
+  },
+  centered: {
+    textAlign: 'center',
+  },
+  emptyChecked: {
+    marginTop: spacing.scale[3],
+    textAlign: 'center',
+  },
+  notChecked: {
+    borderRadius: 16,
+    padding: spacing.cardPadding,
+  },
+  notCheckedBody: {
+    marginTop: spacing.scale[1],
+  },
+  skeleton: {
+    borderRadius: 16,
+    padding: spacing.cardPadding,
+    gap: spacing.scale[2],
+  },
+  skeletonLine: {
+    height: 12,
+    borderRadius: radius.chip,
+  },
+  seeAll: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.scale[1],
+    marginLeft: -spacing.scale[2],
+  },
+  tapTarget: {
+    minHeight: spacing.minTapTarget,
+  },
+  fab: {
+    position: 'absolute',
+    bottom: spacing.scale[3],
+  },
+});

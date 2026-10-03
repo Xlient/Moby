@@ -2,13 +2,13 @@
 __pycache__/
 *.py[oc]
 build/
-dist/
 wheels/
 *.egg-info
 
 # Virtual environments
 .venv
 .env
+.env*.local
 disaster-alert-agent-plan.md
 design-system-mobile.md
 disaster-alert-agent-plan-v3.md

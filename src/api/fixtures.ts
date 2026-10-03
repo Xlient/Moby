@@ -9,12 +9,10 @@ import type {
 
 // ── Helpers: relative dates ──────────────────────────────────────────
 
-/** Returns an ISO 8601 string for `minutesAgo` minutes before now. */
 function minutesAgo(minutes: number): string {
   return new Date(Date.now() - minutes * 60_000).toISOString();
 }
 
-/** Returns an ISO 8601 string for `daysAgo` days before now. */
 function daysAgo(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString();
 }
@@ -40,20 +38,23 @@ export const mockAlerts: Alert[] = [
   {
     alert_id: 'alert-001',
     event_id: 'event-001',
-    headline: 'Flash Flood Warning — Russian River Basin',
+    hazard_type: 'flood',
+    headline: 'Flash flood warning',
     body: 'Move to higher ground immediately. Flash flood warning in effect for low-lying areas along the Russian River.',
     severity: 'critical',
     location: { lat: 37.7749, lon: -122.4194, accuracy_m: 500, frame: 'WGS84' },
     affected_radius_km: 25,
     issued_at: minutesAgo(14),
-    expires_at: new Date(Date.now() + 6 * 3_600_000).toISOString(), // +6 h
+    expires_at: new Date(Date.now() + 6 * 3_600_000).toISOString(),
     verification_label: 'official_confirmed',
     source_attribution: 'National Weather Service',
+    location_name: 'Russian River Basin',
   },
   {
     alert_id: 'alert-002',
     event_id: 'event-002',
-    headline: 'Severe Thunderstorm Watch — Central Valley',
+    hazard_type: 'storm',
+    headline: 'Severe thunderstorm watch',
     body: 'Damaging winds up to 70 mph and quarter-sized hail expected. Seek sturdy shelter and stay away from windows.',
     severity: 'high',
     location: { lat: 38.5816, lon: -121.4944, accuracy_m: 2000, frame: 'WGS84' },
@@ -62,11 +63,14 @@ export const mockAlerts: Alert[] = [
     expires_at: new Date(Date.now() + 4 * 3_600_000).toISOString(),
     verification_label: 'official_confirmed',
     source_attribution: 'NOAA Storm Prediction Center',
+    location_name: 'Central Valley',
   },
   {
     alert_id: 'alert-003',
     event_id: 'event-003',
-    headline: 'Landslide Reported — Highway 1 near Pacifica',
+    hazard_type: 'landslide',
+    corroboration_count: 4,
+    headline: 'Landslide reported',
     body: 'Multiple community reports of debris flow blocking both lanes of Highway 1 south of Pacifica. Avoid the area and use alternate routes.',
     severity: 'medium',
     location: { lat: 37.6138, lon: -122.4869, accuracy_m: 150, frame: 'WGS84' },
@@ -74,18 +78,63 @@ export const mockAlerts: Alert[] = [
     issued_at: minutesAgo(120),
     verification_label: 'corroborated_report',
     source_attribution: 'Community reports',
+    location_name: 'Highway 1, Pacifica',
   },
   {
     alert_id: 'alert-004',
     event_id: 'event-004',
-    headline: 'Unverified: Sinkhole on Geary Blvd',
+    hazard_type: 'other',
+    headline: 'Possible sinkhole forming',
     body: 'Single report of a possible sinkhole forming near the intersection of Geary Blvd and 25th Ave. Not yet corroborated.',
     severity: 'low',
     location: { lat: 37.7812, lon: -122.4862, accuracy_m: 30, frame: 'WGS84' },
     affected_radius_km: 0.5,
     issued_at: minutesAgo(30),
     verification_label: 'unverified_report',
-    source_attribution: 'Single report',
+    location_name: 'Geary Blvd',
+  },
+  {
+    alert_id: 'alert-005',
+    event_id: 'event-005',
+    hazard_type: 'fire',
+    headline: 'Red flag warning',
+    body: 'Gusty offshore winds and very low humidity. Any fire that starts will spread quickly. No outdoor burning.',
+    severity: 'high',
+    location: { lat: 37.8324, lon: -122.4795, accuracy_m: 3000, frame: 'WGS84' },
+    affected_radius_km: 30,
+    issued_at: minutesAgo(65),
+    expires_at: new Date(Date.now() + 10 * 3_600_000).toISOString(),
+    verification_label: 'official_confirmed',
+    source_attribution: 'National Weather Service',
+    location_name: 'Marin Headlands',
+  },
+  {
+    alert_id: 'alert-006',
+    event_id: 'event-006',
+    hazard_type: 'storm',
+    headline: 'Downed power lines',
+    body: 'Several people report power lines down across Valencia St after strong gusts. Keep at least 10 m away.',
+    severity: 'medium',
+    location: { lat: 37.7599, lon: -122.4214, accuracy_m: 80, frame: 'WGS84' },
+    affected_radius_km: 0.5,
+    issued_at: minutesAgo(22),
+    verification_label: 'corroborated_report',
+    source_attribution: 'Community reports',
+    corroboration_count: 3,
+    location_name: 'Mission District',
+  },
+  {
+    alert_id: 'alert-007',
+    event_id: 'event-007',
+    hazard_type: 'earthquake',
+    headline: 'Magnitude 3.4 earthquake',
+    body: 'Light shaking reported. No damage expected. Be ready for aftershocks.',
+    severity: 'low',
+    location: { lat: 37.8044, lon: -122.2712, accuracy_m: 1000, frame: 'WGS84' },
+    issued_at: minutesAgo(180),
+    verification_label: 'official_confirmed',
+    source_attribution: 'U.S. Geological Survey',
+    location_name: 'Oakland',
   },
 ];
 
@@ -100,11 +149,11 @@ export const mockBriefReady: SituationalBrief = {
     'Rapid runoff from saturated hillsides is funneling into the lower basin, where water levels are rising at approximately 0.8 feet per hour. ' +
     'Low-lying areas from Forestville to Jenner are experiencing street-level flooding, and several evacuation orders are in effect.',
   likely_progression:
-    'Rain is forecast to continue for another 12–18 hours with an additional 2–4 inches expected. ' +
+    'Rain is forecast to continue for another 12\u201318 hours with an additional 2\u20134 inches expected. ' +
     'The river may crest near 32 feet by early tomorrow morning before gradually receding over the following 48 hours. ' +
     'Secondary flooding in tributaries (Austin Creek, Dry Creek) is possible as hillside saturation continues.',
   uncertainty:
-    'Exact crest height depends on rainfall intensity overnight, which models currently disagree on by ±1.5 inches. ' +
+    'Exact crest height depends on rainfall intensity overnight, which models currently disagree on by \u00b11.5 inches. ' +
     'Levee integrity near Guerneville has not been independently assessed since 2021 and could change the inundation footprint. ' +
     'This brief is an AI-generated estimate, not an official forecast.',
   exposed_areas: [
@@ -127,9 +176,9 @@ export const mockBriefReady: SituationalBrief = {
   official_guidance:
     'The National Weather Service has issued a Flash Flood Warning (VTEC #0047) effective through 06:00 PST tomorrow. ' +
     'Sonoma County Office of Emergency Services advises immediate evacuation for Zone A (Guerneville floodplain). ' +
-    'Do not drive through flooded roads — turn around, don\'t drown.',
+    'Do not drive through flooded roads \u2014 turn around, don\'t drown.',
   sources: [
-    'NWS Sacramento — Flash Flood Warning VTEC #0047',
+    'NWS Sacramento \u2014 Flash Flood Warning VTEC #0047',
     'USGS Russian River at Guerneville gauge (11467000)',
     'Sonoma County OES Evacuation Order 2024-FLD-003',
     'NOAA CNRFC quantitative precipitation forecast',
@@ -152,11 +201,11 @@ export const mockGuidanceCards: GuidanceCard[] = [
     applies_when: 'flash_flood_warning',
     title: 'Flash Flood Safety: What To Do Right Now',
     body:
-      '1. Move to higher ground immediately — do not wait for official orders if you see rising water.\n' +
+      '1. Move to higher ground immediately \u2014 do not wait for official orders if you see rising water.\n' +
       '2. Avoid walking or driving through flood waters. Six inches of moving water can knock you down; one foot can sweep away a vehicle.\n' +
-      '3. If trapped in a building, go to the highest floor. Do not climb into a closed attic — you may become trapped by rising water.\n' +
+      '3. If trapped in a building, go to the highest floor. Do not climb into a closed attic \u2014 you may become trapped by rising water.\n' +
       '4. Disconnect electrical appliances and do not touch electrical equipment if you are wet or standing in water.\n' +
-      '5. After the flood, avoid floodwater — it may be contaminated with sewage, chemicals, or debris.',
+      '5. After the flood, avoid floodwater \u2014 it may be contaminated with sewage, chemicals, or debris.',
     priority: 1,
     source_name: 'FEMA',
     source_url: 'https://www.ready.gov/floods',
@@ -189,10 +238,10 @@ export const mockGuidanceCards: GuidanceCard[] = [
     body:
       '1. Move indoors to a sturdy building. Avoid sheds, isolated trees, and open fields.\n' +
       '2. Stay away from windows, skylights, and glass doors.\n' +
-      '3. Unplug sensitive electronics — power surges from lightning can cause fires or damage equipment.\n' +
+      '3. Unplug sensitive electronics \u2014 power surges from lightning can cause fires or damage equipment.\n' +
       '4. If caught outdoors, crouch low with feet together and head tucked. Minimize contact with the ground.\n' +
       '5. Wait at least 30 minutes after the last clap of thunder before going back outside.\n' +
-      '6. Watch for flooding in low-lying areas — thunderstorms can produce heavy rainfall in short periods.',
+      '6. Watch for flooding in low-lying areas \u2014 thunderstorms can produce heavy rainfall in short periods.',
     priority: 2,
     source_name: 'National Weather Service',
     source_url: 'https://www.weather.gov/safety/thunderstorm',
@@ -207,7 +256,7 @@ export const mockSubscriptions: Subscription[] = [
   {
     subscription_id: 'sub-001',
     region: 'US',
-    label: 'Home — San Francisco',
+    label: 'Home \u2014 San Francisco',
     center: { lat: 37.7749, lon: -122.4194, frame: 'WGS84' },
     radius_km: 30,
     min_severity: 'medium',
@@ -215,7 +264,7 @@ export const mockSubscriptions: Subscription[] = [
   {
     subscription_id: 'sub-002',
     region: 'US',
-    label: 'Work — Sacramento',
+    label: 'Work \u2014 Sacramento',
     center: { lat: 38.5816, lon: -121.4944, frame: 'WGS84' },
     radius_km: 15,
     min_severity: 'high',
@@ -224,26 +273,18 @@ export const mockSubscriptions: Subscription[] = [
 
 // ── Helper functions ─────────────────────────────────────────────────
 
-/** Return all mock alerts (fresh timestamps on every call). */
 export function getMockAlerts(): Alert[] {
   return mockAlerts;
 }
 
-/** Return a single alert by its alert_id, or undefined. */
 export function getMockAlert(alertId: string): Alert | undefined {
   return mockAlerts.find((a) => a.alert_id === alertId);
 }
 
-/** Return the mock client config. */
 export function getMockConfig(): ClientConfig {
   return mockConfig;
 }
 
-/**
- * Return a mock brief.
- * - event-001 → ready brief
- * - anything else → pending (simulates generation in flight)
- */
 export function getMockBrief(eventId: string): SituationalBrief | BriefPending {
   if (eventId === 'event-001') {
     return mockBriefReady;
@@ -251,12 +292,10 @@ export function getMockBrief(eventId: string): SituationalBrief | BriefPending {
   return mockBriefPending;
 }
 
-/** Return all mock guidance cards. */
 export function getMockGuidanceCards(): GuidanceCard[] {
   return mockGuidanceCards;
 }
 
-/** Return mock subscriptions for the current user. */
 export function getMockSubscriptions(): Subscription[] {
   return mockSubscriptions;
 }

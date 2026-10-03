@@ -1,0 +1,89 @@
+rules_version = '2';
+
+// Firestore holds user-owned data only (profile, settings, watched areas).
+// Alerts, events and reports live in the backend's Postgres and are never
+// written from the client here. Layout: src/api/userData.ts.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function validRadius(km) {
+      return km in [5, 10, 25, 50, 100];
+    }
+
+    function validSettings(s) {
+      return s is map
+        && s.keys().hasOnly(['nearby_radius_km'])
+        && validRadius(s.nearby_radius_km);
+    }
+
+    function validName(n) {
+      return n == null || (n is string && n.size() <= 80);
+    }
+
+    function validSeverity(s) {
+      return s in ['low', 'medium', 'high', 'critical'];
+    }
+
+    function validPoint(p) {
+      return p is map
+        && p.lat is number && p.lat >= -90 && p.lat <= 90
+        && p.lon is number && p.lon >= -180 && p.lon <= 180;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+
+      // Roles are fixed at creation; reviewer/admin are granted server-side
+      // (Admin SDK bypasses these rules).
+      allow create: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(
+             ['email', 'display_name', 'home_region', 'roles', 'settings', 'created_at'])
+        && request.resource.data.email == request.auth.token.email
+        && validName(request.resource.data.display_name)
+        && request.resource.data.home_region == 'US'
+        && request.resource.data.roles == ['subscriber', 'reporter']
+        && validSettings(request.resource.data.settings)
+        && request.resource.data.created_at == request.time;
+
+      allow update: if isOwner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['display_name', 'settings'])
+        && validName(request.resource.data.display_name)
+        && validSettings(request.resource.data.settings);
+
+      allow delete: if false;
+
+      match /subscriptions/{subscriptionId} {
+        allow read, delete: if isOwner(uid);
+
+        allow create: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(
+               ['region', 'label', 'center', 'radius_km', 'min_severity', 'created_at'])
+          && request.resource.data.region == 'US'
+          && (!('label' in request.resource.data)
+              || (request.resource.data.label is string && request.resource.data.label.size() <= 60))
+          && validPoint(request.resource.data.center)
+          && request.resource.data.radius_km is number
+          && request.resource.data.radius_km > 0 && request.resource.data.radius_km <= 500
+          && validSeverity(request.resource.data.min_severity)
+          && request.resource.data.created_at == request.time;
+
+        // Edit = delete + re-add for now; keeps validation in one place.
+        allow update: if false;
+      }
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,7 +1,9 @@
-import type { CSSProperties } from 'react';
+import { Avatar, Card, Text } from 'react-native-paper';
+import { View, StyleSheet } from 'react-native';
 import { useTheme } from '@/theme/ThemeContext';
-import { typography, spacing, radius } from '@/theme/tokens';
-import { TrustRule } from './TrustRule';
+import { spacing, radius } from '@/theme/tokens';
+import type { Theme } from '@/theme/tokens';
+import { formatTimeAgo, hazardIcon, isExpired, severityLabel, trustText } from '@/lib/alerts';
 import { SeverityIndicator } from './SeverityIndicator';
 import type { Alert } from '@/api/types';
 
@@ -11,203 +13,187 @@ interface AlertCardProps {
   onPress?: () => void;
 }
 
-function formatTimeAgo(isoDate: string): string {
-  const diff = Date.now() - new Date(isoDate).getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+/** `#RRGGBB` + alpha (0–1) → `#RRGGBBAA`. */
+function withAlpha(hex: string, alpha: number): string {
+  const a = Math.round(alpha * 255).toString(16).padStart(2, '0');
+  return `${hex.slice(0, 7)}${a}`;
 }
 
-function isExpired(alert: Alert): boolean {
-  if (!alert.expires_at) return false;
-  return new Date(alert.expires_at).getTime() < Date.now();
+// Trust treatments (home redesign spec v3, Part 3). The three levels must be
+// distinguishable with the text unreadable: card mode, elevation and icon tint.
+interface Treatment {
+  mode: 'elevated' | 'outlined';
+  cardColor: string;
+  iconContainer: string;
+  iconColor: string;
+  severityNeutral: boolean;
 }
 
-function getTrustText(alert: Alert): string {
+function treatmentFor(alert: Alert, theme: Theme): Treatment {
+  const severityColor = theme.severity[alert.severity];
   switch (alert.verification_label) {
     case 'official_confirmed':
-      return alert.source_attribution ?? 'Official source';
+      return {
+        mode: 'elevated',
+        cardColor: theme.bg.raised,
+        iconContainer: withAlpha(severityColor, 0.18),
+        iconColor: severityColor,
+        severityNeutral: false,
+      };
     case 'corroborated_report':
-      return alert.source_attribution ?? 'Confirmed by multiple people nearby';
+      return {
+        mode: 'elevated',
+        cardColor: theme.bg.raised,
+        iconContainer: withAlpha(severityColor, 0.09),
+        iconColor: severityColor,
+        severityNeutral: false,
+      };
     case 'unverified_report':
-      return 'Unverified \u2014 single report';
+      // Never severity-tinted, never elevated, never a chip.
+      return {
+        mode: 'outlined',
+        cardColor: theme.bg.recessed,
+        iconContainer: theme.bg.raised,
+        iconColor: theme.text.secondary,
+        severityNeutral: true,
+      };
+  }
+}
+
+function TrustLabel({ alert, theme }: { alert: Alert; theme: Theme }) {
+  const text = trustText(alert);
+  // Pills rather than Paper's Chip: Chip forces a single line, and the trust label
+  // must never truncate (design system §8) — at 200% font scale it wraps instead.
+  switch (alert.verification_label) {
+    case 'official_confirmed':
+      // Filled, but tonal, so it never out-shouts the headline (spec 6.3).
+      return (
+        <View style={[styles.pill, { backgroundColor: theme.bg.recessed, borderColor: theme.bg.recessed }]}>
+          <Text variant="labelMedium" style={[styles.trustText, { color: theme.text.primary }]}>
+            {text}
+          </Text>
+        </View>
+      );
+    case 'corroborated_report':
+      return (
+        <View style={[styles.pill, { borderColor: theme.line.hairline }]}>
+          <Text variant="labelMedium" style={[styles.trustText, { color: theme.text.secondary }]}>
+            {text}
+          </Text>
+        </View>
+      );
+    case 'unverified_report':
+      return (
+        <Text variant="labelMedium" style={[styles.trustText, { color: theme.text.secondary }]}>
+          {text}
+        </Text>
+      );
   }
 }
 
 export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
   const { theme } = useTheme();
+  const t = treatmentFor(alert, theme);
   const expired = isExpired(alert);
-  const isOfficial = alert.verification_label === 'official_confirmed';
-  const isUnverified = alert.verification_label === 'unverified_report';
 
-  const cardBg = isUnverified ? theme.bg.base : theme.bg.raised;
-  const cardBorder = isUnverified ? `1px solid ${theme.line.hairline}` : 'none';
-  const opacity = expired ? 0.5 : 1;
+  // Each fact once: the chip carries attribution, so metadata is place · distance · time.
+  const meta = [
+    expired ? 'Ended' : null,
+    alert.location_name,
+    distanceKm === undefined ? null : distanceKm < 0.1 ? '<0.1 km' : `${distanceKm.toFixed(1)} km`,
+    formatTimeAgo(alert.issued_at),
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
-  const styles: Record<string, CSSProperties> = {
-    card: {
-      position: 'relative',
-      backgroundColor: cardBg,
-      border: cardBorder,
-      borderRadius: radius.card,
-      padding: `0 0 0 0`,
-      opacity,
-      cursor: onPress ? 'pointer' : 'default',
-      overflow: 'hidden',
-    },
-    sourceBand: {
-      backgroundColor: theme.text.primary,
-      padding: `${spacing.scale[1]}px ${spacing.alertCardPadding}px ${spacing.scale[1]}px ${spacing.alertCardPadding + 4}px`,
-    },
-    sourceBandText: {
-      ...typography.micro,
-      color: theme.bg.raised,
-      fontVariantNumeric: undefined,
-    },
-    content: {
-      padding: `${spacing.scale[2]}px ${spacing.alertCardPadding}px ${spacing.alertCardPadding}px ${spacing.alertCardPadding + 4}px`,
-    },
-    headerRow: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: spacing.scale[1],
-    },
-    headline: {
-      ...typography.heading,
-      color: theme.text.primary,
-      margin: 0,
-      fontVariantNumeric: undefined,
-    },
-    body: {
-      ...typography.body,
-      color: theme.text.primary,
-      margin: `${spacing.scale[1]}px 0 0 0`,
-      fontVariantNumeric: undefined,
-      maxWidth: '70ch',
-    },
-    metaRow: {
-      display: 'flex',
-      alignItems: 'center',
-      gap: spacing.scale[2],
-      marginTop: spacing.scale[2],
-    },
-    metaText: {
-      ...typography.meta,
-      color: theme.text.secondary,
-    },
-    trustText: {
-      ...typography.micro,
-      color: theme.text.secondary,
-      marginTop: spacing.scale[2],
-      fontVariantNumeric: undefined,
-    },
-    expiredBadge: {
-      ...typography.micro,
-      color: theme.text.faint,
-      fontVariantNumeric: undefined,
-    },
-    actions: {
-      display: 'flex',
-      borderTop: `1px solid ${theme.line.hairline}`,
-      marginTop: spacing.scale[3],
-    },
-    actionBtn: {
-      flex: 1,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: spacing.minTapTarget,
-      background: 'none',
-      border: 'none',
-      color: theme.text.primary,
-      fontFamily: typography.body.fontFamily,
-      fontSize: 15,
-      fontWeight: 600,
-      cursor: 'pointer',
-    },
-    actionDivider: {
-      width: 1,
-      backgroundColor: theme.line.hairline,
-    },
-  };
-
-  const handleClick = () => onPress?.();
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onPress?.();
-    }
-  };
+  const trust = trustText(alert);
 
   return (
-    <div
-      style={styles.card}
-      role="article"
-      aria-label={`${alert.verification_label === 'official_confirmed' ? 'Official' : alert.verification_label === 'corroborated_report' ? 'Corroborated' : 'Unverified'} ${alert.severity} alert: ${alert.headline}`}
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
-      tabIndex={onPress ? 0 : undefined}
+    <Card
+      {...(t.mode === 'elevated'
+        ? { mode: 'elevated' as const, elevation: 1 as const }
+        : { mode: 'outlined' as const })}
+      onPress={onPress}
+      accessible
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={`${alert.headline}. ${severityLabel(alert.severity)}. ${trust}. ${meta}.`}
+      style={[
+        styles.card,
+        { backgroundColor: t.cardColor, opacity: expired ? 0.7 : 1 },
+        t.mode === 'outlined' && { borderColor: theme.line.hairline },
+      ]}
+      contentStyle={styles.content}
     >
-      <TrustRule verification={alert.verification_label} severity={alert.severity} />
+      <View style={styles.row}>
+        <Avatar.Icon
+          size={40}
+          icon={hazardIcon(alert.hazard_type)}
+          color={t.iconColor}
+          style={{ backgroundColor: t.iconContainer }}
+        />
 
-      {isOfficial && (
-        <div style={styles.sourceBand}>
-          <span style={styles.sourceBandText}>
-            {alert.source_attribution ?? 'Official source'}
-          </span>
-        </div>
-      )}
+        <View style={styles.body}>
+          <View style={styles.headlineRow}>
+            <Text variant="titleMedium" numberOfLines={2} style={[styles.headline, { color: theme.text.primary }]}>
+              {alert.headline}
+            </Text>
+            <SeverityIndicator severity={alert.severity} size="small" neutral={t.severityNeutral} />
+          </View>
 
-      <div style={styles.content}>
-        <div style={styles.headerRow}>
-          <SeverityIndicator severity={alert.severity} />
-          {expired && <span style={styles.expiredBadge}>Expired</span>}
-        </div>
-
-        <h3 style={styles.headline}>{alert.headline}</h3>
-
-        {alert.body && <p style={styles.body}>{alert.body}</p>}
-
-        <div style={styles.metaRow}>
-          {distanceKm !== undefined && (
-            <span style={{ ...styles.metaText, fontVariantNumeric: 'tabular-nums' }}>
-              {distanceKm.toFixed(1)} km
-            </span>
-          )}
-          <span style={{ ...styles.metaText, fontVariantNumeric: 'tabular-nums' }}>
-            {formatTimeAgo(alert.issued_at)}
-          </span>
-        </div>
-
-        <div style={styles.trustText} aria-label={`Trust level: ${getTrustText(alert)}`}>
-          {getTrustText(alert)}
-        </div>
-      </div>
-
-      {onPress && (
-        <div style={styles.actions}>
-          <button
-            style={styles.actionBtn}
-            aria-label="View guidance for this alert"
-            onClick={(e) => { e.stopPropagation(); onPress(); }}
+          <Text
+            variant="bodyMedium"
+            style={[styles.meta, { color: theme.text.secondary, fontVariant: ['tabular-nums'] }]}
           >
-            What to do
-          </button>
-          <div style={styles.actionDivider} />
-          <button
-            style={styles.actionBtn}
-            aria-label="View alert details"
-            onClick={(e) => { e.stopPropagation(); onPress(); }}
-          >
-            Details
-          </button>
-        </div>
-      )}
-    </div>
+            {meta}
+          </Text>
+
+          <View style={styles.trustRow}>
+            <TrustLabel alert={alert} theme={theme} />
+          </View>
+        </View>
+      </View>
+    </Card>
   );
 }
+
+const styles = StyleSheet.create({
+  card: {
+    borderRadius: 16,
+  },
+  content: {
+    padding: spacing.cardPadding,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.scale[2],
+  },
+  body: {
+    flex: 1,
+  },
+  headlineRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.scale[2],
+  },
+  headline: {
+    flex: 1,
+  },
+  meta: {
+    marginTop: spacing.scale[0],
+  },
+  trustRow: {
+    flexDirection: 'row',
+    marginTop: spacing.scale[2],
+  },
+  pill: {
+    flexShrink: 1,
+    borderWidth: 1,
+    borderRadius: radius.chip,
+    paddingVertical: spacing.scale[0],
+    paddingHorizontal: spacing.scale[2],
+  },
+  trustText: {
+    fontWeight: '500',
+  },
+});

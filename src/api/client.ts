@@ -1,6 +1,5 @@
 import type {
   Alert,
-  AuthTokens,
   BriefPending,
   CascadeAssessment,
   ClientConfig,
@@ -22,20 +21,18 @@ import {
   getMockBrief,
   getMockGuidanceCards,
   getMockSubscriptions,
-} from './mock-data';
+} from './fixtures';
+import { env } from '@/config/env';
 
 // ── Configuration ────────────────────────────────────────────────────
 
-const BASE_URL: string =
-  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) ||
-  'https://api.example.dev/v1';
+const BASE_URL: string = env.apiUrl;
 
 /**
  * When true the client returns mock data instead of hitting the network.
- * Defaults to true in development (Vite sets import.meta.env.DEV).
+ * Controlled by EXPO_PUBLIC_USE_MOCK / EXPO_PUBLIC_API_URL (see src/config/env.ts).
  */
-const USE_MOCK: boolean =
-  (typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV) ?? true;
+const USE_MOCK: boolean = env.useMock;
 
 // ── Error types ──────────────────────────────────────────────────────
 
@@ -57,17 +54,15 @@ export class ApiRequestError extends Error {
 
 export class ApiClient {
   private baseUrl: string;
-  private authToken: string | null;
+  private getToken: (() => Promise<string | null>) | null;
 
-  constructor(baseUrl: string = BASE_URL, authToken: string | null = null) {
-    this.baseUrl = baseUrl.replace(/\/+$/, ''); // strip trailing slash
-    this.authToken = authToken;
+  constructor(baseUrl: string = BASE_URL) {
+    this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.getToken = null;
   }
 
-  // ── Auth helpers ─────────────────────────────────────────────────
-
-  setAuthToken(token: string | null): void {
-    this.authToken = token;
+  setTokenProvider(provider: (() => Promise<string | null>) | null): void {
+    this.getToken = provider;
   }
 
   // ── Generic request plumbing ─────────────────────────────────────
@@ -78,30 +73,34 @@ export class ApiClient {
     options: {
       body?: unknown;
       query?: Record<string, string | number | boolean | undefined>;
-      /** If true, a 204 returns `undefined` instead of parsing JSON. */
       noContent?: boolean;
     } = {},
   ): Promise<T> {
-    const url = new URL(`${this.baseUrl}${path}`);
-    if (options.query) {
-      for (const [key, value] of Object.entries(options.query)) {
-        if (value !== undefined) {
-          url.searchParams.set(key, String(value));
-        }
-      }
-    }
+    // Built by hand: React Native's URL/URLSearchParams polyfill is incomplete.
+    const qs = options.query
+      ? Object.entries(options.query)
+          .filter(([, value]) => value !== undefined)
+          .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+          .join('&')
+      : '';
+    const url = `${this.baseUrl}${path}${qs ? `?${qs}` : ''}`;
 
     const headers: Record<string, string> = {
       'Accept': 'application/json',
     };
-    if (this.authToken) {
-      headers['Authorization'] = `Bearer ${this.authToken}`;
+
+    if (this.getToken) {
+      const token = await this.getToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
     }
+
     if (options.body !== undefined) {
       headers['Content-Type'] = 'application/json';
     }
 
-    const response = await fetch(url.toString(), {
+    const response = await fetch(url, {
       method,
       headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
@@ -141,29 +140,6 @@ export class ApiClient {
   async getConfig(): Promise<ClientConfig> {
     if (USE_MOCK) return getMockConfig();
     return this.request<ClientConfig>('GET', '/config');
-  }
-
-  // ── Auth ─────────────────────────────────────────────────────────
-
-  async register(data: {
-    email: string;
-    password: string;
-    display_name?: string;
-    home_region: RegionCode;
-  }): Promise<AuthTokens> {
-    return this.request<AuthTokens>('POST', '/auth/register', { body: data });
-  }
-
-  async login(email: string, password: string): Promise<AuthTokens> {
-    return this.request<AuthTokens>('POST', '/auth/login', {
-      body: { email, password },
-    });
-  }
-
-  async refreshToken(refreshToken: string): Promise<AuthTokens> {
-    return this.request<AuthTokens>('POST', '/auth/refresh', {
-      body: { refresh_token: refreshToken },
-    });
   }
 
   // ── User ─────────────────────────────────────────────────────────
@@ -241,11 +217,14 @@ export class ApiClient {
     // check `'status' in result` to distinguish the two shapes.
     const url = `/events/${encodeURIComponent(eventId)}/brief`;
 
-    const fullUrl = new URL(`${this.baseUrl}${url}`);
+    const fullUrl = `${this.baseUrl}${url}`;
     const headers: Record<string, string> = { Accept: 'application/json' };
-    if (this.authToken) headers['Authorization'] = `Bearer ${this.authToken}`;
+    if (this.getToken) {
+      const token = await this.getToken();
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
 
-    const res = await fetch(fullUrl.toString(), { method: 'GET', headers });
+    const res = await fetch(fullUrl, { method: 'GET', headers });
 
     if (!res.ok && res.status !== 202) {
       let errorBody: unknown;
@@ -269,11 +248,14 @@ export class ApiClient {
 
   async getCascadeAssessment(region: RegionCode): Promise<CascadeAssessment | null> {
     const url = `/regions/${encodeURIComponent(region)}/cascade`;
-    const fullUrl = new URL(`${this.baseUrl}${url}`);
+    const fullUrl = `${this.baseUrl}${url}`;
     const headers: Record<string, string> = { Accept: 'application/json' };
-    if (this.authToken) headers['Authorization'] = `Bearer ${this.authToken}`;
+    if (this.getToken) {
+      const token = await this.getToken();
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
 
-    const res = await fetch(fullUrl.toString(), { method: 'GET', headers });
+    const res = await fetch(fullUrl, { method: 'GET', headers });
 
     if (res.status === 204) return null;
 

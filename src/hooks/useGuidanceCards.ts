@@ -1,75 +1,67 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import type { GuidanceCard } from '@/api/types';
 import { useOnlineStatus } from './useOnlineStatus';
+import { kv } from '@/lib/storage';
 
 const CACHE_KEY = 'cached-guidance-cards';
 const CACHE_TS_KEY = 'cached-guidance-ts';
 const STALE_DAYS = 90;
 
-function getCachedCards(): { cards: GuidanceCard[]; cachedAt: string | null } {
+function getPersistedCards(): { cards: GuidanceCard[]; cachedAt: string | null } {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    const ts = localStorage.getItem(CACHE_TS_KEY);
+    const raw = kv.get(CACHE_KEY);
+    const ts = kv.get(CACHE_TS_KEY);
     if (raw) return { cards: JSON.parse(raw) as GuidanceCard[], cachedAt: ts };
   } catch { /* ignore */ }
   return { cards: [], cachedAt: null };
 }
 
-function cacheCards(cards: GuidanceCard[]): void {
+function persistCards(cards: GuidanceCard[]): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cards));
-    localStorage.setItem(CACHE_TS_KEY, new Date().toISOString());
+    kv.set(CACHE_KEY, JSON.stringify(cards));
+    kv.set(CACHE_TS_KEY, new Date().toISOString());
   } catch { /* quota */ }
 }
 
 export function useGuidanceCards(hazardType?: string) {
   const isOnline = useOnlineStatus();
-  const [cards, setCards] = useState<GuidanceCard[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [cachedAt, setCachedAt] = useState<string | null>(null);
+  const persisted = getPersistedCards();
 
-  const isStale = cachedAt
-    ? Date.now() - new Date(cachedAt).getTime() > STALE_DAYS * 86_400_000
-    : false;
-
-  const fetchCards = useCallback(async () => {
-    if (!isOnline) {
-      const cached = getCachedCards();
-      setCards(cached.cards);
-      setCachedAt(cached.cachedAt);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    try {
+  const query = useQuery({
+    queryKey: ['guidance-cards', hazardType],
+    queryFn: async () => {
       const data = await api.getGuidanceCards({
         region: 'US',
         hazard_type: hazardType as 'flood' | undefined,
       });
       const list = data.cards ?? [];
-      setCards(list);
-      cacheCards(list);
-      setCachedAt(new Date().toISOString());
-      setError(null);
-    } catch {
-      const cached = getCachedCards();
-      if (cached.cards.length > 0) {
-        setCards(cached.cards);
-        setCachedAt(cached.cachedAt);
-      } else {
-        setError('Could not load guidance cards.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [isOnline, hazardType]);
+      persistCards(list);
+      return list;
+    },
+    staleTime: 24 * 60 * 60_000,
+    gcTime: 7 * 24 * 60 * 60_000,
+    placeholderData: persisted.cards.length > 0 ? persisted.cards : undefined,
+    enabled: isOnline,
+  });
 
-  useEffect(() => {
-    fetchCards();
-  }, [fetchCards]);
+  const cards = query.data ?? persisted.cards;
+  const cachedAt = query.dataUpdatedAt
+    ? new Date(query.dataUpdatedAt).toISOString()
+    : persisted.cachedAt;
 
-  return { cards, loading, error, isStale, cachedAt, refetch: fetchCards };
+  const isStale = cachedAt
+    ? Date.now() - new Date(cachedAt).getTime() > STALE_DAYS * 86_400_000
+    : false;
+
+  return {
+    cards,
+    loading: query.isLoading && !query.isPlaceholderData,
+    error: query.error && cards.length === 0
+      ? 'Could not load guidance cards.'
+      : null,
+    isStale,
+    cachedAt,
+    refetch: query.refetch,
+  };
 }

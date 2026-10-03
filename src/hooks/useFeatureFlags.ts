@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import type { ClientConfig } from '@/api/types';
 
@@ -18,32 +18,26 @@ const DEFAULT_CONFIG: ClientConfig = {
 };
 
 export function useFeatureFlags() {
-  const [config, setConfig] = useState<ClientConfig>(DEFAULT_CONFIG);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: ['config'],
+    queryFn: () => api.getConfig(),
+    staleTime: 10 * 60_000,
+    gcTime: 30 * 60_000,
+    placeholderData: DEFAULT_CONFIG,
+  });
 
-  const fetchConfig = useCallback(async () => {
-    try {
-      const data = await api.getConfig();
-      setConfig(data);
-      setError(null);
-    } catch {
-      setError('Could not load configuration');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const config = query.data ?? DEFAULT_CONFIG;
 
-  useEffect(() => {
-    fetchConfig();
-  }, [fetchConfig]);
+  const isEnabled = (flag: keyof ClientConfig['flags']): boolean => {
+    return config.flags[flag] === true;
+  };
 
-  const isEnabled = useCallback(
-    (flag: keyof ClientConfig['flags']): boolean => {
-      return config.flags[flag] === true;
-    },
-    [config],
-  );
-
-  return { config, flags: config.flags, isEnabled, loading, error, refetch: fetchConfig };
+  return {
+    config,
+    flags: config.flags,
+    isEnabled,
+    loading: query.isLoading && !query.isPlaceholderData,
+    error: query.error ? 'Could not load configuration' : null,
+    refetch: query.refetch,
+  };
 }

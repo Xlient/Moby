@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "635857355873",
+    "project_id": "moby-52b4c",
+    "storage_bucket": "moby-52b4c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:635857355873:android:9919cdd196c8c20e80d620",
+        "android_client_info": {
+          "package_name": "com.xlient.moby"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "635857355873-0u6jinsdbg25pcgfkrhfn94fs7fhbqnn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.xlient.moby",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "635857355873-a2tv0v9pd3qgfh1i5g31cujsm26lqk2m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmwusCqDlDkZU_n_ACihsEbNftlpKwVIU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "635857355873-a2tv0v9pd3qgfh1i5g31cujsm26lqk2m.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

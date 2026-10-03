@@ -1,0 +1,21 @@
+## One task per session
+Build exactly the card you were given. Do not build ahead, do not scaffold screens for
+later cards, do not "complete the app." A session that touches more than its card's scope
+is a failed session regardless of code quality.
+
+If you finish early, stop and report. Do not find more work.
+
+## Dependencies
+Do not install a package you are not using in this task. If a task needs a package, say
+so and wait for approval before installing. An unused dependency in package.json is a
+defect.
+
+## Spec version
+Always work from the attached spec file, not from memory of an earlier session. The spec
+changes between sessions. If your recollection conflicts with the attached document, the
+document is right and your recollection is stale.
+
+## Report honestly
+If you did not do something the card asked for, say so explicitly in SHORTCUTS. Do not
+describe planned work as completed. "Placeholder" and "not yet implemented" are
+acceptable answers; silently omitting them is not.

@@ -1118,6 +1118,12 @@ export interface components {
             verification_label: "unverified_report" | "corroborated_report" | "official_confirmed";
             /** @description e.g. "NOAA/NWS" or "Community reports" */
             source_attribution?: string;
+            /** @description Same value as the fused Event. Clients fall back to a generic icon when absent. */
+            hazard_type?: components["schemas"]["HazardType"];
+            /** @description Human-readable place for the alert's location, e.g. "Russian River Basin". Shown beside distance and time; never repeated in the headline. */
+            location_name?: string;
+            /** @description Distinct originating reporters behind a corroborated_report (relay hops and repeat reports from one device do not count — see escalation caution rules). Omitted for official_confirmed; 1 or omitted for unverified_report. */
+            corroboration_count?: number;
         };
         SituationalBrief: {
             event_id: string;

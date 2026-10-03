@@ -1,9 +1,12 @@
-import type { CSSProperties } from 'react';
+import { View, ScrollView, StyleSheet } from 'react-native';
+import { Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing } from '@/theme/tokens';
 import { GuidanceCard } from '@/components/GuidanceCard';
+import { ScreenHeader } from '@/components/ScreenHeader';
 import { useGuidanceCards } from '@/hooks/useGuidanceCards';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface GuidanceScreenProps {
   onBack: () => void;
@@ -13,132 +16,86 @@ export function GuidanceScreen({ onBack }: GuidanceScreenProps) {
   const { theme } = useTheme();
   const isOnline = useOnlineStatus();
   const { cards, loading, error, isStale, cachedAt } = useGuidanceCards();
+  const r = useResponsive();
 
-  const styles: Record<string, CSSProperties> = {
-    container: {
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-    },
-    header: {
-      display: 'flex',
-      alignItems: 'center',
-      padding: `${spacing.scale[2]}px ${spacing.screenGutter}px`,
-      borderBottom: `1px solid ${theme.line.hairline}`,
-      backgroundColor: theme.bg.raised,
-      minHeight: spacing.minTapTarget + 8,
-    },
-    backBtn: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minWidth: spacing.minTapTarget,
-      minHeight: spacing.minTapTarget,
-      background: 'none',
-      border: 'none',
-      color: theme.text.primary,
-      cursor: 'pointer',
-      padding: 0,
-      marginRight: spacing.scale[2],
-    },
-    headerTitle: {
-      ...typography.heading,
-      color: theme.text.primary,
-      margin: 0,
-      fontVariantNumeric: undefined,
-    },
-    scrollArea: {
-      flex: 1,
-      overflowY: 'auto',
-      WebkitOverflowScrolling: 'touch',
-      padding: spacing.screenGutter,
-    },
-    list: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: spacing.scale[3],
-    },
-    statusText: {
-      ...typography.body,
-      color: theme.text.secondary,
-      textAlign: 'center',
-      padding: `${spacing.sectionGap}px 0`,
-      fontVariantNumeric: undefined,
-    },
-    offlineNote: {
-      ...typography.meta,
-      color: theme.text.faint,
-      textAlign: 'center',
-      marginBottom: spacing.scale[3],
-    },
-    emptyState: {
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flex: 1,
-      textAlign: 'center',
-      padding: spacing.sectionGap,
-    },
-    emptyTitle: {
-      ...typography.heading,
-      color: theme.text.primary,
-      margin: 0,
-      fontVariantNumeric: undefined,
-    },
-    emptyBody: {
-      ...typography.body,
-      color: theme.text.secondary,
-      margin: `${spacing.scale[2]}px 0 0 0`,
-      maxWidth: '40ch',
-      fontVariantNumeric: undefined,
-    },
-  };
+  const statusText = [
+    typography.body,
+    styles.center,
+    { color: theme.text.secondary, paddingVertical: r.sectionGap },
+  ];
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <button style={styles.backBtn} onClick={onBack} aria-label="Go back">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M19 12H5M12 19l-7-7 7-7" stroke={theme.text.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-        <h2 style={styles.headerTitle}>Safety guidance</h2>
-      </div>
+    <View style={styles.container}>
+      <ScreenHeader title="Safety guidance" onBack={onBack} />
 
-      <div style={styles.scrollArea}>
-        {loading && (
-          <p style={styles.statusText}>Loading guidance cards</p>
-        )}
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.scrollContent, { padding: r.gutter }]}
+      >
+        {loading && <Text style={statusText}>Loading guidance cards</Text>}
 
-        {error && cards.length === 0 && (
-          <p style={styles.statusText}>{error}</p>
-        )}
+        {error && cards.length === 0 && <Text style={statusText}>{error}</Text>}
 
         {!loading && !error && cards.length === 0 && (
-          <div style={styles.emptyState}>
-            <h3 style={styles.emptyTitle}>No guidance cards available</h3>
-            <p style={styles.emptyBody}>
+          <View style={[styles.emptyState, { padding: r.sectionGap }]}>
+            <Text
+              accessibilityRole="header"
+              style={[r.heading, styles.center, { color: theme.text.primary }]}
+            >
+              No guidance cards available
+            </Text>
+            <Text
+              style={[typography.body, styles.center, styles.emptyBody, { color: theme.text.secondary }]}
+            >
               Guidance cards for your region will appear here when available.
-            </p>
-          </div>
+            </Text>
+          </View>
         )}
 
         {cards.length > 0 && (
           <>
             {!isOnline && cachedAt && (
-              <p style={styles.offlineNote}>
+              <Text
+                style={[typography.meta, styles.center, styles.offlineNote, { color: theme.text.faint }]}
+              >
                 Showing saved guidance
-              </p>
+              </Text>
             )}
-            <div style={styles.list}>
+            <View style={styles.list}>
               {cards.map((card) => (
                 <GuidanceCard key={card.card_id} card={card} isStale={isStale} />
               ))}
-            </div>
+            </View>
           </>
         )}
-      </div>
-    </div>
+      </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  center: {
+    textAlign: 'center',
+  },
+  list: {
+    gap: spacing.scale[3],
+  },
+  offlineNote: {
+    marginBottom: spacing.scale[3],
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyBody: {
+    marginTop: spacing.scale[2],
+    maxWidth: 360,
+  },
+});

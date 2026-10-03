@@ -1,10 +1,16 @@
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo } from 'react';
+import { View, ScrollView, StyleSheet } from 'react-native';
+import { Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
-import { typography, spacing } from '@/theme/tokens';
+import { typography } from '@/theme/tokens';
+import { useResponsive } from '@/hooks/useResponsive';
+import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { AlertCard } from '@/components/AlertCard';
 import { BriefPanel } from '@/components/BriefPanel';
+import { ScreenHeader } from '@/components/ScreenHeader';
 import { useBrief } from '@/hooks/useBrief';
 import { useAlerts } from '@/hooks/useAlerts';
+import { USER_CENTER, distanceKm } from '@/lib/geo';
 
 interface AlertDetailScreenProps {
   alertId: string;
@@ -13,6 +19,8 @@ interface AlertDetailScreenProps {
 
 export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
   const { theme } = useTheme();
+  const r = useResponsive();
+  const { isEnabled } = useFeatureFlags();
   const { alerts } = useAlerts();
 
   const alert = useMemo(
@@ -22,96 +30,37 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
 
   const { state: briefState } = useBrief(alert?.event_id);
 
-  const styles: Record<string, CSSProperties> = {
-    container: {
-      display: 'flex',
-      flexDirection: 'column',
-      height: '100%',
-    },
-    header: {
-      display: 'flex',
-      alignItems: 'center',
-      padding: `${spacing.scale[2]}px ${spacing.screenGutter}px`,
-      borderBottom: `1px solid ${theme.line.hairline}`,
-      backgroundColor: theme.bg.raised,
-      minHeight: spacing.minTapTarget + 8,
-    },
-    backBtn: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minWidth: spacing.minTapTarget,
-      minHeight: spacing.minTapTarget,
-      background: 'none',
-      border: 'none',
-      color: theme.text.primary,
-      cursor: 'pointer',
-      padding: 0,
-      marginRight: spacing.scale[2],
-    },
-    headerTitle: {
-      ...typography.heading,
-      color: theme.text.primary,
-      margin: 0,
-      fontVariantNumeric: undefined,
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap',
-    },
-    scrollArea: {
-      flex: 1,
-      overflowY: 'auto',
-      WebkitOverflowScrolling: 'touch',
-      padding: spacing.screenGutter,
-    },
-    notFound: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flex: 1,
-    },
-    notFoundText: {
-      ...typography.body,
-      color: theme.text.secondary,
-      fontVariantNumeric: undefined,
-    },
-    sectionTitle: {
-      ...typography.heading,
-      color: theme.text.primary,
-      margin: `${spacing.sectionGap}px 0 ${spacing.scale[3]}px 0`,
-      fontVariantNumeric: undefined,
-    },
-  };
+  const distance = alert?.location
+    ? Math.round(distanceKm(USER_CENTER.lat, USER_CENTER.lon, alert.location.lat, alert.location.lon) * 10) / 10
+    : undefined;
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <button
-          style={styles.backBtn}
-          onClick={onBack}
-          aria-label="Go back"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M19 12H5M12 19l-7-7 7-7" stroke={theme.text.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-        <h2 style={styles.headerTitle}>
-          {alert ? alert.headline : 'Alert details'}
-        </h2>
-      </div>
+    <View style={styles.container}>
+      <ScreenHeader title={alert ? alert.headline : 'Alert details'} onBack={onBack} />
 
       {!alert ? (
-        <div style={styles.notFound}>
-          <p style={styles.notFoundText}>
+        <View style={styles.notFound}>
+          <Text style={[typography.body, { color: theme.text.secondary }]}>
             This alert is no longer available.
-          </p>
-        </div>
+          </Text>
+        </View>
       ) : (
-        <div style={styles.scrollArea}>
-          <AlertCard alert={alert} distanceKm={3.2} />
-          <BriefPanel state={briefState} />
-        </div>
+        <ScrollView style={styles.container} contentContainerStyle={{ padding: r.gutter }}>
+          <AlertCard alert={alert} distanceKm={distance} />
+          {isEnabled('situational_brief') && <BriefPanel state={briefState} />}
+        </ScrollView>
       )}
-    </div>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  notFound: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
