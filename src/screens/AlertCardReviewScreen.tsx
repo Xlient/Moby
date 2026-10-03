@@ -1,4 +1,4 @@
-import { View, ScrollView, StyleSheet } from 'react-native';
+import { View, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import { spacing } from '@/theme/tokens';
@@ -18,23 +18,27 @@ const VERIFICATION_LABELS: Record<VerificationLabel, string> = {
   unverified_report: 'Unverified Report',
 };
 
+const HAZARD_BY_SEVERITY: Record<Severity, Alert['hazard_type']> = {
+  low: 'earthquake',
+  medium: 'landslide',
+  high: 'fire',
+  critical: 'flood',
+};
+
 function makeAlert(severity: Severity, verification: VerificationLabel): Alert {
   const headline = `${severity.charAt(0).toUpperCase() + severity.slice(1)} severity alert`;
   return {
     alert_id: `${severity}-${verification}`,
     event_id: 'evt-001',
+    hazard_type: HAZARD_BY_SEVERITY[severity],
     headline,
     severity,
     issued_at: new Date(Date.now() - 42 * 60_000).toISOString(),
     verification_label: verification,
-    source_attribution:
-      verification === 'official_confirmed'
-        ? 'National Weather Service'
-        : verification === 'corroborated_report'
-          ? 'Confirmed by 4 nearby'
-          : undefined,
+    source_attribution: verification === 'official_confirmed' ? 'National Weather Service' : undefined,
+    corroboration_count: verification === 'corroborated_report' ? 4 : undefined,
     location_name: 'River Basin area',
-  } as Alert;
+  };
 }
 
 interface AlertCardReviewScreenProps {
@@ -50,38 +54,21 @@ export function AlertCardReviewScreen({ onBack }: AlertCardReviewScreenProps) {
       contentContainerStyle={styles.scrollContent}
     >
       <View style={styles.header}>
-        <button
-          onClick={onBack}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: theme.accent.calm,
-            fontSize: 17,
-            fontWeight: 600,
-            cursor: 'pointer',
-            padding: 0,
-          }}
-        >
-          Back
-        </button>
+        <Pressable onPress={onBack} accessibilityRole="button" style={styles.headerBtn}>
+          <Text style={{ color: theme.accent.calm, fontSize: 17, fontWeight: '600' }}>Back</Text>
+        </Pressable>
         <Text variant="titleLarge" style={{ color: theme.text.primary }}>
           Alert Card Review
         </Text>
-        <button
-          onClick={toggleTheme}
-          style={{
-            background: 'none',
-            border: `1px solid ${theme.line.hairline}`,
-            borderRadius: 8,
-            color: theme.text.primary,
-            fontSize: 13,
-            fontWeight: 500,
-            cursor: 'pointer',
-            padding: '6px 12px',
-          }}
+        <Pressable
+          onPress={toggleTheme}
+          accessibilityRole="button"
+          style={[styles.themeBtn, { borderColor: theme.line.hairline }]}
         >
-          {isDark ? 'Light' : 'Dark'}
-        </button>
+          <Text style={{ color: theme.text.primary, fontSize: 13, fontWeight: '500' }}>
+            {isDark ? 'Light' : 'Dark'}
+          </Text>
+        </Pressable>
       </View>
 
       <Text
@@ -129,6 +116,16 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: spacing.scale[5],
+  },
+  headerBtn: {
+    minHeight: spacing.minTapTarget,
+    justifyContent: 'center',
+  },
+  themeBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
   },
   cardWrapper: {
     marginBottom: spacing.scale[2],

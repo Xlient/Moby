@@ -1,590 +1,258 @@
-import {
-  useState,
-  useRef,
-  useCallback,
-  useEffect,
-  useMemo,
-  type CSSProperties,
-  type PointerEvent as ReactPointerEvent,
-  type WheelEvent as ReactWheelEvent,
-} from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { Button, IconButton, Surface, Text } from 'react-native-paper';
+import MapView, { Circle, Marker, Polygon, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useTheme } from '@/theme/ThemeContext';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { useNearbyRadius, type RadiusKm } from '@/hooks/useNearbyRadius';
+import type { Theme } from '@/theme/tokens';
+import { spacing } from '@/theme/tokens';
+import { mapStyleDark, mapStyleLight } from '@/theme/mapStyle';
+import { useNearbyAlerts } from '@/hooks/useNearbyAlerts';
+import { useMapLoadFallback } from '@/hooks/useMapLoadFallback';
+import { DiagramMapScreen } from './DiagramMapScreen';
 import { RadiusChip, RadiusPicker } from '@/components/RadiusPicker';
 import { AlertCard } from '@/components/AlertCard';
-import { mockAlerts } from '@/api/fixtures';
-import { typography, spacing, radius as radiusTokens } from '@/theme/tokens';
-import type { Alert, Severity } from '@/api/types';
-import type { Theme } from '@/theme/tokens';
+import { AlertMarker } from '@/components/AlertMarker';
+import { USER_CENTER } from '@/lib/geo';
+import { circlePoints, regionForRadius, surroundingBox, toLatLng } from '@/lib/mapGeometry';
+import type { NearbyAlert } from '@/hooks/useNearbyAlerts';
 
-// ── Coordinate projection ───────────────────────────────────────────
-
-export const USER_CENTER = { lat: 37.7749, lon: -122.4194 };
-const KM_PER_DEG_LAT = 111.32;
-
-function kmPerDegLon(lat: number): number {
-  return 111.32 * Math.cos((lat * Math.PI) / 180);
-}
-
-function latLonToXY(
-  lat: number,
-  lon: number,
-  center: { lat: number; lon: number },
-): { x: number; y: number } {
-  const x = (lon - center.lon) * kmPerDegLon(center.lat);
-  const y = -(lat - center.lat) * KM_PER_DEG_LAT;
-  return { x, y };
-}
-
-export function distanceKm(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  const dy = (lat2 - lat1) * KM_PER_DEG_LAT;
-  const dx = (lon2 - lon1) * kmPerDegLon((lat1 + lat2) / 2);
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-// ── Pin shapes (SVG paths at 24x24 viewBox) ────────────────────────
-
-function pinPath(severity: Severity): string {
-  switch (severity) {
-    case 'critical':
-      return 'M12 2L22 12L12 22L2 12Z';
-    case 'high':
-      return 'M3 3h18v18H3z';
-    case 'medium':
-      return 'M12 3L2 21h20Z';
-    case 'low':
-      return 'M12 21a9 9 0 110-18 9 9 0 010 18z';
-  }
-}
-
-// ── Constants ───────────────────────────────────────────────────────
-
-const MIN_ZOOM = 0.6;
-const MAX_ZOOM = 8;
-const INITIAL_ZOOM = 1;
+// Full-screen map (home redesign spec v3, Part 4 / card H4). Android/iOS only;
+// the web build uses MapScreen.web.tsx.
 
 interface MapScreenProps {
   onBack: () => void;
   onAlertDetail: (alertId: string) => void;
 }
 
-// ── Sub-components ──────────────────────────────────────────────────
-
-function TopBar({
-  theme,
-  radiusKm,
-  onBack,
-  onRadiusPress,
-  onRecenter,
-}: {
-  theme: Theme;
-  radiusKm: RadiusKm;
-  onBack: () => void;
-  onRadiusPress: () => void;
-  onRecenter: () => void;
-}) {
-  const s: Record<string, CSSProperties> = {
-    bar: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: `${spacing.scale[2]}px ${spacing.screenGutter}px`,
-      zIndex: 10,
-      pointerEvents: 'none',
-    },
-    btn: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: theme.bg.raised,
-      border: `1px solid ${theme.line.hairline}`,
-      cursor: 'pointer',
-      pointerEvents: 'auto',
-    },
-    center: {
-      display: 'flex',
-      gap: spacing.scale[1],
-      pointerEvents: 'auto',
-    },
-  };
-
-  return (
-    <div style={s.bar}>
-      <button
-        style={s.btn}
-        onClick={onBack}
-        aria-label="Go back"
-      >
-        <svg width={20} height={20} viewBox="0 0 20 20" fill="none">
-          <path
-            d="M12 4L6 10L12 16"
-            stroke={theme.text.primary}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
-      <div style={s.center}>
-        <RadiusChip radiusKm={radiusKm} onPress={onRadiusPress} />
-      </div>
-      <button
-        style={s.btn}
-        onClick={onRecenter}
-        aria-label="Re-center map"
-      >
-        <svg width={20} height={20} viewBox="0 0 20 20" fill="none">
-          <circle cx="10" cy="10" r="3" stroke={theme.text.primary} strokeWidth="1.5" />
-          <path
-            d="M10 2v3M10 15v3M2 10h3M15 10h3"
-            stroke={theme.text.primary}
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
-function BottomSheet({
-  alert,
+function PinSheet({
+  item,
   theme,
   onViewDetails,
   onDismiss,
 }: {
-  alert: Alert;
+  item: NearbyAlert;
   theme: Theme;
   onViewDetails: () => void;
   onDismiss: () => void;
 }) {
-  const dist = alert.location
-    ? distanceKm(USER_CENTER.lat, USER_CENTER.lon, alert.location.lat, alert.location.lon)
-    : undefined;
-
-  const s: Record<string, CSSProperties> = {
-    overlay: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      zIndex: 20,
-      padding: `0 ${spacing.screenGutter}px ${spacing.screenGutter}px`,
-    },
-    sheet: {
-      backgroundColor: theme.bg.base,
-      borderRadius: radiusTokens.card,
-      border: `1px solid ${theme.line.hairline}`,
-      overflow: 'hidden',
-    },
-    actions: {
-      display: 'flex',
-      gap: spacing.scale[2],
-      padding: `0 ${spacing.scale[3]}px ${spacing.scale[3]}px`,
-    },
-    btn: {
-      flex: 1,
-      minHeight: spacing.minTapTarget,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: radiusTokens.input,
-      border: `1px solid ${theme.line.hairline}`,
-      backgroundColor: theme.bg.raised,
-      cursor: 'pointer',
-      ...typography.label,
-      color: theme.text.primary,
-      fontVariantNumeric: undefined as unknown as string,
-    },
-    btnPrimary: {
-      flex: 1,
-      minHeight: spacing.minTapTarget,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: radiusTokens.input,
-      border: 'none',
-      backgroundColor: theme.accent.calm,
-      cursor: 'pointer',
-      ...typography.label,
-      color: theme.bg.raised,
-      fontVariantNumeric: undefined as unknown as string,
-    },
-  };
-
   return (
-    <div style={s.overlay}>
-      <div style={s.sheet}>
-        <AlertCard alert={alert} distanceKm={dist ? +dist.toFixed(1) : undefined} />
-        <div style={s.actions}>
-          <button style={s.btn} onClick={onDismiss}>
-            Dismiss
-          </button>
-          <button style={s.btnPrimary} onClick={onViewDetails}>
-            View details
-          </button>
-        </div>
-      </div>
-    </div>
+    <Surface elevation={2} style={[styles.sheet, { backgroundColor: theme.bg.base }]}>
+      {/* Identical trust treatment to the home list. */}
+      <AlertCard alert={item.alert} distanceKm={item.distanceKm} />
+      <View style={styles.sheetActions}>
+        <Button mode="text" onPress={onDismiss} textColor={theme.text.secondary} contentStyle={styles.tapTarget}>
+          Close
+        </Button>
+        <Button mode="contained-tonal" onPress={onViewDetails} contentStyle={styles.tapTarget}>
+          View details
+        </Button>
+      </View>
+    </Surface>
   );
 }
-
-function EmptyMapMessage({ theme }: { theme: Theme }) {
-  const s: Record<string, CSSProperties> = {
-    container: {
-      position: 'absolute',
-      top: '50%',
-      left: '50%',
-      transform: 'translate(-50%, -50%)',
-      textAlign: 'center',
-      pointerEvents: 'none',
-      zIndex: 5,
-    },
-  };
-
-  return (
-    <div style={s.container}>
-      <svg width={48} height={48} viewBox="0 0 48 48" fill="none" aria-hidden="true">
-        <circle cx="24" cy="24" r="20" stroke={theme.accent.calm} strokeWidth="2" opacity={0.5} />
-        <path
-          d="M16 24l6 6 10-12"
-          stroke={theme.accent.calm}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <p style={{ ...typography.heading, color: theme.text.primary, margin: `${spacing.scale[2]}px 0 0`, fontVariantNumeric: undefined as unknown as string }}>
-        All clear nearby
-      </p>
-      <p style={{ ...typography.body, color: theme.text.secondary, margin: `${spacing.scale[1]}px 0 0`, fontVariantNumeric: undefined as unknown as string }}>
-        No alerts in this area
-      </p>
-    </div>
-  );
-}
-
-function OfflineOverlay({ theme }: { theme: Theme }) {
-  const s: Record<string, CSSProperties> = {
-    banner: {
-      position: 'absolute',
-      bottom: spacing.screenGutter,
-      left: spacing.screenGutter,
-      right: spacing.screenGutter,
-      padding: `${spacing.scale[2]}px ${spacing.scale[3]}px`,
-      backgroundColor: theme.bg.raised,
-      borderRadius: radiusTokens.card,
-      border: `1px solid ${theme.line.hairline}`,
-      textAlign: 'center',
-      zIndex: 15,
-    },
-  };
-
-  return (
-    <div style={s.banner} role="status">
-      <p style={{ ...typography.meta, color: theme.text.secondary, margin: 0, fontVariantNumeric: undefined as unknown as string }}>
-        Offline — showing last known positions
-      </p>
-    </div>
-  );
-}
-
-// ── Main component ──────────────────────────────────────────────────
 
 export function MapScreen({ onBack, onAlertDetail }: MapScreenProps) {
-  const { theme } = useTheme();
-  const isOnline = useOnlineStatus();
-  const [nearbyRadius, setNearbyRadius] = useNearbyRadius();
+  const { theme, isDark } = useTheme();
+  // Same source as the home list, so the pins always match it for the same radius.
+  const { nearby, radiusKm, setRadiusKm, isOffline } = useNearbyAlerts();
+  const mapRef = useRef<MapView>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(INITIAL_ZOOM);
-  const dragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  // TODO(location): centre on the device position.
+  const center = USER_CENTER;
+  const selected = nearby.find((n) => n.alert.alert_id === selectedId) ?? null;
 
-  const scaleFactor = useMemo(() => {
-    const base = Math.max(nearbyRadius * 2.5, 20);
-    return 300 / base;
-  }, [nearbyRadius]);
+  const { failed: tilesFailed, onMapLoaded } = useMapLoadFallback();
 
-  const alertsInRadius = useMemo(
-    () =>
-      mockAlerts.filter((a) => {
-        if (!a.location) return false;
-        const d = distanceKm(USER_CENTER.lat, USER_CENTER.lon, a.location.lat, a.location.lon);
-        return d <= nearbyRadius;
-      }),
-    [nearbyRadius],
-  );
-
-  const selectedAlert = selectedId
-    ? alertsInRadius.find((a) => a.alert_id === selectedId) ?? null
-    : null;
-
-  useEffect(() => {
-    if (selectedId && !selectedAlert) setSelectedId(null);
-  }, [selectedId, selectedAlert]);
-
-  const recenter = useCallback(() => {
-    setPan({ x: 0, y: 0 });
-    setZoom(INITIAL_ZOOM);
-    setSelectedId(null);
-  }, []);
-
-  const handlePointerDown = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
-      if (e.button !== 0) return;
-      (e.target as HTMLElement).setPointerCapture(e.pointerId);
-      dragRef.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
-    },
-    [pan],
-  );
-
-  const handlePointerMove = useCallback(
-    (e: ReactPointerEvent<HTMLDivElement>) => {
-      if (!dragRef.current) return;
-      const dx = e.clientX - dragRef.current.startX;
-      const dy = e.clientY - dragRef.current.startY;
-      setPan({ x: dragRef.current.panX + dx, y: dragRef.current.panY + dy });
-    },
-    [],
-  );
-
-  const handlePointerUp = useCallback(() => {
-    dragRef.current = null;
-  }, []);
-
-  const handleWheel = useCallback(
-    (e: ReactWheelEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z * factor)));
-    },
-    [],
-  );
-
-  const radiusPixels = nearbyRadius * scaleFactor * zoom;
-
-  const containerStyle: CSSProperties = {
-    position: 'relative',
-    width: '100%',
-    height: '100%',
-    backgroundColor: theme.bg.recessed,
-    overflow: 'hidden',
-    touchAction: 'none',
-    cursor: dragRef.current ? 'grabbing' : 'grab',
+  const recenter = () => {
+    mapRef.current?.animateToRegion(regionForRadius(center, radiusKm), 350);
   };
 
-  const gridColor = theme.line.hairline;
-  const gridSpacing = 20 * scaleFactor * zoom;
+  // Re-fit when the radius changes; drop a selection the new radius excludes.
+  useEffect(() => {
+    recenter();
+  }, [radiusKm]);
+  useEffect(() => {
+    if (selectedId && !selected) setSelectedId(null);
+  }, [selectedId, selected]);
+
+  if (tilesFailed) {
+    return (
+      <DiagramMapScreen
+        onBack={onBack}
+        onAlertDetail={onAlertDetail}
+        notice={
+          isOffline
+            ? 'Offline — map tiles unavailable. Pins show the last saved alerts.'
+            : 'The map couldn’t load. Showing alert positions without it.'
+        }
+      />
+    );
+  }
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <div
-        ref={containerRef}
-        style={containerStyle}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        onWheel={handleWheel}
-        role="application"
-        aria-label="Alert map"
+    <View style={[styles.container, { backgroundColor: theme.bg.base }]}>
+      <MapView
+        onMapLoaded={onMapLoaded}
+        ref={mapRef}
+        provider={PROVIDER_GOOGLE}
+        style={StyleSheet.absoluteFill}
+        initialRegion={regionForRadius(center, radiusKm)}
+        customMapStyle={isDark ? mapStyleDark : mapStyleLight}
+        rotateEnabled={false}
+        pitchEnabled={false}
+        toolbarEnabled={false}
+        showsCompass={false}
+        onPress={(e) => {
+          // Taps on markers also reach the map; only clear on taps elsewhere.
+          if (e.nativeEvent.action !== 'marker-press') setSelectedId(null);
+        }}
       >
-        <svg
-          width="100%"
-          height="100%"
-          style={{ position: 'absolute', top: 0, left: 0 }}
+        {/* Gently dim everything outside the radius. */}
+        <Polygon
+          coordinates={surroundingBox(center)}
+          holes={[circlePoints(center, radiusKm)]}
+          fillColor={isDark ? 'rgba(0,0,0,0.35)' : 'rgba(31,42,46,0.12)'}
+          strokeWidth={0}
+        />
+        <Circle
+          center={toLatLng(center)}
+          radius={radiusKm * 1000}
+          strokeColor={theme.accent.calm}
+          strokeWidth={2}
+        />
+        <Marker
+          coordinate={toLatLng(center)}
+          anchor={{ x: 0.5, y: 0.5 }}
+          tracksViewChanges={false}
+          accessibilityLabel="Your location"
         >
-          <defs>
-            <pattern
-              id="grid"
-              width={gridSpacing}
-              height={gridSpacing}
-              patternUnits="userSpaceOnUse"
-              x={pan.x % gridSpacing}
-              y={pan.y % gridSpacing}
-            >
-              <path
-                d={`M ${gridSpacing} 0 L 0 0 0 ${gridSpacing}`}
-                fill="none"
-                stroke={gridColor}
-                strokeWidth="0.5"
-                opacity="0.5"
-              />
-            </pattern>
-            <mask id="radius-mask">
-              <rect width="100%" height="100%" fill="white" />
-              <circle
-                cx="50%"
-                cy="50%"
-                r={radiusPixels}
-                fill="black"
-                transform={`translate(${pan.x}, ${pan.y})`}
-              />
-            </mask>
-          </defs>
-
-          <rect width="100%" height="100%" fill="url(#grid)" />
-
-          <circle
-            cx="50%"
-            cy="50%"
-            r={radiusPixels}
-            fill="none"
-            stroke={theme.accent.calm}
-            strokeWidth="1.5"
-            strokeDasharray="6 4"
-            opacity="0.6"
-            transform={`translate(${pan.x}, ${pan.y})`}
+          <View style={[styles.you, { backgroundColor: theme.text.primary, borderColor: theme.bg.raised }]} />
+        </Marker>
+        {nearby.map(({ alert }) => (
+          <AlertMarker
+            key={alert.alert_id}
+            alert={alert}
+            selected={alert.alert_id === selectedId}
+            onPress={() => setSelectedId(alert.alert_id)}
           />
+        ))}
+      </MapView>
 
-          <rect
-            width="100%"
-            height="100%"
-            fill={theme.bg.base}
-            opacity="0.35"
-            mask="url(#radius-mask)"
-            style={{ pointerEvents: 'none' }}
+      <View style={styles.topBar} pointerEvents="box-none">
+        <Surface elevation={1} style={[styles.topBarInner, { backgroundColor: theme.bg.raised }]}>
+          <IconButton icon="arrow-left" onPress={onBack} accessibilityLabel="Go back" iconColor={theme.text.primary} />
+          <Text variant="titleMedium" accessibilityRole="header" style={[styles.title, { color: theme.text.primary }]}>
+            Map
+          </Text>
+          <RadiusChip radiusKm={radiusKm} onPress={() => setPickerVisible(true)} />
+        </Surface>
+
+        {isOffline && (
+          <Surface elevation={1} style={[styles.notice, { backgroundColor: theme.bg.raised }]}>
+            <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
+              Offline — pins show the last saved alerts; map tiles may be missing.
+            </Text>
+          </Surface>
+        )}
+        {!isOffline && nearby.length === 0 && (
+          <Surface elevation={1} style={[styles.notice, { backgroundColor: theme.bg.raised }]}>
+            <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
+              All quiet within {radiusKm} km.
+            </Text>
+          </Surface>
+        )}
+      </View>
+
+      <View style={styles.bottom} pointerEvents="box-none">
+        <IconButton
+          icon="crosshairs-gps"
+          mode="contained"
+          size={24}
+          onPress={recenter}
+          accessibilityLabel="Re-center map"
+          containerColor={theme.bg.raised}
+          iconColor={theme.text.primary}
+          style={styles.recenter}
+        />
+        {selected && (
+          <PinSheet
+            item={selected}
+            theme={theme}
+            onViewDetails={() => onAlertDetail(selected.alert.alert_id)}
+            onDismiss={() => setSelectedId(null)}
           />
+        )}
+      </View>
 
-          {/* Center dot */}
-          <circle
-            cx="50%"
-            cy="50%"
-            r={4}
-            fill={theme.accent.calm}
-            transform={`translate(${pan.x}, ${pan.y})`}
-          />
-          <circle
-            cx="50%"
-            cy="50%"
-            r={8}
-            fill={theme.accent.calm}
-            opacity="0.2"
-            transform={`translate(${pan.x}, ${pan.y})`}
-          />
-        </svg>
-
-        {/* Pins layer */}
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: `translate(${pan.x}px, ${pan.y}px)`,
-            pointerEvents: 'none',
-          }}
-        >
-          {alertsInRadius.map((alert) => {
-            if (!alert.location) return null;
-            const pos = latLonToXY(alert.location.lat, alert.location.lon, USER_CENTER);
-            const px = pos.x * scaleFactor * zoom;
-            const py = pos.y * scaleFactor * zoom;
-            const isUnverified = alert.verification_label === 'unverified_report';
-            const color = isUnverified ? theme.text.faint : theme.severity[alert.severity];
-            const isSelected = selectedId === alert.alert_id;
-            const pinSize = isSelected ? 32 : 24;
-
-            return (
-              <button
-                key={alert.alert_id}
-                style={{
-                  position: 'absolute',
-                  left: px - pinSize / 2,
-                  top: py - pinSize / 2,
-                  width: pinSize,
-                  height: pinSize,
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 0,
-                  pointerEvents: 'auto',
-                  transition: 'transform 0.15s ease',
-                  transform: isSelected ? 'scale(1.2)' : 'scale(1)',
-                  zIndex: isSelected ? 3 : 1,
-                  filter: isSelected
-                    ? `drop-shadow(0 2px 4px ${color}66)`
-                    : undefined,
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedId(isSelected ? null : alert.alert_id);
-                }}
-                aria-label={`${alert.headline}, ${alert.severity} severity`}
-              >
-                <svg
-                  width={pinSize}
-                  height={pinSize}
-                  viewBox="0 0 24 24"
-                  fill={isUnverified ? 'none' : color}
-                  fillOpacity={isUnverified ? 0 : 0.25}
-                >
-                  <path
-                    d={pinPath(alert.severity)}
-                    stroke={color}
-                    strokeWidth={isUnverified ? '1.5' : '2'}
-                    strokeLinejoin="round"
-                    fill={isUnverified ? 'none' : color}
-                    fillOpacity={isUnverified ? 0 : 0.25}
-                  />
-                </svg>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <TopBar
-        theme={theme}
-        radiusKm={nearbyRadius}
-        onBack={onBack}
-        onRadiusPress={() => setPickerVisible(true)}
-        onRecenter={recenter}
+      <RadiusPicker
+        visible={pickerVisible}
+        selected={radiusKm}
+        onSelect={(value) => {
+          setRadiusKm(value);
+          setPickerVisible(false);
+        }}
+        onDismiss={() => setPickerVisible(false)}
       />
-
-      {alertsInRadius.length === 0 && !selectedAlert && (
-        <EmptyMapMessage theme={theme} />
-      )}
-
-      {!isOnline && !selectedAlert && (
-        <OfflineOverlay theme={theme} />
-      )}
-
-      {selectedAlert && (
-        <BottomSheet
-          alert={selectedAlert}
-          theme={theme}
-          onViewDetails={() => onAlertDetail(selectedAlert.alert_id)}
-          onDismiss={() => setSelectedId(null)}
-        />
-      )}
-
-      {pickerVisible && (
-        <RadiusPicker
-          visible
-          selected={nearbyRadius}
-          onSelect={(v) => {
-            setNearbyRadius(v);
-            setPickerVisible(false);
-          }}
-          onDismiss={() => setPickerVisible(false)}
-        />
-      )}
-    </div>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  topBar: {
+    position: 'absolute',
+    top: spacing.scale[2],
+    left: spacing.screenGutter,
+    right: spacing.screenGutter,
+    gap: spacing.scale[2],
+  },
+  topBarInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 16,
+    paddingRight: spacing.scale[2],
+  },
+  title: {
+    flex: 1,
+  },
+  notice: {
+    alignSelf: 'flex-start',
+    borderRadius: 12,
+    paddingVertical: spacing.scale[1],
+    paddingHorizontal: spacing.scale[3],
+  },
+  bottom: {
+    position: 'absolute',
+    left: spacing.screenGutter,
+    right: spacing.screenGutter,
+    bottom: spacing.screenGutter,
+    gap: spacing.scale[2],
+  },
+  recenter: {
+    alignSelf: 'flex-end',
+    margin: 0,
+  },
+  sheet: {
+    borderRadius: 20,
+    padding: spacing.scale[2],
+  },
+  sheetActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.scale[1],
+    paddingTop: spacing.scale[2],
+  },
+  tapTarget: {
+    minHeight: spacing.minTapTarget,
+  },
+  you: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 3,
+  },
+});

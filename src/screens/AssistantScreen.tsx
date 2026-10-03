@@ -1,4 +1,5 @@
-import type { CSSProperties } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -7,36 +8,26 @@ export function AssistantScreen() {
   const { theme } = useTheme();
   const r = useResponsive();
 
-  const styles: Record<string, CSSProperties> = {
-    container: {
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'flex-start',
-      justifyContent: 'center',
-      height: '100%',
-      padding: r.gutter,
-    },
-    heading: {
-      ...r.heading,
-      color: theme.text.primary,
-      margin: 0,
-      fontVariantNumeric: undefined,
-    },
-    body: {
-      ...typography.body,
-      color: theme.text.secondary,
-      margin: `${spacing.scale[2]}px 0 0 0`,
-      maxWidth: '40ch',
-      fontVariantNumeric: undefined,
-    },
-  };
-
   return (
-    <div style={styles.container} role="region" aria-label="Assistant">
-      <h2 style={styles.heading}>Assistant</h2>
-      <p style={styles.body}>
+    <View style={[styles.container, { padding: r.gutter }]} accessibilityLabel="Assistant">
+      <Text accessibilityRole="header" style={[r.heading, { color: theme.text.primary }]}>
+        Assistant
+      </Text>
+      <Text style={[typography.body, styles.body, { color: theme.text.secondary }]}>
         Ask a question about an active alert or safety guidance. This feature is coming soon.
-      </p>
-    </div>
+      </Text>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  body: {
+    marginTop: spacing.scale[2],
+    maxWidth: 360,
+  },
+});

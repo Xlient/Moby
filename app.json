@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "Moby",
+    "slug": "moby",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "moby",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#F7F8F6",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F8F6",
+      "dark": {
+        "image": "./assets/splash-icon.png",
+        "backgroundColor": "#181D1F"
+      }
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.xlient.moby"
+    },
+    "android": {
+      "package": "com.xlient.moby",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#F7F8F6",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "android.permission.ACCESS_NETWORK_STATE"
+      ],
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-font",
+      "@react-native-google-signin/google-signin",
+      "./plugins/withApkName"
+    ]
+  }
+}

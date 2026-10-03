@@ -1,0 +1,6 @@
+{
+  "_comment": "Test account for the local Firebase Auth emulator only (project demo-moby). Not valid against any real Firebase project.",
+  "name": "Maya",
+  "email": "maya@example.test",
+  "password": "emu-85becd5c6539"
+}

@@ -22,19 +22,17 @@ import {
   getMockGuidanceCards,
   getMockSubscriptions,
 } from './fixtures';
+import { env } from '@/config/env';
 
 // ── Configuration ────────────────────────────────────────────────────
 
-const BASE_URL: string =
-  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) ||
-  'https://api.example.dev/v1';
+const BASE_URL: string = env.apiUrl;
 
 /**
  * When true the client returns mock data instead of hitting the network.
- * Defaults to true in development (Vite sets import.meta.env.DEV).
+ * Controlled by EXPO_PUBLIC_USE_MOCK / EXPO_PUBLIC_API_URL (see src/config/env.ts).
  */
-const USE_MOCK: boolean =
-  (typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV) ?? true;
+const USE_MOCK: boolean = env.useMock;
 
 // ── Error types ──────────────────────────────────────────────────────
 
@@ -78,14 +76,14 @@ export class ApiClient {
       noContent?: boolean;
     } = {},
   ): Promise<T> {
-    const url = new URL(`${this.baseUrl}${path}`);
-    if (options.query) {
-      for (const [key, value] of Object.entries(options.query)) {
-        if (value !== undefined) {
-          url.searchParams.set(key, String(value));
-        }
-      }
-    }
+    // Built by hand: React Native's URL/URLSearchParams polyfill is incomplete.
+    const qs = options.query
+      ? Object.entries(options.query)
+          .filter(([, value]) => value !== undefined)
+          .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+          .join('&')
+      : '';
+    const url = `${this.baseUrl}${path}${qs ? `?${qs}` : ''}`;
 
     const headers: Record<string, string> = {
       'Accept': 'application/json',
@@ -102,7 +100,7 @@ export class ApiClient {
       headers['Content-Type'] = 'application/json';
     }
 
-    const response = await fetch(url.toString(), {
+    const response = await fetch(url, {
       method,
       headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
@@ -219,14 +217,14 @@ export class ApiClient {
     // check `'status' in result` to distinguish the two shapes.
     const url = `/events/${encodeURIComponent(eventId)}/brief`;
 
-    const fullUrl = new URL(`${this.baseUrl}${url}`);
+    const fullUrl = `${this.baseUrl}${url}`;
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (this.getToken) {
       const token = await this.getToken();
       if (token) headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const res = await fetch(fullUrl.toString(), { method: 'GET', headers });
+    const res = await fetch(fullUrl, { method: 'GET', headers });
 
     if (!res.ok && res.status !== 202) {
       let errorBody: unknown;
@@ -250,14 +248,14 @@ export class ApiClient {
 
   async getCascadeAssessment(region: RegionCode): Promise<CascadeAssessment | null> {
     const url = `/regions/${encodeURIComponent(region)}/cascade`;
-    const fullUrl = new URL(`${this.baseUrl}${url}`);
+    const fullUrl = `${this.baseUrl}${url}`;
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (this.getToken) {
       const token = await this.getToken();
       if (token) headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const res = await fetch(fullUrl.toString(), { method: 'GET', headers });
+    const res = await fetch(fullUrl, { method: 'GET', headers });
 
     if (res.status === 204) return null;
 

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import type { GuidanceCard } from '@/api/types';
 import { useOnlineStatus } from './useOnlineStatus';
+import { kv } from '@/lib/storage';
 
 const CACHE_KEY = 'cached-guidance-cards';
 const CACHE_TS_KEY = 'cached-guidance-ts';
@@ -9,8 +10,8 @@ const STALE_DAYS = 90;
 
 function getPersistedCards(): { cards: GuidanceCard[]; cachedAt: string | null } {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    const ts = localStorage.getItem(CACHE_TS_KEY);
+    const raw = kv.get(CACHE_KEY);
+    const ts = kv.get(CACHE_TS_KEY);
     if (raw) return { cards: JSON.parse(raw) as GuidanceCard[], cachedAt: ts };
   } catch { /* ignore */ }
   return { cards: [], cachedAt: null };
@@ -18,8 +19,8 @@ function getPersistedCards(): { cards: GuidanceCard[]; cachedAt: string | null }
 
 function persistCards(cards: GuidanceCard[]): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cards));
-    localStorage.setItem(CACHE_TS_KEY, new Date().toISOString());
+    kv.set(CACHE_KEY, JSON.stringify(cards));
+    kv.set(CACHE_TS_KEY, new Date().toISOString());
   } catch { /* quota */ }
 }
 

@@ -1,5 +1,5 @@
-import { useSyncExternalStore } from 'react';
-import { typography, spacing } from '@/theme/tokens';
+import { useWindowDimensions } from 'react-native';
+import { typography, spacing, typeToken } from '@/theme/tokens';
 import type { TypeToken } from '@/theme/tokens';
 
 // ── Breakpoints ──────────────────────────────────────────────
@@ -13,57 +13,12 @@ function getBreakpoint(w: number): Breakpoint {
   return 'regular';
 }
 
-// ── Subscribe to viewport width changes ──────────────────────
-
-let cachedBreakpoint: Breakpoint = getBreakpoint(
-  typeof window !== 'undefined' ? window.innerWidth : 390,
-);
-
-const listeners = new Set<() => void>();
-
-function subscribe(cb: () => void) {
-  listeners.add(cb);
-  return () => listeners.delete(cb);
-}
-
-function getSnapshot(): Breakpoint {
-  return cachedBreakpoint;
-}
-
-function getServerSnapshot(): Breakpoint {
-  return 'regular';
-}
-
-if (typeof window !== 'undefined') {
-  const update = () => {
-    const next = getBreakpoint(window.innerWidth);
-    if (next !== cachedBreakpoint) {
-      cachedBreakpoint = next;
-      listeners.forEach((cb) => cb());
-    }
-  };
-  window.addEventListener('resize', update, { passive: true });
-}
-
-// ── Hook ─────────────────────────────────────────────────────
-
 export function useBreakpoint(): Breakpoint {
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const { width } = useWindowDimensions();
+  return getBreakpoint(width);
 }
 
 // ── Responsive token overrides ───────────────────────────────
-
-const compactToken = (
-  fontSize: number,
-  lineHeight: number,
-  fontWeight: number,
-): TypeToken => ({
-  fontSize,
-  lineHeight,
-  fontWeight,
-  fontFamily: typography.body.fontFamily,
-  fontVariantNumeric: 'tabular-nums',
-});
 
 interface ResponsiveTokens {
   bp: Breakpoint;
@@ -84,8 +39,8 @@ function tokensForBreakpoint(bp: Breakpoint): ResponsiveTokens {
         cardPadding: 12,
         sectionGap: 20,
         maxContent: undefined,
-        title: compactToken(22, 28, 600),
-        heading: compactToken(18, 24, 600),
+        title: typeToken(22, 28, '600'),
+        heading: typeToken(18, 24, '600'),
       };
     case 'regular':
     case 'wide':

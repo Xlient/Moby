@@ -1,11 +1,15 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.2.0
+  version: 0.3.0
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.3.0 — Additive only, no breaking changes (fields the mobile alert card needs):
+      + Alert.hazard_type          (drives the card's hazard icon)
+      + Alert.location_name        (place shown in the card's metadata line)
+      + Alert.corroboration_count  ("Confirmed by N nearby" on corroborated reports)
     0.2.0 — Additive only, no breaking changes:
       + GET /events/{id}/brief        (Ultra situational brief, async)
       + GET /regions/{region}/cascade (Ultra cascade analysis)
@@ -783,6 +787,22 @@ components:
         source_attribution:
           type: string
           description: e.g. "NOAA/NWS" or "Community reports"
+        hazard_type:
+          $ref: '#/components/schemas/HazardType'
+          description: Same value as the fused Event. Clients fall back to a generic icon when absent.
+        location_name:
+          type: string
+          maxLength: 80
+          description: >
+            Human-readable place for the alert's location, e.g. "Russian River Basin".
+            Shown beside distance and time; never repeated in the headline.
+        corroboration_count:
+          type: integer
+          minimum: 0
+          description: >
+            Distinct originating reporters behind a corroborated_report (relay hops and
+            repeat reports from one device do not count — see escalation caution rules).
+            Omitted for official_confirmed; 1 or omitted for unverified_report.
 
     SituationalBrief:
       type: object

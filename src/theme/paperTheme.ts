@@ -6,11 +6,9 @@ import {
 import type { MD3Theme } from 'react-native-paper';
 import { lightTheme, darkTheme } from './tokens';
 
-const SYSTEM_FONT =
-  "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
-
+// fontFamily is inherited from Paper's platform defaults (Roboto on Android,
+// System on iOS, system-ui stack on web).
 const baseFont = {
-  fontFamily: SYSTEM_FONT,
   letterSpacing: 0,
 };
 

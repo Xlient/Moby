@@ -1,23 +1,45 @@
-import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, type Auth } from 'firebase/auth';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import * as firebaseAuth from 'firebase/auth';
+import type { Auth, Persistence } from 'firebase/auth';
+import { getFirestore, type Firestore } from 'firebase/firestore';
+import { env } from '@/config/env';
+import { asyncStorage } from '@/lib/storage';
+import { connectEmulators } from './firebaseEmulators';
 
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? '',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? '',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? '',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ?? '',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? '',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID ?? '',
+// Native (Android/iOS). The web variant lives in firebase.web.ts.
+
+const { initializeAuth, getAuth } = firebaseAuth;
+// Present at runtime in Firebase's React Native build (Metro resolves it via the
+// "react-native" export condition) but missing from the published web typings.
+const { getReactNativePersistence } = firebaseAuth as typeof firebaseAuth & {
+  getReactNativePersistence: (storage: {
+    getItem(key: string): Promise<string | null>;
+    setItem(key: string, value: string): Promise<void>;
+    removeItem(key: string): Promise<unknown>;
+  }) => Persistence;
 };
 
 export const isFirebaseConfigured: boolean =
-  !!firebaseConfig.apiKey && !!firebaseConfig.projectId;
+  !!env.firebase.apiKey && !!env.firebase.projectId;
 
 let auth: Auth | null = null;
+let db: Firestore | null = null;
 
 if (isFirebaseConfigured) {
-  const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-  auth = getAuth(app);
+  if (getApps().length === 0) {
+    const app = initializeApp(env.firebase);
+    // Persist the session on-device so users stay signed in across restarts
+    // (and while offline).
+    auth = initializeAuth(app, {
+      persistence: getReactNativePersistence(asyncStorage),
+    });
+    db = getFirestore(app);
+    connectEmulators(auth, db);
+  } else {
+    // Fast Refresh re-evaluates this module; the app (and its emulator wiring) already exist.
+    auth = getAuth(getApp());
+    db = getFirestore(getApp());
+  }
 }
 
-export { auth };
+export { auth, db };

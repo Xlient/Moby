@@ -1,9 +1,11 @@
-import { Surface, Chip, Text } from 'react-native-paper';
-import { View, Pressable, StyleSheet } from 'react-native';
+import { Avatar, Card, Text } from 'react-native-paper';
+import { View, StyleSheet } from 'react-native';
 import { useTheme } from '@/theme/ThemeContext';
 import { spacing, radius } from '@/theme/tokens';
+import type { Theme } from '@/theme/tokens';
+import { formatTimeAgo, hazardIcon, isExpired, severityLabel, trustText } from '@/lib/alerts';
 import { SeverityIndicator } from './SeverityIndicator';
-import type { Alert, VerificationLabel } from '@/api/types';
+import type { Alert } from '@/api/types';
 
 interface AlertCardProps {
   alert: Alert;
@@ -11,226 +13,187 @@ interface AlertCardProps {
   onPress?: () => void;
 }
 
-function formatTimeAgo(isoDate: string): string {
-  const diff = Date.now() - new Date(isoDate).getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return 'Just now';
-  if (minutes < 60) return `${minutes} min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+/** `#RRGGBB` + alpha (0–1) → `#RRGGBBAA`. */
+function withAlpha(hex: string, alpha: number): string {
+  const a = Math.round(alpha * 255).toString(16).padStart(2, '0');
+  return `${hex.slice(0, 7)}${a}`;
 }
 
-function getTrustText(alert: Alert): string {
+// Trust treatments (home redesign spec v3, Part 3). The three levels must be
+// distinguishable with the text unreadable: card mode, elevation and icon tint.
+interface Treatment {
+  mode: 'elevated' | 'outlined';
+  cardColor: string;
+  iconContainer: string;
+  iconColor: string;
+  severityNeutral: boolean;
+}
+
+function treatmentFor(alert: Alert, theme: Theme): Treatment {
+  const severityColor = theme.severity[alert.severity];
   switch (alert.verification_label) {
     case 'official_confirmed':
-      return alert.source_attribution ?? 'Official source';
+      return {
+        mode: 'elevated',
+        cardColor: theme.bg.raised,
+        iconContainer: withAlpha(severityColor, 0.18),
+        iconColor: severityColor,
+        severityNeutral: false,
+      };
     case 'corroborated_report':
-      return alert.source_attribution ?? 'Confirmed by nearby reports';
+      return {
+        mode: 'elevated',
+        cardColor: theme.bg.raised,
+        iconContainer: withAlpha(severityColor, 0.09),
+        iconColor: severityColor,
+        severityNeutral: false,
+      };
     case 'unverified_report':
-      return 'Unverified \u2014 single report';
+      // Never severity-tinted, never elevated, never a chip.
+      return {
+        mode: 'outlined',
+        cardColor: theme.bg.recessed,
+        iconContainer: theme.bg.raised,
+        iconColor: theme.text.secondary,
+        severityNeutral: true,
+      };
   }
 }
 
-function getSurfaceConfig(
-  verification: VerificationLabel,
-  theme: ReturnType<typeof useTheme>['theme'],
-): { elevation: 0 | 1; backgroundColor: string; borderWidth: number; borderColor: string } {
-  if (verification === 'unverified_report') {
-    return {
-      elevation: 0,
-      backgroundColor: theme.bg.recessed,
-      borderWidth: 1,
-      borderColor: theme.line.hairline,
-    };
+function TrustLabel({ alert, theme }: { alert: Alert; theme: Theme }) {
+  const text = trustText(alert);
+  // Pills rather than Paper's Chip: Chip forces a single line, and the trust label
+  // must never truncate (design system §8) — at 200% font scale it wraps instead.
+  switch (alert.verification_label) {
+    case 'official_confirmed':
+      // Filled, but tonal, so it never out-shouts the headline (spec 6.3).
+      return (
+        <View style={[styles.pill, { backgroundColor: theme.bg.recessed, borderColor: theme.bg.recessed }]}>
+          <Text variant="labelMedium" style={[styles.trustText, { color: theme.text.primary }]}>
+            {text}
+          </Text>
+        </View>
+      );
+    case 'corroborated_report':
+      return (
+        <View style={[styles.pill, { borderColor: theme.line.hairline }]}>
+          <Text variant="labelMedium" style={[styles.trustText, { color: theme.text.secondary }]}>
+            {text}
+          </Text>
+        </View>
+      );
+    case 'unverified_report':
+      return (
+        <Text variant="labelMedium" style={[styles.trustText, { color: theme.text.secondary }]}>
+          {text}
+        </Text>
+      );
   }
-  return {
-    elevation: 1,
-    backgroundColor: theme.bg.raised,
-    borderWidth: 0,
-    borderColor: 'transparent',
-  };
-}
-
-function TrustDisplay({
-  verification,
-  alert,
-  theme,
-}: {
-  verification: VerificationLabel;
-  alert: Alert;
-  theme: ReturnType<typeof useTheme>['theme'];
-}) {
-  const trustText = getTrustText(alert);
-
-  if (verification === 'official_confirmed') {
-    return (
-      <Chip
-        mode="flat"
-        style={{
-          backgroundColor: theme.bg.recessed,
-          borderRadius: radius.pill,
-        }}
-        textStyle={{
-          color: theme.text.primary,
-          fontWeight: '500',
-        }}
-        compact
-      >
-        {trustText}
-      </Chip>
-    );
-  }
-
-  if (verification === 'corroborated_report') {
-    return (
-      <Chip
-        mode="outlined"
-        style={{
-          backgroundColor: 'transparent',
-          borderColor: theme.line.hairline,
-          borderRadius: radius.pill,
-        }}
-        textStyle={{
-          color: theme.text.secondary,
-          fontWeight: '500',
-        }}
-        compact
-      >
-        {trustText}
-      </Chip>
-    );
-  }
-
-  return (
-    <Text
-      variant="labelSmall"
-      style={{ color: theme.text.secondary }}
-    >
-      {trustText}
-    </Text>
-  );
 }
 
 export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
   const { theme } = useTheme();
-  const severityColor = theme.severity[alert.severity];
-  const surfaceConfig = getSurfaceConfig(alert.verification_label, theme);
-  const isUnverified = alert.verification_label === 'unverified_report';
-  const showLeftEdge = !isUnverified;
-  const leftEdgeOpacity = alert.verification_label === 'corroborated_report' ? 0.5 : 1;
+  const t = treatmentFor(alert, theme);
+  const expired = isExpired(alert);
 
-  const metaParts: string[] = [];
-  if (alert.location_name) metaParts.push(alert.location_name);
-  if (distanceKm !== undefined) metaParts.push(`${distanceKm.toFixed(1)} km`);
-  metaParts.push(formatTimeAgo(alert.issued_at));
-  const metaText = metaParts.join(' \u00b7 ');
+  // Each fact once: the chip carries attribution, so metadata is place · distance · time.
+  const meta = [
+    expired ? 'Ended' : null,
+    alert.location_name,
+    distanceKm === undefined ? null : distanceKm < 0.1 ? '<0.1 km' : `${distanceKm.toFixed(1)} km`,
+    formatTimeAgo(alert.issued_at),
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
-  const card = (
-    <Surface
-      elevation={surfaceConfig.elevation}
+  const trust = trustText(alert);
+
+  return (
+    <Card
+      {...(t.mode === 'elevated'
+        ? { mode: 'elevated' as const, elevation: 1 as const }
+        : { mode: 'outlined' as const })}
+      onPress={onPress}
+      accessible
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={`${alert.headline}. ${severityLabel(alert.severity)}. ${trust}. ${meta}.`}
       style={[
-        styles.surface,
-        {
-          backgroundColor: surfaceConfig.backgroundColor,
-          borderWidth: surfaceConfig.borderWidth,
-          borderColor: surfaceConfig.borderColor,
-          borderRadius: radius.card,
-        },
+        styles.card,
+        { backgroundColor: t.cardColor, opacity: expired ? 0.7 : 1 },
+        t.mode === 'outlined' && { borderColor: theme.line.hairline },
       ]}
+      contentStyle={styles.content}
     >
-      {showLeftEdge && (
-        <View
-          style={[
-            styles.leftEdge,
-            {
-              backgroundColor: severityColor,
-              opacity: leftEdgeOpacity,
-              borderTopLeftRadius: radius.card,
-              borderBottomLeftRadius: radius.card,
-            },
-          ]}
+      <View style={styles.row}>
+        <Avatar.Icon
+          size={40}
+          icon={hazardIcon(alert.hazard_type)}
+          color={t.iconColor}
+          style={{ backgroundColor: t.iconContainer }}
         />
-      )}
 
-      <View
-        style={[
-          styles.content,
-          { paddingLeft: showLeftEdge ? spacing.scale[3] + 3 : spacing.scale[3] },
-        ]}
-      >
-        <SeverityIndicator severity={alert.severity} neutral={isUnverified} />
+        <View style={styles.body}>
+          <View style={styles.headlineRow}>
+            <Text variant="titleMedium" numberOfLines={2} style={[styles.headline, { color: theme.text.primary }]}>
+              {alert.headline}
+            </Text>
+            <SeverityIndicator severity={alert.severity} size="small" neutral={t.severityNeutral} />
+          </View>
 
-        <Text
-          variant="titleMedium"
-          style={{
-            color: theme.text.primary,
-            marginTop: spacing.scale[1],
-          }}
-          numberOfLines={2}
-        >
-          {alert.headline}
-        </Text>
+          <Text
+            variant="bodyMedium"
+            style={[styles.meta, { color: theme.text.secondary, fontVariant: ['tabular-nums'] }]}
+          >
+            {meta}
+          </Text>
 
-        <Text
-          variant="bodyMedium"
-          style={{
-            color: theme.text.secondary,
-            fontVariant: ['tabular-nums'],
-            marginTop: spacing.scale[1],
-          }}
-          numberOfLines={1}
-        >
-          {metaText}
-        </Text>
-
-        <View style={styles.trustRow}>
-          <TrustDisplay
-            verification={alert.verification_label}
-            alert={alert}
-            theme={theme}
-          />
+          <View style={styles.trustRow}>
+            <TrustLabel alert={alert} theme={theme} />
+          </View>
         </View>
       </View>
-    </Surface>
+    </Card>
   );
-
-  if (onPress) {
-    return (
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`${alert.headline}, ${alert.severity} severity`}
-      >
-        {card}
-      </Pressable>
-    );
-  }
-
-  return card;
 }
 
 const styles = StyleSheet.create({
-  surface: {
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  leftEdge: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 3,
+  card: {
+    borderRadius: 16,
   },
   content: {
-    padding: spacing.scale[2],
-    paddingRight: spacing.scale[3],
-    paddingBottom: spacing.scale[3],
+    padding: spacing.cardPadding,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.scale[2],
+  },
+  body: {
+    flex: 1,
+  },
+  headlineRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.scale[2],
+  },
+  headline: {
+    flex: 1,
+  },
+  meta: {
+    marginTop: spacing.scale[0],
   },
   trustRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     marginTop: spacing.scale[2],
+  },
+  pill: {
+    flexShrink: 1,
+    borderWidth: 1,
+    borderRadius: radius.chip,
+    paddingVertical: spacing.scale[0],
+    paddingHorizontal: spacing.scale[2],
+  },
+  trustText: {
+    fontWeight: '500',
   },
 });

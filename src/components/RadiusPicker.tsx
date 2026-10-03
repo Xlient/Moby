@@ -3,6 +3,7 @@ import { Text, Portal } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import { spacing, radius } from '@/theme/tokens';
 import { RADIUS_OPTIONS, type RadiusKm } from '@/hooks/useNearbyRadius';
+import Svg, { Path } from 'react-native-svg';
 
 interface RadiusPickerProps {
   visible: boolean;
@@ -70,15 +71,15 @@ export function RadiusPicker({ visible, selected, onSelect, onDismiss }: RadiusP
                   {option} km
                 </Text>
                 {isSelected && (
-                  <svg width={20} height={20} viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                    <path
+                  <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+                    <Path
                       d="M5 10l3.5 3.5L15 7"
                       stroke={theme.accent.calm}
-                      strokeWidth="2"
+                      strokeWidth={2}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
-                  </svg>
+                  </Svg>
                 )}
               </Pressable>
             );
@@ -117,15 +118,15 @@ export function RadiusChip({
       >
         {radiusKm} km
       </Text>
-      <svg width={12} height={12} viewBox="0 0 12 12" fill="none" aria-hidden="true">
-        <path
+      <Svg width={12} height={12} viewBox="0 0 12 12" fill="none">
+        <Path
           d="M3 4.5L6 7.5L9 4.5"
           stroke={theme.text.faint}
-          strokeWidth="1.5"
+          strokeWidth={1.5}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-      </svg>
+      </Svg>
     </Pressable>
   );
 }

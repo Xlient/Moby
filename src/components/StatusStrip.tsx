@@ -1,4 +1,5 @@
-import type { CSSProperties } from 'react';
+import { View, StyleSheet } from 'react-native';
+import { Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -33,44 +34,45 @@ export function StatusStrip({
   if (!locationAvailable) {
     text = 'Location unavailable';
   } else if (loading) {
-    text = 'Checking for alerts\u2026';
+    text = 'Checking for alerts…';
   } else if (isOffline) {
     const timeStr = formatUpdatedTime(updatedMinutesAgo);
-    text = `Offline${timeStr ? ' \u00b7 ' + timeStr : ''}`;
+    text = `Offline${timeStr ? ' · ' + timeStr : ''}`;
   } else {
     const areaStr = areaCount === 1 ? '1 area' : `${areaCount} areas`;
     const timeStr = formatUpdatedTime(updatedMinutesAgo);
-    text = `Watching ${areaStr}${timeStr ? ' \u00b7 ' + timeStr : ''}`;
+    text = `Watching ${areaStr}${timeStr ? ' · ' + timeStr : ''}`;
   }
 
   const showCalmDot = locationAvailable && !isOffline && !loading;
 
-  const styles: Record<string, CSSProperties> = {
-    strip: {
-      display: 'flex',
-      alignItems: 'center',
-      padding: `${spacing.scale[2]}px ${r.gutter}px`,
-      minHeight: spacing.minTapTarget,
-    },
-    dot: {
-      width: 8,
-      height: 8,
-      borderRadius: '50%',
-      backgroundColor: showCalmDot ? theme.accent.calm : theme.text.faint,
-      marginRight: spacing.scale[2],
-      flexShrink: 0,
-    },
-    text: {
-      ...typography.meta,
-      color: theme.text.secondary,
-      fontVariantNumeric: undefined,
-    },
-  };
-
   return (
-    <div style={styles.strip} role="status" aria-label={text}>
-      <div style={styles.dot} aria-hidden="true" />
-      <span style={styles.text}>{text}</span>
-    </div>
+    <View
+      style={[styles.strip, { paddingHorizontal: r.gutter }]}
+      accessibilityLabel={text}
+    >
+      <View
+        style={[
+          styles.dot,
+          { backgroundColor: showCalmDot ? theme.accent.calm : theme.text.faint },
+        ]}
+      />
+      <Text style={[typography.meta, { color: theme.text.secondary }]}>{text}</Text>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  strip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.scale[2],
+    minHeight: spacing.minTapTarget,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: spacing.scale[2],
+  },
+});

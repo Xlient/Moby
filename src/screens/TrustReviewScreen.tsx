@@ -1,8 +1,10 @@
-import type { CSSProperties } from 'react';
+import { View, ScrollView, StyleSheet } from 'react-native';
+import { Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import { spacing } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
 import { AlertCard } from '@/components/AlertCard';
+import { ScreenHeader } from '@/components/ScreenHeader';
 import type { Alert, Severity, VerificationLabel } from '@/api/types';
 
 const SEVERITIES: Severity[] = ['low', 'medium', 'high', 'critical'];
@@ -47,78 +49,38 @@ export function TrustReviewScreen({ onBack }: TrustReviewScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
 
-  const styles: Record<string, CSSProperties> = {
-    container: {
-      height: '100%',
-      overflowY: 'auto',
-      WebkitOverflowScrolling: 'touch',
-      backgroundColor: theme.bg.base,
-    },
-    header: {
-      display: 'flex',
-      alignItems: 'center',
-      padding: `${spacing.scale[2]}px ${r.gutter}px`,
-      borderBottom: `1px solid ${theme.line.hairline}`,
-      backgroundColor: theme.bg.raised,
-      minHeight: spacing.minTapTarget + 8,
-    },
-    backBtn: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minWidth: spacing.minTapTarget,
-      minHeight: spacing.minTapTarget,
-      background: 'none',
-      border: 'none',
-      color: theme.text.primary,
-      cursor: 'pointer',
-      padding: 0,
-      marginRight: spacing.scale[2],
-    },
-    headerTitle: {
-      ...r.heading,
-      color: theme.text.primary,
-      margin: 0,
-      fontVariantNumeric: undefined,
-    },
-    section: {
-      padding: `${r.sectionGap}px ${r.gutter}px 0`,
-    },
-    sectionTitle: {
-      ...r.heading,
-      color: theme.text.primary,
-      margin: `0 0 ${spacing.scale[3]}px 0`,
-      fontVariantNumeric: undefined,
-    },
-    cardGap: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: spacing.scale[3],
-      paddingBottom: r.sectionGap,
-    },
-  };
-
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <button style={styles.backBtn} onClick={onBack} aria-label="Go back">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M19 12H5M12 19l-7-7 7-7" stroke={theme.text.primary} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
-        <h2 style={styles.headerTitle}>Trust treatments</h2>
-      </div>
-
-      {VERIFICATIONS.map((v) => (
-        <div key={v} style={styles.section}>
-          <h3 style={styles.sectionTitle}>{VERIFICATION_LABELS[v]}</h3>
-          <div style={styles.cardGap}>
-            {SEVERITIES.map((s) => (
-              <AlertCard key={`${v}-${s}`} alert={makeAlert(s, v)} />
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
+    <View style={[styles.container, { backgroundColor: theme.bg.base }]}>
+      <ScreenHeader title="Trust treatments" onBack={onBack} />
+      <ScrollView style={styles.container}>
+        {VERIFICATIONS.map((v) => (
+          <View key={v} style={{ paddingTop: r.sectionGap, paddingHorizontal: r.gutter }}>
+            <Text
+              accessibilityRole="header"
+              style={[r.heading, styles.sectionTitle, { color: theme.text.primary }]}
+            >
+              {VERIFICATION_LABELS[v]}
+            </Text>
+            <View style={[styles.cardGap, { paddingBottom: r.sectionGap }]}>
+              {SEVERITIES.map((s) => (
+                <AlertCard key={`${v}-${s}`} alert={makeAlert(s, v)} />
+              ))}
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  sectionTitle: {
+    marginBottom: spacing.scale[3],
+  },
+  cardGap: {
+    gap: spacing.scale[3],
+  },
+});

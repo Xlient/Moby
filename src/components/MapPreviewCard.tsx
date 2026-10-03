@@ -1,129 +1,94 @@
 import { View, Pressable, StyleSheet } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Card, Icon, Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
-import { spacing, radius as radiusTokens } from '@/theme/tokens';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import type { RadiusKm } from '@/hooks/useNearbyRadius';
+import { spacing, radius } from '@/theme/tokens';
+import type { NearbyAlert } from '@/hooks/useNearbyAlerts';
+import { MapPreviewCanvas } from './MapPreviewCanvas';
 
 interface MapPreviewCardProps {
-  radiusKm: RadiusKm;
+  nearby: NearbyAlert[];
+  radiusKm: number;
+  isOffline: boolean;
   onPress: () => void;
-  alertCount: number;
+  onRadiusPress: () => void;
 }
 
-function MapIcon({ color }: { color: string }) {
-  return (
-    <svg width={32} height={32} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      <path
-        d="M16 4C11.58 4 8 7.58 8 12c0 6 8 16 8 16s8-10 8-16c0-4.42-3.58-8-8-8z"
-        stroke={color}
-        strokeWidth="1.5"
-        fill="none"
-      />
-      <circle cx="16" cy="12" r="3" stroke={color} strokeWidth="1.5" fill="none" />
-    </svg>
-  );
-}
-
-function RadiusRing({ color }: { color: string }) {
-  return (
-    <svg width={64} height={64} viewBox="0 0 64 64" fill="none" aria-hidden="true">
-      <circle
-        cx="32"
-        cy="32"
-        r="28"
-        stroke={color}
-        strokeWidth="1"
-        strokeDasharray="4 3"
-        opacity={0.4}
-      />
-      <circle cx="32" cy="32" r="3" fill={color} opacity={0.6} />
-    </svg>
-  );
-}
-
-export function MapPreviewCard({ radiusKm, onPress, alertCount }: MapPreviewCardProps) {
+/**
+ * Static preview (spec v3, Part 4): user position, radius circle and a pin for
+ * every alert inside the radius — the same set as the list above it. No pan, no
+ * zoom, no pin taps; the whole card opens the full map, the chip opens the picker.
+ */
+export function MapPreviewCard({ nearby, radiusKm, isOffline, onPress, onRadiusPress }: MapPreviewCardProps) {
   const { theme } = useTheme();
-  const isOnline = useOnlineStatus();
-
-  const caption = isOnline
-    ? alertCount > 0
-      ? `${alertCount} alert${alertCount === 1 ? '' : 's'} within ${radiusKm} km`
-      : `No alerts within ${radiusKm} km`
-    : `Offline \u2014 last view`;
+  const summary =
+    nearby.length === 0
+      ? `Nothing within ${radiusKm} km`
+      : `${nearby.length} alert${nearby.length === 1 ? '' : 's'} within ${radiusKm} km`;
 
   return (
-    <Pressable
+    <Card
+      mode="contained"
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Map preview. ${caption}. Tap to open map.`}
+      accessibilityLabel={`Map preview. ${summary}.${isOffline ? ' Last known view.' : ''} Opens the full map.`}
+      style={[styles.card, { backgroundColor: theme.bg.recessed }]}
     >
-      <View
-        style={[
-          styles.card,
-          {
-            backgroundColor: theme.bg.recessed,
-            borderColor: theme.line.hairline,
-            borderRadius: radiusTokens.card,
-          },
-        ]}
-      >
-        <View style={styles.mapContent}>
-          <RadiusRing color={theme.accent.calm} />
-          <View style={styles.pinOverlay}>
-            <MapIcon color={theme.text.faint} />
-          </View>
-        </View>
+      <View style={styles.canvas} pointerEvents="box-none">
+        <MapPreviewCanvas nearby={nearby} radiusKm={radiusKm} />
 
-        <View
-          style={[
-            styles.captionBar,
-            {
-              backgroundColor: theme.bg.raised,
-              borderTopWidth: 1,
-              borderTopColor: theme.line.hairline,
-            },
-          ]}
+        {isOffline && (
+          <View style={[styles.offlineTag, { backgroundColor: theme.bg.raised }]}>
+            <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
+              Last known view
+            </Text>
+          </View>
+        )}
+
+        <Pressable
+          onPress={onRadiusPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Watching within ${radiusKm} kilometres. Change radius.`}
+          hitSlop={8}
+          style={[styles.radiusChip, { backgroundColor: theme.bg.raised }]}
         >
-          <Text
-            variant="bodyMedium"
-            style={{ color: theme.text.secondary }}
-          >
-            {caption}
+          <Icon source="map-marker-radius-outline" size={18} color={theme.text.secondary} />
+          <Text variant="labelLarge" style={[styles.chipText, { color: theme.text.primary }]}>
+            Within {radiusKm} km
           </Text>
-          <svg width={16} height={16} viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path
-              d="M6 4l4 4-4 4"
-              stroke={theme.text.faint}
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </View>
+        </Pressable>
       </View>
-    </Pressable>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderWidth: 1,
+    borderRadius: 16,
     overflow: 'hidden',
   },
-  mapContent: {
-    aspectRatio: 16 / 9,
-    alignItems: 'center',
-    justifyContent: 'center',
+  canvas: {
+    aspectRatio: 16 / 10,
   },
-  pinOverlay: {
+  offlineTag: {
     position: 'absolute',
+    top: spacing.scale[2],
+    left: spacing.scale[2],
+    borderRadius: radius.chip,
+    paddingVertical: spacing.scale[0],
+    paddingHorizontal: spacing.scale[2],
   },
-  captionBar: {
+  radiusChip: {
+    position: 'absolute',
+    left: spacing.scale[2],
+    bottom: spacing.scale[2],
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.scale[2],
-    paddingHorizontal: spacing.scale[3],
+    gap: spacing.scale[1],
+    minHeight: 40,
+    borderRadius: radius.chip,
+    paddingHorizontal: spacing.scale[2],
+  },
+  chipText: {
+    fontWeight: '500',
   },
 });

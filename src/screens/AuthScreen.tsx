@@ -1,4 +1,14 @@
-import { useState, type CSSProperties, type FormEvent } from 'react';
+import { useState } from 'react';
+import {
+  View,
+  TextInput,
+  Pressable,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+} from 'react-native';
+import { Button, Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useAuth } from '@/auth/AuthContext';
@@ -7,17 +17,51 @@ import { typography, spacing, radius } from '@/theme/tokens';
 export function AuthScreen() {
   const { theme } = useTheme();
   const r = useResponsive();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, sendPasswordReset, googleAvailable, signInWithGoogle } = useAuth();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const handleForgotPassword = async () => {
     setError(null);
+    setNotice(null);
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError('Enter your email above, then tap \u201cForgot password?\u201d again.');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await sendPasswordReset(trimmedEmail);
+      setNotice(`If ${trimmedEmail} has an account, a reset link is on its way.`);
+    } catch (err: any) {
+      setError(err?.message ?? 'Something went wrong.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGoogle = async () => {
+    setError(null);
+    setNotice(null);
+    setSubmitting(true);
+    try {
+      await signInWithGoogle();
+    } catch (err: any) {
+      setError(err?.message ?? 'Something went wrong.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    setError(null);
+    setNotice(null);
 
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
@@ -34,184 +78,261 @@ export function AuthScreen() {
       if (mode === 'signin') {
         await signIn(trimmedEmail, password);
       } else {
-        await signUp(trimmedEmail, password);
+        await signUp(name, trimmedEmail, password);
       }
     } catch (err: any) {
-      setError(err.message ?? 'Something went wrong.');
+      setError(err?.message ?? 'Something went wrong.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const styles: Record<string, CSSProperties> = {
-    container: {
-      display: 'flex',
-      flexDirection: 'column',
-      justifyContent: 'center',
-      minHeight: '100%',
-      padding: `${r.sectionGap}px ${r.gutter}px`,
-      overflowY: 'auto',
-      WebkitOverflowScrolling: 'touch',
-    },
-    title: {
-      ...r.title,
-      color: theme.text.primary,
-      margin: `0 0 ${spacing.scale[1]}px 0`,
-      fontVariantNumeric: undefined,
-    },
-    subtitle: {
-      ...typography.body,
-      color: theme.text.secondary,
-      margin: `0 0 ${r.sectionGap}px 0`,
-      fontVariantNumeric: undefined,
-    },
-    form: {
-      display: 'flex',
-      flexDirection: 'column',
-      gap: spacing.scale[3],
-    },
-    fieldLabel: {
-      ...typography.label,
-      color: theme.text.secondary,
-      marginBottom: spacing.scale[1],
-      display: 'block',
-      fontVariantNumeric: undefined,
-    },
-    input: {
-      ...typography.body,
-      width: '100%',
-      padding: `${spacing.scale[2]}px ${spacing.scale[3]}px`,
+  const inputStyle = [
+    typography.body,
+    styles.input,
+    {
       backgroundColor: theme.bg.recessed,
-      border: `1px solid ${theme.line.hairline}`,
-      borderRadius: radius.input,
+      borderColor: theme.line.hairline,
       color: theme.text.primary,
-      fontVariantNumeric: undefined,
-      outline: 'none',
     },
-    submitBtn: {
-      ...typography.bodyStrong,
-      width: '100%',
-      minHeight: spacing.minTapTarget,
-      backgroundColor: theme.accent.calm,
-      color: theme.bg.raised,
-      border: 'none',
-      borderRadius: radius.input,
-      cursor: submitting ? 'default' : 'pointer',
-      opacity: submitting ? 0.6 : 1,
-      fontVariantNumeric: undefined,
-      marginTop: spacing.scale[2],
-    },
-    error: {
-      ...typography.meta,
-      color: theme.severity.critical,
-      margin: 0,
-      fontVariantNumeric: undefined,
-    },
-    switchRow: {
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.scale[1],
-      marginTop: r.sectionGap,
-    },
-    switchText: {
-      ...typography.meta,
-      color: theme.text.secondary,
-    },
-    switchBtn: {
-      ...typography.meta,
-      fontWeight: 600,
-      color: theme.accent.calm,
-      background: 'none',
-      border: 'none',
-      cursor: 'pointer',
-      padding: 0,
-      minHeight: spacing.minTapTarget,
-      display: 'inline-flex',
-      alignItems: 'center',
-    },
-  };
+  ];
+  const labelStyle = [typography.label, styles.fieldLabel, { color: theme.text.secondary }];
 
   return (
-    <div style={styles.container}>
-      <h1 style={styles.title}>
-        {mode === 'signin' ? 'Sign in' : 'Create account'}
-      </h1>
-      <p style={styles.subtitle}>
-        {mode === 'signin'
-          ? 'Welcome back to Early Warning.'
-          : 'Set up your account to receive alerts.'}
-      </p>
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          { paddingVertical: r.sectionGap, paddingHorizontal: r.gutter },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text
+          accessibilityRole="header"
+          style={[r.title, styles.title, { color: theme.text.primary }]}
+        >
+          {mode === 'signin' ? 'Sign in' : 'Create account'}
+        </Text>
+        <Text
+          style={[typography.body, { color: theme.text.secondary, marginBottom: r.sectionGap }]}
+        >
+          {mode === 'signin'
+            ? 'Welcome back to Moby.'
+            : 'Set up your account to receive alerts.'}
+        </Text>
 
-      <form style={styles.form} onSubmit={handleSubmit} noValidate>
-        <div>
-          <label style={styles.fieldLabel} htmlFor="auth-email">
-            Email
-          </label>
-          <input
-            id="auth-email"
-            style={styles.input}
-            type="email"
-            autoComplete="email"
-            inputMode="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={submitting}
-            aria-invalid={!!error}
-          />
-        </div>
-
-        <div>
-          <label style={styles.fieldLabel} htmlFor="auth-password">
-            Password
-          </label>
-          <input
-            id="auth-password"
-            style={styles.input}
-            type="password"
-            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={submitting}
-          />
-        </div>
-
-        {error && (
-          <p style={styles.error} role="alert">
-            {error}
-          </p>
+        {googleAvailable && (
+          <>
+            <Button
+              mode="outlined"
+              icon="google"
+              onPress={handleGoogle}
+              disabled={submitting}
+              textColor={theme.text.primary}
+              style={[styles.googleBtn, { borderColor: theme.line.hairline, backgroundColor: theme.bg.raised }]}
+              contentStyle={styles.googleBtnContent}
+              labelStyle={typography.bodyStrong}
+            >
+              Continue with Google
+            </Button>
+            <Text style={[typography.meta, styles.orText, { color: theme.text.secondary }]}>
+              Or use your email
+            </Text>
+          </>
         )}
 
-        <button
-          type="submit"
-          style={styles.submitBtn}
-          disabled={submitting}
-        >
-          {submitting
-            ? 'One moment\u2026'
-            : mode === 'signin'
-              ? 'Sign in'
-              : 'Create account'}
-        </button>
-      </form>
+        <View style={styles.form}>
+          {mode === 'signup' && (
+            <View>
+              <Text style={labelStyle} nativeID="auth-name-label">
+                First name (optional)
+              </Text>
+              <TextInput
+                style={inputStyle}
+                accessibilityLabelledBy="auth-name-label"
+                accessibilityLabel="First name, optional"
+                autoCapitalize="words"
+                autoComplete="given-name"
+                textContentType="givenName"
+                value={name}
+                onChangeText={setName}
+                editable={!submitting}
+                returnKeyType="next"
+                maxLength={80}
+              />
+            </View>
+          )}
 
-      <div style={styles.switchRow}>
-        <span style={styles.switchText}>
-          {mode === 'signin'
-            ? 'No account yet?'
-            : 'Already have an account?'}
-        </span>
-        <button
-          type="button"
-          style={styles.switchBtn}
-          onClick={() => {
-            setMode(mode === 'signin' ? 'signup' : 'signin');
-            setError(null);
-          }}
-        >
-          {mode === 'signin' ? 'Create one' : 'Sign in'}
-        </button>
-      </div>
-    </div>
+          <View>
+            <Text style={labelStyle} nativeID="auth-email-label">
+              Email
+            </Text>
+            <TextInput
+              style={inputStyle}
+              accessibilityLabelledBy="auth-email-label"
+              accessibilityLabel="Email"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              textContentType="emailAddress"
+              value={email}
+              onChangeText={setEmail}
+              editable={!submitting}
+              returnKeyType="next"
+              placeholderTextColor={theme.text.faint}
+            />
+          </View>
+
+          <View>
+            <Text style={labelStyle} nativeID="auth-password-label">
+              Password
+            </Text>
+            <TextInput
+              style={inputStyle}
+              accessibilityLabelledBy="auth-password-label"
+              accessibilityLabel="Password"
+              secureTextEntry
+              autoCapitalize="none"
+              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+              textContentType={mode === 'signin' ? 'password' : 'newPassword'}
+              value={password}
+              onChangeText={setPassword}
+              editable={!submitting}
+              returnKeyType="go"
+              onSubmitEditing={handleSubmit}
+            />
+          </View>
+
+          {error && (
+            <Text
+              accessibilityRole="alert"
+              style={[typography.meta, { color: theme.severity.critical }]}
+            >
+              {error}
+            </Text>
+          )}
+
+          {notice && (
+            <Text accessibilityLiveRegion="polite" style={[typography.meta, { color: theme.text.secondary }]}>
+              {notice}
+            </Text>
+          )}
+
+          <Pressable
+            onPress={handleSubmit}
+            disabled={submitting}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: submitting, busy: submitting }}
+            style={[
+              styles.submitBtn,
+              { backgroundColor: theme.accent.calm, opacity: submitting ? 0.6 : 1 },
+            ]}
+          >
+            <Text style={[typography.bodyStrong, { color: theme.bg.raised }]}>
+              {submitting
+                ? 'One moment…'
+                : mode === 'signin'
+                  ? 'Sign in'
+                  : 'Create account'}
+            </Text>
+          </Pressable>
+        </View>
+
+        {mode === 'signin' && (
+          <Pressable
+            accessibilityRole="button"
+            style={[styles.switchBtn, styles.forgotBtn]}
+            onPress={handleForgotPassword}
+            disabled={submitting}
+          >
+            <Text style={[typography.meta, styles.strong, { color: theme.accent.calm }]}>
+              Forgot password?
+            </Text>
+          </Pressable>
+        )}
+
+        <View style={[styles.switchRow, { marginTop: r.sectionGap }]}>
+          <Text style={[typography.meta, { color: theme.text.secondary }]}>
+            {mode === 'signin' ? 'No account yet?' : 'Already have an account?'}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            style={styles.switchBtn}
+            onPress={() => {
+              setMode(mode === 'signin' ? 'signup' : 'signin');
+              setError(null);
+              setNotice(null);
+            }}
+          >
+            <Text style={[typography.meta, styles.strong, { color: theme.accent.calm }]}>
+              {mode === 'signin' ? 'Create one' : 'Sign in'}
+            </Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  flex: {
+    flex: 1,
+  },
+  container: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  title: {
+    marginBottom: spacing.scale[1],
+  },
+  form: {
+    gap: spacing.scale[3],
+  },
+  fieldLabel: {
+    marginBottom: spacing.scale[1],
+  },
+  input: {
+    paddingVertical: spacing.scale[2],
+    paddingHorizontal: spacing.scale[3],
+    borderWidth: 1,
+    borderRadius: radius.input,
+  },
+  submitBtn: {
+    minHeight: spacing.minTapTarget,
+    borderRadius: radius.input,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.scale[2],
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.scale[1],
+  },
+  switchBtn: {
+    minHeight: spacing.minTapTarget,
+    justifyContent: 'center',
+  },
+  strong: {
+    fontWeight: '600',
+  },
+  googleBtn: {
+    borderRadius: radius.input,
+  },
+  googleBtnContent: {
+    minHeight: spacing.minTapTarget,
+  },
+  orText: {
+    marginTop: spacing.scale[4],
+    marginBottom: spacing.scale[2],
+  },
+  forgotBtn: {
+    alignSelf: 'center',
+    marginTop: spacing.scale[2],
+  },
+});

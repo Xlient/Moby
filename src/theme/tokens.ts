@@ -111,16 +111,17 @@ export const darkTheme: Theme = {
 };
 
 // ── Typography ───────────────────────────────────────────────
+//
+// React Native text styles. No fontFamily: the platform system
+// font (Roboto on Android, SF on iOS, system-ui on web) is used.
 
-const SYSTEM_FONT_STACK =
-  "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+export type FontWeight = '400' | '500' | '600' | '700';
 
 export interface TypeToken {
   fontSize: number;
   lineHeight: number;
-  fontWeight: number;
-  fontFamily: string;
-  fontVariantNumeric: string;
+  fontWeight: FontWeight;
+  fontVariant: ['tabular-nums'];
 }
 
 export interface Typography {
@@ -138,25 +139,24 @@ export interface Typography {
   label: TypeToken;
 }
 
-const token = (
+export const typeToken = (
   fontSize: number,
   lineHeight: number,
-  fontWeight: number,
+  fontWeight: FontWeight,
 ): TypeToken => ({
   fontSize,
   lineHeight,
   fontWeight,
-  fontFamily: SYSTEM_FONT_STACK,
-  fontVariantNumeric: 'tabular-nums',
+  fontVariant: ['tabular-nums'],
 });
 
 export const typography: Typography = {
-  title: token(26, 32, 600),
-  heading: token(19, 25, 600),
-  body: token(17, 25, 400),
-  bodyStrong: token(17, 25, 600),
-  meta: token(14, 19, 400),
-  label: token(13, 17, 500),
+  title: typeToken(26, 32, '600'),
+  heading: typeToken(19, 25, '600'),
+  body: typeToken(17, 25, '400'),
+  bodyStrong: typeToken(17, 25, '600'),
+  meta: typeToken(14, 19, '400'),
+  label: typeToken(13, 17, '500'),
 };
 
 // ── Spacing ──────────────────────────────────────────────────
