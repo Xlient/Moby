@@ -36,6 +36,7 @@ become public alerts. Nothing about you is decided automatically.
 | Google (Firebase Authentication, Firestore, Cloud Messaging, App Check, Maps) | Accounts, settings, notifications, abuse prevention, maps | USA and other countries; EU Standard Contractual Clauses |
 | Nebius | Hosting our service and database; AI models | European Union |
 | LangChain (LangSmith) | Monitoring the AI pipeline's quality, if enabled | USA; EU Standard Contractual Clauses |
+| Tavily | Web search for context about hazards (e.g. official bulletins and news), using only the hazard type, place and time, never your notes or identity | USA; EU Standard Contractual Clauses |
 
 Official warnings come from public agencies. We don't send them your data.
 
