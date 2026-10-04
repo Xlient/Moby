@@ -109,7 +109,7 @@ jobs:
           mkdir -p dist
           cp android/app/build/outputs/apk/release/Moby.apk "dist/Moby-${{ steps.version.outputs.name }}.apk"
           cp android/app/build/outputs/bundle/release/app-release.aab "dist/Moby-${{ steps.version.outputs.name }}.aab"
-          (cd dist && sha256sum * > SHA256SUMS)
+          (cd dist && sha256sum -- * > SHA256SUMS)
           rm -f "$RUNNER_TEMP/upload.jks"
 
       - uses: actions/upload-artifact@v4

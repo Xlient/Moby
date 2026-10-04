@@ -39,7 +39,7 @@ jobs:
           docker build -t moby-postgres:ci db/
           docker run -d --name moby-db -p 5432:5432 \
             -e POSTGRES_USER=moby -e POSTGRES_PASSWORD=moby -e POSTGRES_DB=moby moby-postgres:ci
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             docker exec moby-db pg_isready -U moby -d moby && break
             sleep 1
           done
