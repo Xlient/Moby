@@ -28,6 +28,9 @@ class Settings(BaseSettings):
 
     # ── Auth (Firebase ID tokens from the app) ───────────────────────────
     firebase_project_id: str = ""
+    # Public Firebase web config for the reviewer console's sign-in (not secrets).
+    firebase_web_api_key: str = ""
+    firebase_auth_domain: str = ""
     # Secret salt for reporter_hash (HMAC of the Firebase uid). Stable per deployment:
     # changing it makes old and new reports from one person look like different people.
     moby_reporter_salt: SecretStr = SecretStr("dev-only-reporter-salt")

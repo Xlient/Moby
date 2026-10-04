@@ -31,6 +31,8 @@ CERTS_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@syste
 class Caller:
     uid: str
     reporter_hash: str
+    # Firebase custom claim `reviewer: true`, granted with scripts/grant_reviewer.py.
+    reviewer: bool = False
 
 
 class _CertCache:
@@ -61,18 +63,17 @@ def reporter_hash(uid: str) -> str:
     return hmac.new(salt, uid.encode(), hashlib.sha256).hexdigest()[:32]
 
 
-def verify_firebase_token(token: str) -> str:
-    """Returns the Firebase uid, or raises ValueError."""
+def verify_firebase_token(token: str) -> dict:
+    """Returns the verified token claims, or raises ValueError."""
     project = get_settings().firebase_project_id
     if not project:
         raise ValueError("FIREBASE_PROJECT_ID is not configured")
     claims = google_jwt.decode(token, certs=_certs.get(), audience=project)
     if claims.get("iss") != f"https://securetoken.google.com/{project}":
         raise ValueError("wrong issuer")
-    uid = claims.get("sub") or ""
-    if not uid:
+    if not claims.get("sub"):
         raise ValueError("token has no subject")
-    return uid
+    return claims
 
 
 def require_user(authorization: Annotated[str | None, Header()] = None) -> Caller:
@@ -80,16 +81,24 @@ def require_user(authorization: Annotated[str | None, Header()] = None) -> Calle
     occasional certificate refresh never blocks the event loop)."""
     s = get_settings()
     if s.moby_auth_disabled:
-        uid = "dev-user"
+        claims = {"sub": "dev-user", "reviewer": True}
     else:
         token = (authorization or "").removeprefix("Bearer ").strip()
         if not token:
             raise HTTPException(401, "sign in required")
         try:
-            uid = verify_firebase_token(token)
+            claims = verify_firebase_token(token)
         except ValueError as e:
             raise HTTPException(401, f"invalid token: {e}") from e
         except httpx.HTTPError as e:
             log.warning("could not fetch Firebase certificates: %s", e)
             raise HTTPException(503, "cannot verify sign-in right now") from e
-    return Caller(uid=uid, reporter_hash=reporter_hash(uid))
+    uid = claims["sub"]
+    return Caller(uid=uid, reporter_hash=reporter_hash(uid), reviewer=claims.get("reviewer") is True)
+
+
+def require_reviewer(authorization: Annotated[str | None, Header()] = None) -> Caller:
+    caller = require_user(authorization)
+    if not caller.reviewer:
+        raise HTTPException(403, "reviewer role required")
+    return caller

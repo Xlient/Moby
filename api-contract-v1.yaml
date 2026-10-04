@@ -614,7 +614,10 @@ paths:
     post:
       tags: [review]
       summary: Approve, reject, or hold an event
-      description: Resumes the paused LangGraph checkpoint for this event.
+      description: >
+        Records the decision (review_queue.status = decided, events.reviewer_decision).
+        The fusion pipeline then resumes its paused checkpoint for this event.
+        409 if another reviewer already decided it.
       parameters:
         - name: event_id
           in: path
@@ -636,6 +639,9 @@ paths:
       responses:
         '204': { description: Recorded }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Already decided by another reviewer
 
 components:
 
