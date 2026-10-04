@@ -26,6 +26,7 @@ import {
   getMockEventReports,
 } from './fixtures';
 import { env } from '@/config/env';
+import { appCheckToken } from '@/lib/appCheck';
 
 // ── Configuration ────────────────────────────────────────────────────
 
@@ -98,6 +99,9 @@ export class ApiClient {
         headers['Authorization'] = `Bearer ${token}`;
       }
     }
+    // Only the official app can call the API (server: moby/api/appcheck.py).
+    const appCheck = await appCheckToken();
+    if (appCheck) headers['X-Firebase-AppCheck'] = appCheck;
 
     if (options.body !== undefined) {
       headers['Content-Type'] = 'application/json';
@@ -250,6 +254,8 @@ export class ApiClient {
       const token = await this.getToken();
       if (token) headers['Authorization'] = `Bearer ${token}`;
     }
+    const appCheck = await appCheckToken();
+    if (appCheck) headers['X-Firebase-AppCheck'] = appCheck;
 
     const res = await fetch(fullUrl, { method: 'GET', headers });
 
@@ -281,6 +287,8 @@ export class ApiClient {
       const token = await this.getToken();
       if (token) headers['Authorization'] = `Bearer ${token}`;
     }
+    const appCheck = await appCheckToken();
+    if (appCheck) headers['X-Firebase-AppCheck'] = appCheck;
 
     const res = await fetch(fullUrl, { method: 'GET', headers });
 

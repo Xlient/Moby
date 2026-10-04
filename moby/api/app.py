@@ -58,6 +58,7 @@ from moby.llm import EMBEDDING_DIM
 
 from .alerts import to_alert
 from .reports import router as reports_router
+from .appcheck import app_check_middleware
 from .guidance import router as guidance_router
 from .me import router as me_router
 from .review import router as review_router
@@ -77,6 +78,8 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Moby early-warning API", version="0.5.0", lifespan=lifespan)
+# Only the official signed app (Play Integrity) may call /v1/* — see appcheck.py.
+app.middleware("http")(app_check_middleware)
 app.include_router(reports_router)
 app.include_router(review_router)
 app.include_router(me_router)
