@@ -32,6 +32,12 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Select the newest Xcode
+        run: |
+          XCODE=$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | sort -V | tail -1)
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+
       - name: Install
         run: npm ci
 
@@ -45,11 +51,23 @@ jobs:
         run: |
           WORKSPACE=$(ls -d ios/*.xcworkspace | head -1)
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
-          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release \
-            -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
-            -derivedDataPath build CODE_SIGNING_ALLOWED=NO | tail -n 40
+          # Full log to a file (uploaded below); on failure show only the error lines.
+          if ! xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release \
+              -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
+              -derivedDataPath build CODE_SIGNING_ALLOWED=NO > xcodebuild.log 2>&1; then
+            grep -nE "error:|fatal|\*\* BUILD FAILED" xcodebuild.log | head -60
+            exit 1
+          fi
           APP=$(ls -d build/Build/Products/Release-iphonesimulator/*.app | head -1)
           mkdir -p dist && (cd "$(dirname "$APP")" && zip -qry "$GITHUB_WORKSPACE/dist/Moby-simulator.zip" "$(basename "$APP")")
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          retention-days: 7
 
       - uses: actions/upload-artifact@v4
         with:
