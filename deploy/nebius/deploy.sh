@@ -4,6 +4,7 @@
 #   ./deploy/nebius/deploy.sh setup      # one-time: registry, data filesystem, secrets, backup bucket
 #   ./deploy/nebius/deploy.sh push       # build (linux/amd64) + push the endpoint image
 #   ./deploy/nebius/deploy.sh endpoint   # create the always-on Serverless Endpoint (API + poller + DB)
+#   ./deploy/nebius/deploy.sh redeploy   # push a new image and recreate the endpoint (data is kept)
 #   ./deploy/nebius/deploy.sh embed      # run the embedding Serverless Job once
 #   ./deploy/nebius/deploy.sh backup     # run the backup Serverless Job once
 #   ./deploy/nebius/deploy.sh status | logs | stop | start
@@ -72,6 +73,15 @@ cmd_setup() {
     save TF_SECRET "$NAME-token-factory"
     echo "created secret $NAME-token-factory" >&2
   fi
+  if [ -z "${SALT_SECRET:-}" ]; then
+    # Salt for reporter_hash. Generated here, stored only in MysteryBox, never printed.
+    # Must never change once real reports exist (it would split people into "new" reporters).
+    local salt; salt="$(openssl rand -hex 32)"
+    "$NEBIUS" mysterybox secret create "${P[@]}" --name "$NAME-reporter-salt" \
+      --secret-version-payload "[{\"key\":\"MOBY_REPORTER_SALT\",\"string_value\":\"$salt\"}]" >/dev/null
+    save SALT_SECRET "$NAME-reporter-salt"
+    echo "created secret $NAME-reporter-salt" >&2
+  fi
   if [ -z "${BACKUP_BUCKET:-}" ]; then
     run "$NEBIUS" storage bucket create "${P[@]}" --name "$NAME-backups" >/dev/null
     save BACKUP_BUCKET "$NAME-backups"
@@ -102,8 +112,16 @@ cmd_push() {
   save IMAGE "$image"
 }
 
+env_from_dotenv() {  # public values only (Firebase web config); secrets come from MysteryBox
+  grep -E "^$1=" "$ROOT/.env" 2>/dev/null | tail -1 | cut -d= -f2-
+}
+
 cmd_endpoint() {
-  need IMAGE push; need DATA_FS_ID setup; need SERVICE_SECRET setup
+  need IMAGE push; need DATA_FS_ID setup; need SERVICE_SECRET setup; need SALT_SECRET setup
+  local fb_project fb_key fb_domain
+  fb_project="$(env_from_dotenv FIREBASE_PROJECT_ID)"; fb_key="$(env_from_dotenv FIREBASE_WEB_API_KEY)"
+  fb_domain="$(env_from_dotenv FIREBASE_AUTH_DOMAIN)"
+  [ -n "$fb_project" ] || { echo "FIREBASE_PROJECT_ID missing from .env (needed to verify app sign-ins)" >&2; exit 1; }
   # auth=none: the public routes are read-only alert data the app needs without a
   # login; /internal/* checks MOBY_SERVICE_TOKEN itself.
   save ENDPOINT_ID "$(run "$NEBIUS" ai endpoint create "${P[@]}" --name "$NAME-api" \
@@ -111,6 +129,10 @@ cmd_endpoint() {
     --disk-size 30Gi --container-port 8000 \
     --volume "$DATA_FS_ID:/data" \
     --env-secret "MOBY_SERVICE_TOKEN=$SERVICE_SECRET" \
+    --env-secret "MOBY_REPORTER_SALT=$SALT_SECRET" \
+    --env "FIREBASE_PROJECT_ID=$fb_project" \
+    --env "FIREBASE_WEB_API_KEY=$fb_key" \
+    --env "FIREBASE_AUTH_DOMAIN=$fb_domain" \
     --env "NWS_USER_AGENT=moby-early-warning/0.1 (github.com/Xlient/Moby)" \
     --format json | json_id)"
   cmd_status
@@ -140,9 +162,21 @@ cmd_embed()  { job embed "python -m moby.jobs.embed_events" --env-secret "N_FACT
 cmd_backup() {
   need BACKUP_BUCKET setup
   # The bucket is mounted into the job, so the dump lands in object storage directly.
-  # Needs S3 credentials: set BACKUP_S3_AUTH=<profile>@<mysterybox-secret> (docs/deploy.md).
+  # Needs S3 credentials: BACKUP_S3_AUTH=<profile>@<mysterybox-secret> (saved in .state; docs/deploy.md).
+  # The secret must hold S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY; the local AWS profile supplies region + endpoint.
   job backup "python -m moby.jobs.backup" --env "BACKUP_DIR=/backup" \
     --volume "s3://$BACKUP_BUCKET:/backup:rw${BACKUP_S3_AUTH:+:$BACKUP_S3_AUTH}"
+}
+
+cmd_redeploy() {
+  # Endpoints keep the image/env they were created with, so a new version means a new
+  # endpoint. The database lives on the shared filesystem, so nothing is lost; the
+  # public URL changes (printed at the end).
+  need ENDPOINT_ID endpoint
+  TAG="${TAG:-$(git -C "$ROOT" rev-parse --short HEAD)-$(date +%H%M)}" cmd_push
+  run "$NEBIUS" ai endpoint delete "$ENDPOINT_ID"
+  sed -i '' '/^ENDPOINT_ID=/d' "$STATE"; unset ENDPOINT_ID
+  cmd_endpoint
 }
 
 cmd_status() { need ENDPOINT_ID endpoint; run "$NEBIUS" ai endpoint get "$ENDPOINT_ID"; echo "url: $(endpoint_url)"; }
@@ -151,6 +185,6 @@ cmd_stop()   { need ENDPOINT_ID endpoint; run "$NEBIUS" ai endpoint stop "$ENDPO
 cmd_start()  { need ENDPOINT_ID endpoint; run "$NEBIUS" ai endpoint start "$ENDPOINT_ID"; }
 
 case "${1:-}" in
-  setup|push|endpoint|embed|backup|status|logs|stop|start) "cmd_$1" ;;
+  setup|push|endpoint|redeploy|embed|backup|status|logs|stop|start) "cmd_$1" ;;
   *) sed -n '2,15p' "$0"; exit 1 ;;
 esac

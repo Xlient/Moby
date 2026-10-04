@@ -12,7 +12,6 @@ import { DiagramMapScreen } from './DiagramMapScreen';
 import { RadiusChip, RadiusPicker } from '@/components/RadiusPicker';
 import { AlertCard } from '@/components/AlertCard';
 import { AlertMarker } from '@/components/AlertMarker';
-import { USER_CENTER } from '@/lib/geo';
 import { circlePoints, regionForRadius, surroundingBox, toLatLng } from '@/lib/mapGeometry';
 import type { NearbyAlert } from '@/hooks/useNearbyAlerts';
 
@@ -54,13 +53,11 @@ function PinSheet({
 export function MapScreen({ onBack, onAlertDetail }: MapScreenProps) {
   const { theme, isDark } = useTheme();
   // Same source as the home list, so the pins always match it for the same radius.
-  const { nearby, radiusKm, setRadiusKm, isOffline } = useNearbyAlerts();
+  const { nearby, radiusKm, setRadiusKm, isOffline, center } = useNearbyAlerts();
   const mapRef = useRef<MapView>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // TODO(location): centre on the device position.
-  const center = USER_CENTER;
   const selected = nearby.find((n) => n.alert.alert_id === selectedId) ?? null;
 
   const { failed: tilesFailed, onMapLoaded } = useMapLoadFallback();
@@ -69,10 +66,11 @@ export function MapScreen({ onBack, onAlertDetail }: MapScreenProps) {
     mapRef.current?.animateToRegion(regionForRadius(center, radiusKm), 350);
   };
 
-  // Re-fit when the radius changes; drop a selection the new radius excludes.
+  // Re-fit when the radius changes or the first device fix replaces the demo centre;
+  // drop a selection the new radius excludes.
   useEffect(() => {
     recenter();
-  }, [radiusKm]);
+  }, [radiusKm, center.source]);
   useEffect(() => {
     if (selectedId && !selected) setSelectedId(null);
   }, [selectedId, selected]);

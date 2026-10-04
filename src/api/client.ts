@@ -12,6 +12,7 @@ import type {
   Subscription,
   User,
   Event,
+  EventReports,
   HazardType,
 } from './types';
 import {
@@ -21,6 +22,7 @@ import {
   getMockBrief,
   getMockGuidanceCards,
   getMockSubscriptions,
+  getMockEventReports,
 } from './fixtures';
 import { env } from '@/config/env';
 
@@ -193,6 +195,12 @@ export class ApiClient {
     return this.request<Event>('GET', `/events/${encodeURIComponent(eventId)}`);
   }
 
+  /** Community reports behind an event (public and coarse: no notes, no reporters). */
+  async getEventReports(eventId: string): Promise<EventReports> {
+    if (USE_MOCK) return getMockEventReports(eventId);
+    return this.request<EventReports>('GET', `/events/${encodeURIComponent(eventId)}/reports`);
+  }
+
   async confirmEvent(
     eventId: string,
     data: {
@@ -286,8 +294,21 @@ export class ApiClient {
 
   // ── Reports ──────────────────────────────────────────────────────
 
+  /** Write-first: a 202 means durably received; fusion runs afterwards (contract 0.5.0). */
   async submitReport(report: ReportSubmission): Promise<ReportAccepted> {
+    if (USE_MOCK) {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      return { client_event_id: report.client_event_id, report_id: `mock-${report.client_event_id}`, status: 'pending' };
+    }
     return this.request<ReportAccepted>('POST', '/reports', { body: report });
+  }
+
+  /** Status of one of the caller's own reports (event_id / tier once fused). */
+  async getReportStatus(clientEventId: string): Promise<ReportAccepted> {
+    if (USE_MOCK) {
+      return { client_event_id: clientEventId, report_id: `mock-${clientEventId}`, status: 'pending' };
+    }
+    return this.request<ReportAccepted>('GET', `/reports/${encodeURIComponent(clientEventId)}`);
   }
 
   // ── Subscriptions ────────────────────────────────────────────────

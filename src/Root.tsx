@@ -4,6 +4,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native';
 import { ThemeProvider, useTheme } from '@/theme/ThemeContext';
 import { AuthProvider } from '@/auth/AuthContext';
+import { UserLocationProvider } from '@/location/UserLocationContext';
 import { App } from '@/App';
 
 const queryClient = new QueryClient({
@@ -35,7 +36,9 @@ export function Root() {
       <SafeAreaProvider>
         <ThemeProvider>
           <AuthProvider>
-            <ThemedShell />
+            <UserLocationProvider>
+              <ThemedShell />
+            </UserLocationProvider>
           </AuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>

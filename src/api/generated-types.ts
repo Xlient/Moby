@@ -333,7 +333,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Accepted for processing */
+                /** @description Durably received (or already received — same client_event_id). Fusion runs afterwards; poll GET /reports/{client_event_id} for the outcome. */
                 202: {
                     headers: {
                         [name: string]: unknown;
@@ -343,8 +343,62 @@ export interface paths {
                     };
                 };
                 400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                /** @description client_event_id already used by a different reporter */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Too many reports from this reporter; retry later */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/{client_event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status of one of the caller's own reports */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    client_event_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReportAccepted"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -377,6 +431,48 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["Event"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events/{event_id}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Community reports fused into an event (public, coarse)
+         * @description For the alert detail screen. Never includes notes, reporter identity or exact positions — only distance from the event, rounded to 100 m.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    event_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EventReports"];
                     };
                 };
                 404: components["responses"]["NotFound"];
@@ -975,7 +1071,7 @@ export interface paths {
         put?: never;
         /**
          * Approve, reject, or hold an event
-         * @description Resumes the paused LangGraph checkpoint for this event.
+         * @description Records the decision (review_queue.status = decided, events.reviewer_decision). The fusion pipeline then resumes its paused checkpoint for this event. 409 if another reviewer already decided it.
          */
         post: {
             parameters: {
@@ -1006,6 +1102,14 @@ export interface paths {
                     content?: never;
                 };
                 403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                /** @description Already decided by another reviewer */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
             };
         };
         delete?: never;
@@ -1117,10 +1221,19 @@ export interface components {
         };
         ReportAccepted: {
             client_event_id: string;
-            /** @description Fused event this report was attached to */
-            event_id: string;
-            /** @enum {integer} */
-            tier: 0 | 1 | 2;
+            report_id: string;
+            /**
+             * @description pending until the fusion pipeline has processed the report.
+             * @enum {string}
+             */
+            status: "pending" | "fused" | "failed";
+            /** @description Fused event this report was attached to (once fused) */
+            event_id?: string;
+            /**
+             * @description The event's tier (once fused)
+             * @enum {integer}
+             */
+            tier?: 0 | 1 | 2;
             merged_into_existing?: boolean;
         };
         Event: {
@@ -1188,6 +1301,25 @@ export interface components {
             product?: string;
             /** @description Offshore/boating product; absent means false. Hidden unless the user opts in. */
             marine?: boolean;
+        };
+        EventReports: {
+            event_id: string;
+            /** @description Distinct people behind the reports (repeat reports from one person count once). */
+            distinct_reporter_count: number;
+            /** @description Newest first, at most 50. */
+            reports: components["schemas"]["ReportSummary"][];
+        };
+        ReportSummary: {
+            hazard_type: components["schemas"]["HazardType"];
+            observed_effect?: components["schemas"]["ObservedEffect"];
+            severity: components["schemas"]["Severity"];
+            /** Format: date-time */
+            observed_at: string;
+            /** @description Rounded to 100 m. */
+            distance_from_event_m: number;
+            captured_offline?: boolean;
+            /** @description Arrived over the Bluetooth mesh. */
+            via_mesh?: boolean;
         };
         SituationalBrief: {
             event_id: string;

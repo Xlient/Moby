@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moby review</title>
+<style>
+  :root {
+    --bg: #f7f8f6; --raised: #ffffff; --recessed: #eff1ee; --line: #e1e5e1;
+    --text: #1f2a2e; --muted: #5f6e73; --faint: #93a1a4; --accent: #6b8f87;
+    --low: #5b87a0; --medium: #c98a26; --high: #c55d23; --critical: #bc3b32;
+    --focus: #1f2a2e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #181d1f; --raised: #212829; --recessed: #141819; --line: #2e3638;
+      --text: #e9edeb; --muted: #9ba8ab; --faint: #6c797c; --accent: #7fa79e;
+      --low: #7ba3b8; --medium: #e0a33c; --high: #dd7434; --critical: #ce4b41; --focus: #e9edeb;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--raised); }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .spacer { flex: 1; }
+  header .who { color: var(--muted); }
+  button { font: inherit; color: inherit; background: var(--recessed); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:focus-visible, li:focus-visible, textarea:focus-visible, select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  a { color: var(--accent); }
+  kbd { font: 12px ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; color: var(--muted); }
+  main { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; height: calc(100vh - 49px); }
+  #list { margin: 0; padding: 0; list-style: none; overflow: auto; border-right: 1px solid var(--line); }
+  #list li { padding: 10px 14px; border-bottom: 1px solid var(--line); cursor: pointer; display: grid; gap: 2px; }
+  #list li[aria-selected="true"] { background: var(--recessed); box-shadow: inset 3px 0 0 var(--accent); }
+  .row { display: flex; gap: 8px; align-items: baseline; }
+  .grow { flex: 1; min-width: 0; }
+  .muted { color: var(--muted); }
+  .faint { color: var(--faint); }
+  .num { font-variant-numeric: tabular-nums; }
+  .sev { font-weight: 600; text-transform: capitalize; }
+  .sev.low { color: var(--low); } .sev.medium { color: var(--medium); } .sev.high { color: var(--high); } .sev.critical { color: var(--critical); }
+  .reason { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; color: var(--muted); white-space: nowrap; }
+  .reason.severity_floor { border-color: var(--critical); color: var(--critical); }
+  #detail { overflow: auto; padding: 20px 24px; }
+  #detail h2 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+  section { margin-top: 20px; }
+  section h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--muted); }
+  .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .fact { background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .fact b { display: block; font-size: 16px; }
+  .rationale { background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; white-space: pre-wrap; }
+  table { width: 100%; border-collapse: collapse; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; background: var(--recessed); }
+  .decide { display: grid; gap: 10px; background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .decide .buttons { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .decide textarea { width: 100%; min-height: 60px; font: inherit; color: inherit; background: var(--recessed); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+  .decide select { font: inherit; color: inherit; background: var(--recessed); border: 1px solid var(--line); border-radius: 8px; padding: 6px; }
+  .approve { border-color: var(--accent); }
+  .empty { padding: 40px 24px; color: var(--muted); }
+  #toast { position: fixed; bottom: 16px; right: 16px; background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  #signin { max-width: 420px; margin: 15vh auto; text-align: left; }
+  @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Moby review</h1>
+  <span class="muted num" id="count" aria-live="polite"></span>
+  <span class="spacer"></span>
+  <span class="faint">Move <kbd>j</kbd>/<kbd>k</kbd> · Approve <kbd>a</kbd> · Reject <kbd>r</kbd> · Hold <kbd>h</kbd> · Note <kbd>/</kbd></span>
+  <span class="who" id="who"></span>
+  <button id="signout" hidden>Sign out</button>
+</header>
+
+<div id="signin" hidden>
+  <h2>Reviewer sign-in</h2>
+  <p class="muted">Only accounts with the reviewer role can open the queue.</p>
+  <button id="signin-btn">Sign in with Google</button>
+  <p class="muted" id="signin-error" role="alert"></p>
+</div>
+
+<main id="app" hidden>
+  <ul id="list" role="listbox" aria-label="Review queue"></ul>
+  <div id="detail" aria-live="polite"></div>
+</main>
+<div id="toast" role="status"></div>
+
+<script type="module">
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const ago = (iso) => {
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+};
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const REASONS = {
+  severity_floor: 'Severity floor', tier1_corroborated: 'Corroborated',
+  conflicting_reports: 'Conflicting reports', low_confidence: 'Low confidence',
+};
+
+let getToken = async () => null;
+let signedIn = false;
+let items = [];
+let selected = 0;
+
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+async function api(path, init = {}) {
+  const token = await getToken();
+  const res = await fetch(path, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init.headers || {}) },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.detail || `HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+function renderList() {
+  $('#count').textContent = `${items.length} waiting`;
+  $('#list').innerHTML = items.map((it, i) => {
+    const e = it.event;
+    const people = new Set(it.contributing_reports.map((r) => r.reporter)).size;
+    return `<li role="option" tabindex="-1" data-i="${i}" aria-selected="${i === selected}">
+      <div class="row"><span class="grow"><b>${esc(e.title || e.hazard_type)}</b></span><span class="sev ${e.severity}">${esc(e.severity)}</span></div>
+      <div class="row muted num"><span class="reason ${it.reason}">${REASONS[it.reason] || it.reason}</span>
+        <span class="grow">${plural(it.contributing_reports.length, 'report')} · ${people} ${people === 1 ? 'person' : 'people'}</span>
+        <span>${ago(it.queued_at)}</span></div>
+    </li>`;
+  }).join('');
+}
+
+function renderDetail() {
+  const it = items[selected];
+  if (!it) {
+    $('#detail').innerHTML = `<div class="empty">Nothing waiting for review. New items appear here automatically.</div>`;
+    return;
+  }
+  const e = it.event;
+  const { lat, lon } = e.location;
+  const osm = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=15/${lat}/${lon}`;
+  $('#detail').innerHTML = `
+    <h2>${esc(e.title || `${e.hazard_type} report`)}</h2>
+    <div class="muted"><span class="sev ${e.severity}">${esc(e.severity)}</span> · ${esc(e.hazard_type)}${e.observed_effect ? ' · ' + esc(e.observed_effect.replaceAll('_', ' ')) : ''}
+      · first reported ${ago(e.first_reported_at)} · <a href="${osm}" target="_blank" rel="noopener">${lat.toFixed(4)}, ${lon.toFixed(4)}</a></div>
+    <section><h3>Why it's here</h3>
+      <div class="facts num">
+        <div class="fact">Reason<b>${REASONS[it.reason] || it.reason}</b></div>
+        <div class="fact">Tier<b>${e.tier}</b></div>
+        <div class="fact">Confidence<b>${Math.round((e.confidence ?? 0) * 100)}%</b></div>
+        <div class="fact">Distinct reporters<b>${e.distinct_reporter_count ?? '—'}</b></div>
+        <div class="fact">Confirm / deny<b>${e.confirm_count ?? 0} / ${e.deny_count ?? 0}</b></div>
+        <div class="fact">Official match<b>${e.official_match_id ? 'Yes' : 'None'}</b></div>
+      </div>
+      ${it.adjudicator_rationale ? `<p class="muted" style="margin:12px 0 4px">Pipeline's reasoning</p><div class="rationale">${esc(it.adjudicator_rationale)}</div>` : ''}
+    </section>
+    <section><h3>Contributing reports (${it.contributing_reports.length})</h3>
+      <table class="num"><thead><tr><th>When</th><th>Severity</th><th>Seen</th><th>Note</th><th>Reporter</th></tr></thead><tbody>
+      ${it.contributing_reports.map((r) => `<tr>
+        <td>${ago(r.observed_at)}${r.captured_offline ? ' <span class="faint">(sent later)</span>' : ''}</td>
+        <td class="sev ${r.severity}">${esc(r.severity)}</td>
+        <td>${esc((r.observed_effect || '').replaceAll('_', ' '))}</td>
+        <td>${esc(r.note) || '<span class="faint">—</span>'}</td>
+        <td class="faint">${esc(r.reporter)}</td></tr>`).join('') || '<tr><td colspan="5" class="faint">No reports attached</td></tr>'}
+      </tbody></table>
+    </section>
+    <section><h3>Decision</h3>
+      <div class="decide">
+        <textarea id="note" maxlength="500" placeholder="Note for the record (optional)"></textarea>
+        <div class="buttons">
+          <label class="muted">Severity <select id="override">
+            <option value="">Keep ${esc(e.severity)}</option>
+            ${['low', 'medium', 'high', 'critical'].map((s) => `<option value="${s}">${s}</option>`).join('')}
+          </select></label>
+          <span class="grow"></span>
+          <button data-d="hold">Hold <kbd>h</kbd></button>
+          <button data-d="reject">Reject <kbd>r</kbd></button>
+          <button data-d="approve" class="approve">Approve <kbd>a</kbd></button>
+        </div>
+      </div>
+    </section>`;
+}
+
+function render() {
+  selected = Math.max(0, Math.min(selected, items.length - 1));
+  renderList();
+  renderDetail();
+}
+
+async function load() {
+  const keep = items[selected]?.event_id;
+  try {
+    items = await api('/v1/review/queue');
+  } catch (err) {
+    if (err.status === 403) return showSignin('This account doesn’t have the reviewer role.');
+    if (err.status === 401) return showSignin('Please sign in again.');
+    toast(`Couldn’t refresh: ${err.message}`);
+    return;
+  }
+  const idx = items.findIndex((it) => it.event_id === keep);
+  if (idx >= 0) selected = idx;
+  render();
+}
+
+async function decide(decision) {
+  const it = items[selected];
+  if (!it) return;
+  const note = $('#note')?.value.trim() || undefined;
+  const override_severity = $('#override')?.value || undefined;
+  try {
+    await api(`/v1/review/${it.event_id}/decision`, { method: 'POST', body: JSON.stringify({ decision, note, override_severity }) });
+    toast({ approve: 'Approved', reject: 'Rejected', hold: 'On hold' }[decision]);
+  } catch (err) {
+    toast(err.status === 409 ? 'Someone else already decided this one' : `Not saved: ${err.message}`);
+  }
+  items.splice(selected, 1);
+  render();
+}
+
+document.addEventListener('click', (ev) => {
+  const li = ev.target.closest('#list li');
+  if (li) { selected = Number(li.dataset.i); render(); return; }
+  const btn = ev.target.closest('button[data-d]');
+  if (btn) decide(btn.dataset.d);
+});
+
+document.addEventListener('keydown', (ev) => {
+  if (ev.target.matches('textarea, select, input')) {
+    if (ev.key === 'Escape') ev.target.blur();
+    return;
+  }
+  const keys = { j: () => { selected++; render(); }, k: () => { selected--; render(); },
+                 a: () => decide('approve'), r: () => decide('reject'), h: () => decide('hold'),
+                 '/': () => { ev.preventDefault(); $('#note')?.focus(); } };
+  keys[ev.key]?.();
+});
+
+function showSignin(message = '') {
+  $('#app').hidden = true;
+  $('#signin').hidden = false;
+  $('#signin-error').textContent = message;
+}
+
+async function start() {
+  const cfg = await fetch('/console/config').then((r) => r.json());
+  if (!cfg.auth_disabled) {
+    const { initializeApp } = await import('https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js');
+    const fb = await import('https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js');
+    const auth = fb.getAuth(initializeApp(cfg.firebase));
+    getToken = async () => (auth.currentUser ? auth.currentUser.getIdToken() : null);
+    $('#signin-btn').onclick = () => fb.signInWithPopup(auth, new fb.GoogleAuthProvider())
+      .catch((e) => { $('#signin-error').textContent = e.message; });
+    $('#signout').onclick = () => fb.signOut(auth);
+    fb.onAuthStateChanged(auth, (user) => {
+      signedIn = !!user;
+      $('#who').textContent = user?.email || '';
+      $('#signout').hidden = !user;
+      if (!user) { showSignin(); return; }
+      $('#signin').hidden = true;
+      $('#app').hidden = false;
+      load();
+    });
+  } else {
+    signedIn = true;
+    $('#who').textContent = 'local dev (no sign-in)';
+    $('#app').hidden = false;
+    load();
+  }
+  setInterval(() => { if (signedIn) load(); }, 30000);
+}
+
+start();
+</script>
+</body>
+</html>

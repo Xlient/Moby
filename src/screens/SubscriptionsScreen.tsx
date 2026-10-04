@@ -6,7 +6,7 @@ import { typography, spacing, radius } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useSubscriptions } from '@/hooks/useSubscriptions';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { USER_CENTER } from '@/lib/geo';
+import { useUserCenter } from '@/location/UserLocationContext';
 import type { Severity } from '@/api/types';
 
 interface SubscriptionsScreenProps {
@@ -80,6 +80,7 @@ function OptionRow<T extends string | number>({
 }
 
 function AddAreaForm({ onDone }: { onDone: () => void }) {
+  const center = useUserCenter();
   const { theme } = useTheme();
   const r = useResponsive();
   const { addSubscription } = useSubscriptions();
@@ -99,8 +100,8 @@ function AddAreaForm({ onDone }: { onDone: () => void }) {
     addSubscription({
       region: 'US',
       label: trimmed,
-      // Device location isn't wired up yet; areas use the demo location for now.
-      center: { lat: USER_CENTER.lat, lon: USER_CENTER.lon, frame: 'WGS84' },
+      // A new area is centred where the phone is now (no place search yet).
+      center: { lat: center.lat, lon: center.lon, frame: 'WGS84' },
       radius_km: radiusKm,
       min_severity: minSeverity,
     }).catch(() => setError('Could not save this area. Try again.'));

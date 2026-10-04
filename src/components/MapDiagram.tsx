@@ -3,7 +3,8 @@ import { View, StyleSheet, type LayoutChangeEvent } from 'react-native';
 import Svg, { Circle, G, Path } from 'react-native-svg';
 import { useTheme } from '@/theme/ThemeContext';
 import { pinPath } from '@/lib/alerts';
-import { USER_CENTER, latLonToXY } from '@/lib/geo';
+import { latLonToXY } from '@/lib/geo';
+import { useUserCenter } from '@/location/UserLocationContext';
 import type { NearbyAlert } from '@/hooks/useNearbyAlerts';
 
 interface MapDiagramProps {
@@ -19,6 +20,7 @@ const PIN_SIZE = 16;
  */
 export function MapDiagram({ nearby, radiusKm }: MapDiagramProps) {
   const { theme } = useTheme();
+  const center = useUserCenter();
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
 
   const onLayout = (e: LayoutChangeEvent) => {
@@ -50,7 +52,7 @@ export function MapDiagram({ nearby, radiusKm }: MapDiagramProps) {
         <Circle cx={cx} cy={cy} r={4.5} fill={theme.text.primary} />
         {nearby.map(({ alert }) => {
           if (!alert.location) return null;
-          const { x, y } = latLonToXY(alert.location.lat, alert.location.lon, USER_CENTER);
+          const { x, y } = latLonToXY(alert.location.lat, alert.location.lon, center);
           const unverified = alert.verification_label === 'unverified_report';
           const color = unverified ? theme.text.secondary : theme.severity[alert.severity];
           return (
