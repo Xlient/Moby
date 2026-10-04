@@ -1,0 +1,96 @@
+# Checks for every pull request and every push to main (required by branch protection).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    name: Backend (lint + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --frozen
+
+      - name: Lint (ruff)
+        run: uv run ruff check moby scripts tests main.py
+
+      # Postgres 17 + PostGIS + pgvector: the same image as local development and the
+      # endpoint, built from db/Dockerfile (no upstream image ships all three).
+      - name: Start database
+        run: |
+          docker build -t moby-postgres:ci db/
+          docker run -d --name moby-db -p 5432:5432 \
+            -e POSTGRES_USER=moby -e POSTGRES_PASSWORD=moby -e POSTGRES_DB=moby moby-postgres:ci
+          for i in $(seq 1 60); do
+            docker exec moby-db pg_isready -U moby -d moby && break
+            sleep 1
+          done
+
+      - name: Tests (pytest)
+        env:
+          DATABASE_URL: postgresql://moby:moby@localhost:5432/moby
+          # Tests never call models or Google; these keep settings valid.
+          MOBY_AUTH_DISABLED: "true"
+        run: uv run pytest -q
+
+  app:
+    name: App (types + lint + contract)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint (eslint)
+        run: npm run lint
+
+      - name: API contract and generated types are in sync
+        run: npm run check:types-generated
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # gitleaks CLI (MIT) via its official image: scans the commits in this push/PR.
+      - name: gitleaks
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            RANGE="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          else
+            RANGE="${{ github.event.before }}..${{ github.sha }}"
+            case "${{ github.event.before }}" in 0000000*|"") RANGE="${{ github.sha }}~1..${{ github.sha }}" ;; esac
+          fi
+          docker run --rm -v "$PWD:/repo" -w /repo zricethezav/gitleaks:v8.28.0 \
+            git --redact --no-banner --config .gitleaks.toml --log-opts="$RANGE"

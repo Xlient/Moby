@@ -1,0 +1,17 @@
+# Secret scanning (CI "Secret scan" job). Extends gitleaks' default rules.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Values that are public by design or test-only"
+paths = [
+  # Firebase client config: identifies the app, not a credential (access is enforced
+  # by Firebase Security Rules and API-key restrictions). Kept in the private repo only.
+  '''google-services\.json''',
+  '''package-lock\.json''',
+  '''uv\.lock''',
+]
+regexes = [
+  # Local docker-compose / CI database credentials (loopback only).
+  '''postgresql://moby:moby@''',
+]

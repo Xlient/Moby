@@ -1,0 +1,20 @@
+name: Feature request
+description: An idea to make Moby more useful
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Who needs it, and in what situation (e.g. travelling, no signal)?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+  - type: textarea
+    id: sources
+    attributes:
+      label: Official sources involved (if any)
+      description: For new warning feeds or guidance, link the official publisher.

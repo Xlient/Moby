@@ -132,7 +132,7 @@ async def resolve_zones(
     sem = asyncio.Semaphore(4)  # be polite to api.weather.gov
     # Fetch concurrently, write sequentially (one connection).
     bodies = await asyncio.gather(*(_fetch_zone(http, sem, u) for u in missing))
-    for url, body in zip(missing, bodies):
+    for url, body in zip(missing, bodies, strict=True):
         if body is None:
             continue  # not cached: retried on the next poll
         point = centroid(body.get("geometry"))  # (lat, lon) or None
@@ -440,7 +440,7 @@ async def run(feeds: list[FeedName], once: bool, force: bool = False) -> list[Po
         specs = [FEEDS[f] for f in feeds]
         if once:
             outcomes = await asyncio.gather(*(poll_feed(s, pool, http, force=force) for s in specs), return_exceptions=True)
-            for s, o in zip(specs, outcomes):
+            for s, o in zip(specs, outcomes, strict=True):
                 if isinstance(o, Exception):
                     log.error("%s: %s", s.name, o)
                 else:

@@ -1,0 +1,19 @@
+# Files published to the public repository (github.com/Xlient/Moby), as git pathspecs
+# (gitignore-style globs). Everything else stays private: backend, database schema,
+# migrations, deploy, API contract, Firestore rules, Firebase project config, model
+# settings. Add a path here only if it is safe for anyone to read.
+#
+# The public repo is the mobile app; it runs on built-in mock data without a backend.
+
+LICENSE
+index.ts
+app.json
+app.config.ts
+eas.json
+package.json
+package-lock.json
+tsconfig.json
+eslint.config.js
+assets/**
+plugins/**
+src/**

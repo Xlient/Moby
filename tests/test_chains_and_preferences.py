@@ -8,7 +8,6 @@ skipped when Postgres isn't reachable:
 """
 import asyncio
 import copy
-import json
 import os
 import subprocess
 import sys
@@ -83,7 +82,8 @@ def test_marine_by_product_and_by_zone():
 
 def test_official_tier_policy():
     assert official_verification(nws("A")).tier == 2
-    eonet_like = copy.copy(nws("A")); eonet_like.source_feed = "eonet"
+    eonet_like = copy.copy(nws("A"))
+    eonet_like.source_feed = "eonet"
     assert official_verification(eonet_like).tier == 1
 
 

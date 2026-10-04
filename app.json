@@ -43,7 +43,8 @@
       "expo-sqlite",
       "expo-font",
       "@react-native-google-signin/google-signin",
-      "./plugins/withApkName"
+      "./plugins/withApkName",
+      "./plugins/withReleaseSigning"
     ]
   }
 }
