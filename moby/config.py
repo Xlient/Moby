@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     # ── Storage ──────────────────────────────────────────────────────────
     database_url: str = "postgresql://moby:moby@localhost:5432/moby"
 
+    # ── Auth (Firebase ID tokens from the app) ───────────────────────────
+    firebase_project_id: str = ""
+    # Secret salt for reporter_hash (HMAC of the Firebase uid). Stable per deployment:
+    # changing it makes old and new reports from one person look like different people.
+    moby_reporter_salt: SecretStr = SecretStr("dev-only-reporter-salt")
+    # Local development and tests only: accept requests without a Firebase token.
+    moby_auth_disabled: bool = False
+
     # ── Official feeds ───────────────────────────────────────────────────
     # api.weather.gov rejects requests without an identifying User-Agent.
     nws_user_agent: str = "moby-early-warning/0.1 (github.com/Xlient/Moby)"

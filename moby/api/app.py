@@ -6,6 +6,10 @@ Public, read-only:
   GET  /v1/events/{event_id}        one event (contract `Alert` shape)
   GET  /v1/config                   client feature flags
 
+Signed-in users (Firebase ID token):
+  POST /v1/reports                  submit a ground report (write-first, 202)
+  GET  /v1/reports/{client_event_id} status of one of your own reports
+
 Internal (Bearer MOBY_SERVICE_TOKEN; used by Serverless Jobs, never by the app):
   GET  /internal/v1/embedding-queue events still missing an embedding
   POST /internal/v1/embeddings      store embeddings computed by the embed job
@@ -38,6 +42,7 @@ from moby.feeds.schema import Severity
 from moby.llm import EMBEDDING_DIM
 
 from .alerts import to_alert
+from .reports import router as reports_router
 
 pool: AsyncConnectionPool | None = None
 
@@ -53,7 +58,8 @@ async def lifespan(_: FastAPI):
         await pool.close()
 
 
-app = FastAPI(title="Moby early-warning API", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="Moby early-warning API", version="0.5.0", lifespan=lifespan)
+app.include_router(reports_router)
 
 
 def _pool() -> AsyncConnectionPool:
