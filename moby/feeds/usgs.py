@@ -79,8 +79,7 @@ def normalize(payload: dict[str, Any]) -> NormalizeResult:
         lon, lat = float(coords[0]), float(coords[1])
         region = region_for(lat, lon)
         if region is None:
-            result.skipped["outside_region"] += 1
-            continue
+            region = "INTL"  # worldwide since migration 0009 (travellers)
         occurred = _ms(p.get("time"))
         if occurred is None:
             result.skipped["no_timestamp"] += 1

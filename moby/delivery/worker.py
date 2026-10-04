@@ -43,7 +43,7 @@ SELECT DISTINCT ON (e.event_id, d.device_id)
        d.device_id, d.push_token
 FROM events e
 JOIN subscriptions s
-  ON ST_DWithin(s.center, e.location, s.radius_km * 1000)
+  ON ST_DWithin(s.center, COALESCE(e.area, e.location), s.radius_km * 1000)
  AND (e.severity = 'critical'
       OR array_position(ARRAY['low','medium','high','critical'], e.severity)
          >= array_position(ARRAY['low','medium','high','critical'], s.min_severity))
@@ -65,6 +65,13 @@ WHERE e.tier = 2
         SELECT 1 FROM deliveries x
         WHERE x.event_id = e.event_id AND x.device_id = d.device_id AND x.severity = e.severity
           AND (x.status <> 'failed' OR x.attempts >= %(max_attempts)s))
+  -- ...nor about the same warning from the same agency in the last day (agencies such as
+  -- AEMET issue one message per time period of a warning: same wording, same area)...
+  AND NOT EXISTS (
+        SELECT 1 FROM deliveries z JOIN events ze ON ze.event_id = z.event_id
+        WHERE z.device_id = d.device_id AND z.status = 'sent' AND z.sent_at > now() - interval '1 day'
+          AND ze.event_id <> e.event_id AND ze.source_feed = e.source_feed AND ze.title = e.title
+          AND ze.severity = e.severity AND ST_DWithin(ze.location, e.location, 1000))
   -- ...and never told at a higher severity (a downgrade isn't news worth a buzz).
   AND NOT EXISTS (
         SELECT 1 FROM deliveries y

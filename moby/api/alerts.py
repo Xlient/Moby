@@ -22,13 +22,21 @@ def _headline(row: dict[str, Any]) -> str:
         return _sentence_case(row["product"])                     # "Flood warning"
     if feed == "usgs" and props.get("mag") is not None:
         return f"Magnitude {props['mag']:.1f} earthquake"
+    if feed == "cap" and row.get("title"):
+        # Agencies often end the headline with the place ("… warning. Ampurdán");
+        # the place is shown separately (location_name), so don't repeat it.
+        place = (props.get("areaDesc") or "").split(";")[0].strip()
+        title = row["title"].strip()
+        if place and title.lower().endswith(place.lower()) and len(title) > len(place) + 3:
+            title = title[: -len(place)].rstrip(" .,:;-–—")
+        return title[:120]
     return (row.get("title") or row.get("product") or "Alert")[:120]
 
 
 def _location_name(row: dict[str, Any]) -> str | None:
     feed, payload = row["source_feed"], row.get("raw_payload") or {}
     props = payload.get("properties") or {}
-    if feed == "noaa":
+    if feed in ("noaa", "cap"):
         name = (props.get("areaDesc") or "").split(";")[0].strip()
     elif feed == "usgs":
         name = props.get("place") or ""
@@ -61,6 +69,7 @@ def to_alert(row: dict[str, Any]) -> dict[str, Any]:
         "expires_at": row["expires_at"].isoformat() if row.get("expires_at") else None,
         "verification_label": _verification_label(row),
         "source_attribution": SOURCE_ATTRIBUTION.get(row["source_feed"])
+        or ((row.get("raw_payload") or {}).get("properties") or {}).get("authority")
         or ("Community reports" if row.get("source") in ("manual", "mesh") else None),
         "hazard_type": row["hazard_type"],
         "location_name": _location_name(row),

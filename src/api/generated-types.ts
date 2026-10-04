@@ -1419,6 +1419,8 @@ export interface components {
             product?: string;
             /** @description Offshore/boating product; absent means false. Hidden unless the user opts in. */
             marine?: boolean;
+            /** @description GET /alerts only: distance from the query point to the alert, in km. Measured to the alert's area when it has one, so 0 means "you are inside it". */
+            distance_km?: number;
         };
         EventReports: {
             event_id: string;

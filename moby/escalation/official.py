@@ -13,6 +13,8 @@ Policy, by how authoritative the source is for US hazards:
   - USGS:       authoritative seismic network; automatic
                 solutions get a little less confidence     → tier 2
   - GDACS:      UN/EC alerting system, impact-scored       → tier 2
+  - CAP:        national warning services abroad (the
+                legal warning authority where they operate) → tier 2
   - EONET:      NASA curation of other agencies' reports;
                 NASA describes it as situational awareness,
                 not an authoritative alert                 → tier 1 (a reviewer promotes it)
@@ -37,6 +39,8 @@ def official_verification(e: NormalizedEvent) -> Verification:
             return Verification(2, 0.95 if reviewed else 0.85)
         case "gdacs":
             return Verification(2, 0.8)
+        case "cap":
+            return Verification(2, 0.9)
         case "eonet":
             return Verification(1, 0.7)
     return Verification(0, 0.0)

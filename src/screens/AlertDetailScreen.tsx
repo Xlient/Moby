@@ -17,8 +17,8 @@ import { useAlerts } from '@/hooks/useAlerts';
 import { GuidanceCard } from '@/components/GuidanceCard';
 import { cardsForHazard, useGuidance } from '@/guidance/guidanceStore';
 import type { HazardType } from '@/api/types';
-import { distanceKm } from '@/lib/geo';
-import { useUserCenter } from '@/location/UserLocationContext';
+import { alertDistanceKm } from '@/lib/geo';
+import { fetchCenter, useUserCenter } from '@/location/UserLocationContext';
 
 interface AlertDetailScreenProps {
   alertId: string;
@@ -57,9 +57,8 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
   const { cards } = useGuidance();
   const whatToDo = cardsForHazard(cards, alert?.hazard_type ?? 'other').slice(0, WHAT_TO_DO_CARDS);
 
-  const distance = alert?.location
-    ? Math.round(distanceKm(center.lat, center.lon, alert.location.lat, alert.location.lon) * 10) / 10
-    : undefined;
+  const raw = alert ? alertDistanceKm(alert, center, fetchCenter(center)) : undefined;
+  const distance = raw === undefined ? undefined : Math.round(raw * 10) / 10;
 
   return (
     <View style={styles.container}>

@@ -982,6 +982,11 @@ components:
         marine:
           type: boolean
           description: Offshore/boating product; absent means false. Hidden unless the user opts in.
+        distance_km:
+          type: number
+          description: >
+            GET /alerts only: distance from the query point to the alert, in km. Measured to
+            the alert's area when it has one, so 0 means "you are inside it".
 
     EventReports:
       type: object

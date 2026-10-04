@@ -66,8 +66,7 @@ def normalize(payload: dict[str, Any]) -> NormalizeResult:
             continue
         region = region_for(*point)
         if region is None:
-            result.skipped["outside_region"] += 1
-            continue
+            region = "INTL"  # worldwide since migration 0009 (travellers)
 
         first, last = _ts(geometries[0]["date"]), _ts(latest["date"])
         result.events.append(
