@@ -3,6 +3,7 @@
 Public, read-only:
   GET  /healthz                     liveness + database + feed freshness
   GET  /v1/alerts                   active alerts near a point, filtered by preferences
+  GET  /v1/alerts/areas             the same alerts' areas as GeoJSON, for the map
   GET  /v1/events/{event_id}        one event (contract `Alert` shape); also /v1/alerts/{alert_id}
   GET  /v1/events/{event_id}/reports  community reports behind an event (coarse, no notes)
   GET  /v1/events/{event_id}/brief  situational brief (200), or 202 while it is being written
@@ -34,6 +35,7 @@ the network and jobs need no database credentials.
     uv run uvicorn moby.api.app:app --reload
 """
 import asyncio
+import json
 import hmac
 import os
 import shutil
@@ -140,6 +142,43 @@ async def get_alerts(
     async with _pool().connection() as conn:
         rows = await alerts_near(conn, lat, lon, radius_km, prefs, min_tier=min_tier)
     return {"alerts": [to_alert(r) for r in rows]}
+
+
+@app.get("/v1/alerts/areas")
+async def alert_areas(
+    lat: Annotated[float, Query(ge=-90, le=90)],
+    lon: Annotated[float, Query(ge=-180, le=180)],
+    radius_km: Annotated[float, Query(gt=0, le=500)] = 50,
+    min_tier: Annotated[int, Query(ge=0, le=2)] = 2,
+    hazard_types: Annotated[str | None, Query(description="comma-separated HazardType values")] = None,
+    min_severity: Severity | None = None,
+    include_marine: bool | None = None,
+):
+    """Warning areas for the map (issue #21): the same alerts as GET /v1/alerts, as a
+    GeoJSON FeatureCollection of their areas, simplified (~500 m) to keep it small.
+    Alerts without an area (most earthquakes) aren't included; the map pins those."""
+    prefs = AlertPreferences.from_dict({
+        "hazard_types": hazard_types.split(",") if hazard_types else None,
+        "min_severity": min_severity,
+        "include_marine": include_marine,
+    })
+    async with _pool().connection() as conn:
+        rows = await alerts_near(conn, lat, lon, radius_km, prefs, min_tier=min_tier)
+        ids = [r["event_id"] for r in rows]
+        shapes = await (await conn.execute(
+            """SELECT event_id, ST_AsGeoJSON(ST_SimplifyPreserveTopology(area::geometry, 0.005), 4)
+               FROM events WHERE event_id = ANY(%s) AND area IS NOT NULL""", (ids,))).fetchall()
+    by_id = {r["event_id"]: r for r in rows}
+    features = []
+    for event_id, geometry in shapes:
+        r = by_id[event_id]
+        features.append({
+            "type": "Feature",
+            "id": str(event_id),
+            "geometry": json.loads(geometry),
+            "properties": {"alert_id": str(event_id), "severity": r["severity"], "hazard_type": r["hazard_type"]},
+        })
+    return {"type": "FeatureCollection", "features": features}
 
 
 @app.get("/v1/events/{event_id}")

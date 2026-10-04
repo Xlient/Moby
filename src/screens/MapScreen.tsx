@@ -23,7 +23,7 @@ interface MapScreenProps {
   onAlertDetail: (alertId: string) => void;
 }
 
-function PinSheet({
+export function PinSheet({
   item,
   theme,
   onViewDetails,

@@ -897,6 +897,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/alerts/areas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Warning areas of the alerts near a point, for the map
+         * @description Same alerts and filters as GET /alerts, as a GeoJSON FeatureCollection of their areas (simplified ~500 m). Alerts without an area (e.g. most earthquakes) are not included. Feature properties: alert_id, severity, hazard_type.
+         */
+        get: {
+            parameters: {
+                query: {
+                    lat: number;
+                    lon: number;
+                    radius_km?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/geo+json": {
+                            /** @enum {string} */
+                            type: "FeatureCollection";
+                            features: {
+                                /** @enum {string} */
+                                type?: "Feature";
+                                id?: string;
+                                geometry?: Record<string, never>;
+                                properties?: {
+                                    alert_id?: string;
+                                    severity?: components["schemas"]["Severity"];
+                                    hazard_type?: components["schemas"]["HazardType"];
+                                };
+                            }[];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/alerts/{alert_id}": {
         parameters: {
             query?: never;

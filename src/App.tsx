@@ -17,6 +17,8 @@ import { HomeScreen } from '@/screens/HomeScreen';
 import { AlertDetailScreen } from '@/screens/AlertDetailScreen';
 import { AlertsScreen } from '@/screens/AlertsScreen';
 import { MapScreen } from '@/screens/MapScreen';
+import { MapLibreMapScreen } from '@/screens/MapLibreMapScreen';
+import { useMapEngine } from '@/maps/mapEngine';
 import { SettingsScreen } from '@/screens/SettingsScreen';
 import { AssistantScreen } from '@/screens/AssistantScreen';
 import { GuidanceScreen } from '@/screens/GuidanceScreen';
@@ -105,6 +107,7 @@ export function App() {
 
   // Keep offline guidance fresh whenever we're online (cheap when nothing changed).
   const isOnline = useOnlineStatus();
+  const [mapEngine] = useMapEngine();
   useEffect(() => {
     if (isOnline) syncGuidance();
   }, [isOnline]);
@@ -181,9 +184,12 @@ export function App() {
         {screen.name === 'alert-detail' && (
           <AlertDetailScreen alertId={screen.alertId} onBack={goBack} onGuidance={openGuidance} />
         )}
-        {screen.name === 'map' && (
-          <MapScreen onBack={goBack} onAlertDetail={navigateToAlert} />
-        )}
+        {screen.name === 'map' &&
+          (mapEngine === 'maplibre' ? (
+            <MapLibreMapScreen onBack={goBack} onAlertDetail={navigateToAlert} />
+          ) : (
+            <MapScreen onBack={goBack} onAlertDetail={navigateToAlert} />
+          ))}
         {screen.name === 'assistant' && showAssistant && <AssistantScreen />}
         {screen.name === 'settings' && (
           <SettingsScreen

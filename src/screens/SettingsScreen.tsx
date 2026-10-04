@@ -3,6 +3,7 @@ import { View, ScrollView, Pressable, Switch, TextInput, StyleSheet } from 'reac
 import { Button, Icon, Text } from 'react-native-paper';
 import Constants from 'expo-constants';
 import { useTheme } from '@/theme/ThemeContext';
+import { useMapEngine } from '@/maps/mapEngine';
 import { typography, spacing, radius } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useAuth } from '@/auth/AuthContext';
@@ -169,6 +170,7 @@ function NameRow() {
 }
 
 export function SettingsScreen({ onSubscriptions, onAlertPreferences, onCardReview, onTrustReview }: SettingsScreenProps) {
+  const [mapEngine, setMapEngine] = useMapEngine();
   const { theme, isDark, toggleTheme } = useTheme();
   const r = useResponsive();
   const { user, isConfigured, signOut } = useAuth();
@@ -230,6 +232,19 @@ export function SettingsScreen({ onSubscriptions, onAlertPreferences, onCardRevi
         </Section>
 
         <Section title="Appearance">
+          <Row>
+            <View style={{ flex: 1 }}>
+              <Text style={rowLabel}>Terrain map (preview)</Text>
+              <Text style={rowValue}>Open-source maps with terrain, warning areas and offline download</Text>
+            </View>
+            <Switch
+              value={mapEngine === 'maplibre'}
+              onValueChange={(on) => setMapEngine(on ? 'maplibre' : 'google')}
+              accessibilityLabel="Terrain map preview"
+              trackColor={{ false: theme.line.hairline, true: theme.accent.calm }}
+              thumbColor={theme.bg.raised}
+            />
+          </Row>
           <Row last>
             <Text style={rowLabel}>Dark mode</Text>
             <Switch

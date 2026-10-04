@@ -12,6 +12,8 @@ export const env = {
   useMock: useMockRaw ? useMockRaw === 'true' : !apiUrl,
   /** OAuth web client ID used for Google Sign-In on Android/iOS (see .env.example). */
   googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '',
+  /** Tianditu (天地图) key: basemap for phones in mainland China (MapLibre preview, #21). */
+  tiandituKey: process.env.EXPO_PUBLIC_TIANDITU_KEY ?? '',
   firebase: {
     apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? '',
     authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ?? '',

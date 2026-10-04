@@ -518,6 +518,43 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/Alert' }
 
+  /alerts/areas:
+    get:
+      tags: [alerts]
+      summary: Warning areas of the alerts near a point, for the map
+      description: >
+        Same alerts and filters as GET /alerts, as a GeoJSON FeatureCollection of their
+        areas (simplified ~500 m). Alerts without an area (e.g. most earthquakes) are not
+        included. Feature properties: alert_id, severity, hazard_type.
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number } }
+        - { name: lon, in: query, required: true, schema: { type: number } }
+        - { name: radius_km, in: query, schema: { type: number, maximum: 500 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/geo+json:
+              schema:
+                type: object
+                required: [type, features]
+                properties:
+                  type: { type: string, enum: [FeatureCollection] }
+                  features:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string, enum: [Feature] }
+                        id: { type: string }
+                        geometry: { type: object }
+                        properties:
+                          type: object
+                          properties:
+                            alert_id: { type: string }
+                            severity: { $ref: '#/components/schemas/Severity' }
+                            hazard_type: { $ref: '#/components/schemas/HazardType' }
+
   /alerts/{alert_id}:
     get:
       tags: [alerts]
