@@ -1,3 +1,5 @@
+import outlinesFile from './countryOutlines.json';
+
 /**
  * Emergency numbers per country (issue #12). Bundled, so they work offline.
  *
@@ -50,6 +52,9 @@ export const EMERGENCY_NUMBERS: Record<string, EmergencyNumbers> = {
     country: 'VN', name: 'Vietnam', ambulance: '115', fire: '114', police: '113',
     note: 'Operated in Vietnamese only.', source: fcdo('vietnam'),
   },
+  CN: { country: 'CN', name: 'China', ambulance: '120', fire: '119', police: '110', source: fcdo('china') },
+  MO: { country: 'MO', name: 'Macao', general: '999', source: fcdo('macao') },
+  TW: { country: 'TW', name: 'Taiwan', ambulance: '119', fire: '119', police: '110', source: fcdo('taiwan') },
 };
 
 export function emergencyFor(country: string | undefined | null): EmergencyNumbers | undefined {
@@ -57,36 +62,41 @@ export function emergencyFor(country: string | undefined | null): EmergencyNumbe
 }
 
 /**
- * Rough country for a position, offline: bounding boxes, smallest first so a small
- * country inside a neighbour's box wins (Nepal before India, Hong Kong before…).
- * Imprecise near borders, so the UI always names the country it picked.
+ * Country for a position, offline: simplified country outlines (Natural Earth,
+ * public domain) for the countries above, plus small boxes for Hong Kong and Macao,
+ * which are too small for the outlines and are checked first. Approximate near
+ * borders (~10 km), so the UI always names the country it picked.
  */
-const BOXES: [string, [number, number, number, number]][] = [
+const OUTLINES: Record<string, number[][][]> = outlinesFile.outlines;
+
+const SMALL: [string, [number, number, number, number]][] = [
   // [lon_min, lat_min, lon_max, lat_max]
-  ['HK', [113.8, 22.15, 114.45, 22.57]],
-  ['JM', [-78.4, 17.7, -76.2, 18.6]],
-  ['IS', [-24.6, 63.2, -13.4, 66.6]],
-  ['PT', [-9.6, 36.9, -6.2, 42.2]],
-  ['GR', [19.3, 34.7, 29.7, 41.8]],
-  ['NP', [80.05, 26.35, 88.2, 30.45]],
-  ['NZ', [166.0, -47.4, 178.7, -34.3]],
-  ['IT', [6.6, 35.4, 18.6, 47.1]],
-  ['ES', [-18.2, 27.6, 4.4, 43.8]],
-  ['PH', [116.9, 4.5, 126.7, 21.2]],
-  ['VN', [102.1, 8.4, 109.5, 23.4]],
-  ['TH', [97.3, 5.6, 105.7, 20.5]],
-  ['JP', [122.9, 24.0, 146.0, 45.6]],
-  ['MX', [-118.4, 14.5, -86.7, 32.7]],
-  ['IN', [68.1, 6.7, 97.4, 35.5]],
-  ['ID', [95.0, -11.0, 141.0, 6.1]],
-  ['US', [-125.0, 24.0, -66.5, 49.5]],
-  ['US', [-180.0, 51.0, -129.0, 71.5]],
-  ['US', [-160.5, 18.5, -154.5, 22.5]],
+  ['HK', [113.82, 22.15, 114.44, 22.57]],
+  ['MO', [113.52, 22.1, 113.61, 22.22]],
 ];
 
+function inRing(lon: number, lat: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi = 0, yi = 0] = ring[i]!;
+    const [xj = 0, yj = 0] = ring[j]!;
+    if (yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
 export function countryAt(lat: number, lon: number): string | undefined {
-  for (const [code, [x0, y0, x1, y1]] of BOXES) {
+  for (const [code, [x0, y0, x1, y1]] of SMALL) {
     if (lon >= x0 && lon <= x1 && lat >= y0 && lat <= y1) return code;
+  }
+  const hit = (y: number, x: number) =>
+    Object.entries(OUTLINES).find(([, rings]) => rings.some((ring) => inRing(x, y, ring)))?.[0];
+  // Simplified coastlines cut corners, so coastal cities can fall just outside:
+  // look ~15 km around before giving up.
+  const d = 0.15;
+  for (const [dy, dx] of [[0, 0], [d, 0], [-d, 0], [0, d], [0, -d], [d, d], [d, -d], [-d, d], [-d, -d]]) {
+    const code = hit(lat + dy!, lon + dx!);
+    if (code) return code;
   }
   return undefined;
 }

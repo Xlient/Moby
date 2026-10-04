@@ -238,3 +238,48 @@ def test_translated_alert_shape_and_push_label():
     # A failed translation shows the original only.
     b = to_alert({**row, "translation_status": "failed"})
     assert b["headline"].startswith("Aviso de lluvias") and "translated" not in b
+
+
+# ── Greater China (#20) ──────────────────────────────────────────────
+
+def test_gcj02_round_trip_and_offset():
+    from moby.feeds.geocodes import gcj02_to_wgs84, wgs84_to_gcj02
+    lon, lat = 116.397, 39.909                       # Tiananmen, WGS84
+    glon, glat = wgs84_to_gcj02(lon, lat)
+    assert 0.002 < abs(glon - lon) + abs(glat - lat) < 0.02    # GCJ-02 is offset a few hundred metres
+    back = gcj02_to_wgs84(glon, glat)
+    assert abs(back[0] - lon) < 1e-5 and abs(back[1] - lat) < 1e-5
+    assert gcj02_to_wgs84(2.35, 48.85) == (2.35, 48.85)        # outside China: unchanged
+
+
+def test_cma_codes_become_county_adcodes():
+    area = ("<areaDesc>Jingxian County</areaDesc><geocode><valueName>CPEAS Geographic Code</valueName>"
+            "<value>341823100000</value></geocode>")
+    e, outcome = normalize_cap(cap_doc(area=area), CapSource("cn-cma-xx", "CN", "CMA", "https://x.example"))
+    assert outcome == "stored" and e.geocodes == [("CPEAS Geographic Code", "341823")] and e.area_wkt is None
+
+
+def test_mutable_documents_are_reread(db_url):
+    src = CapSource("mo-test-xx", "MO", "SMG", "https://alerts.example.mo/rss", mutable_docs=True)
+    u = "https://alerts.example.mo/cap_thunderstorm.xml"
+    routes = {src.url: feed(u), u: cap_doc("TS1", event="Thunderstorm warning")}
+
+    def run(routes):
+        def handler(request):
+            body = routes.get(str(request.url))
+            return httpx.Response(200, text=body) if body is not None else httpx.Response(404)
+
+        async def go():
+            async with AsyncConnectionPool(db_url, open=False) as pool, \
+                    httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+                return await cap.poll_source(src, pool, http)
+        return asyncio.run(go())
+
+    with psycopg.connect(db_url, autocommit=True) as c:
+        c.execute("TRUNCATE events, cap_documents CASCADE")
+        c.execute("DELETE FROM feed_watermarks WHERE feed = 'cap:mo-test-xx'")
+    assert run(routes).new_docs == 1
+    # Same URL, new content (the signal is cancelled): read again, not skipped as seen.
+    routes[u] = cap_doc("TS2", msg="Cancel", references="test@example.gov,TS1,2026-10-04T00:00:00+00:00", area="")
+    out = run(routes)
+    assert out.new_docs == 1 and out.cancelled == 1

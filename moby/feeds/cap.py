@@ -39,6 +39,9 @@ class CapSource:
     country: str       # ISO 3166-1 alpha-2
     authority: str     # shown as the alert's source
     url: str           # CAP feed index (RSS/Atom)
+    # Some services (Macao SMG) rewrite one fixed URL per warning type instead of
+    # publishing a new document per message: re-read those every poll.
+    mutable_docs: bool = False
 
 
 # Pilot (docs/spikes/global-coverage.md). URLs from the registry, checked 2026-10-04.
@@ -62,6 +65,13 @@ SOURCES: list[CapSource] = [
               "https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-greece"),
     CapSource("pt-ipma-pt", "PT", "IPMA (Portugal) via MeteoAlarm",
               "https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-portugal"),
+    # Greater China (#20). CMA via the WMO Alert Hub mirror (reachable from outside China);
+    # areas are county codes, resolved lazily (geocodes.ensure_cn_boundaries).
+    CapSource("cn-cma-xx", "CN", "China Meteorological Administration",
+              "https://alert-feed-worldweather-org.s3.amazonaws.com/cn-cma-xx/rss.xml"),
+    CapSource("mo-smg-xx", "MO", "Macao Meteorological and Geophysical Bureau",
+              "https://rss.smg.gov.mo/cap_rss.xml", mutable_docs=True),
+    CapSource("tw-ncdr-zh", "TW", "NCDR (Taiwan)", "https://alerts.ncdr.nat.gov.tw/RssAtomFeed.ashx"),
 ]
 
 INTERVAL = timedelta(minutes=5)
@@ -226,6 +236,8 @@ def areas_of(info: ET.Element) -> tuple[list[list[tuple[float, float]]], list[st
             name = _local(c.tag)
             if name == "geocode":
                 scheme, value = _text(c, "valueName"), _text(c, "value")
+                if scheme == "CPEAS Geographic Code" and value:
+                    value = value[:6]       # county adcode: boundaries are per county
                 if scheme and value and (scheme, value) not in codes:
                     codes.append((scheme, value))
             if name == "polygon" and c.text:
@@ -434,7 +446,7 @@ async def poll_source(source: CapSource, pool: AsyncConnectionPool, http: httpx.
     async with pool.connection() as conn:
         seen = {r[0] for r in await (await conn.execute(
             "SELECT url FROM cap_documents WHERE url = ANY(%s)", (links,))).fetchall()}
-    unseen = [u for u in links if u not in seen]
+    unseen = links if source.mutable_docs else [u for u in links if u not in seen]
     new = unseen[:MAX_NEW_DOCS_PER_POLL]
     # More waiting than one poll takes: don't store validators, so the next poll reads
     # the index again instead of getting 304 and leaving the rest unread.
@@ -458,13 +470,20 @@ async def poll_source(source: CapSource, pool: AsyncConnectionPool, http: httpx.
 
     out = CapOutcome(source.source_id, 200, new_docs=len(new), skipped=skipped, backlog=len(unseen) - len(new))
     async with pool.connection() as conn, conn.transaction():
+        cn_codes = [c for _, ev in parsed for s, c in ev.geocodes if s == "CPEAS Geographic Code"]
+        cn_retry: set[str] = set()
+        if cn_codes:
+            from .geocodes import ensure_cn_boundaries
+            cn_retry = await ensure_cn_boundaries(conn, http, cn_codes)
         events: list[NormalizedEvent] = []
         for url, ev in parsed:
             if ev.geocodes and not ev.cancels and not await resolve_geocodes(conn, ev):
                 skipped["unknown_geocode"] += 1
                 # Recorded so it isn't refetched every poll; loading boundaries clears
                 # these records (geocodes.py), so they're retried once a scheme arrives.
-                docs.append((url, source.source_id, "skipped", "unknown_geocode"))
+                # A boundary that only failed to download is retried next poll instead.
+                if not any(c in cn_retry for _, c in ev.geocodes):
+                    docs.append((url, source.source_id, "skipped", "unknown_geocode"))
                 continue
             events.append(ev)
             docs.append((url, source.source_id, "cancel" if ev.cancels else "stored", None))
@@ -473,9 +492,10 @@ async def poll_source(source: CapSource, pool: AsyncConnectionPool, http: httpx.
         out.upserted = await upsert_events(conn, rows)
         out.cancelled = await apply_cancels(conn, "cap", cancels)
         async with conn.cursor() as cur:
-            await cur.executemany(
-                "INSERT INTO cap_documents (url, source_id, outcome, detail) VALUES (%s, %s, %s, %s) "
-                "ON CONFLICT (url) DO NOTHING", docs)
+            if not source.mutable_docs:          # rewritten in place: never "seen"
+                await cur.executemany(
+                    "INSERT INTO cap_documents (url, source_id, outcome, detail) VALUES (%s, %s, %s, %s) "
+                    "ON CONFLICT (url) DO NOTHING", docs)
         await conn.execute(
             """UPDATE feed_watermarks SET etag = %s, last_modified = %s, last_polled_at = now(),
                last_success_at = now(), last_status = 200, consecutive_failures = 0, last_error = NULL,
