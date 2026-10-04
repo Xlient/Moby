@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from psycopg_pool import AsyncConnectionPool
 
+from .cap import XML_ACCEPT
 from .geo import region_for
 from .schema import NormalizedEvent, NormalizeResult, Severity
 
@@ -326,20 +327,20 @@ def normalize_ptwc(atom: str, *, now: datetime | None = None) -> NormalizeResult
 
 async def _poll(name: str, pool: AsyncConnectionPool, http: httpx.AsyncClient) -> NormalizeResult:
     if name == "ptwc":
-        r = await http.get(PTWC_URL)
+        r = await http.get(PTWC_URL, headers=XML_ACCEPT)
         r.raise_for_status()
         return normalize_ptwc(r.text)
     if name == "nhc":
         result = NormalizeResult()
         for url in NHC_URLS:
-            r = await http.get(url)
+            r = await http.get(url, headers=XML_ACCEPT)
             r.raise_for_status()
             part = normalize_nhc(r.text)
             result.events += part.events
             result.skipped.update(part.skipped)
         return result
     # jtwc
-    r = await http.get(JTWC_URL)
+    r = await http.get(JTWC_URL, headers=XML_ACCEPT)
     r.raise_for_status()
     links = jtwc_warning_links(r.text)
     texts: dict[str, str] = {}

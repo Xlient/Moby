@@ -9,10 +9,9 @@ message. Documents are immutable (an update is a new document with `references`)
 so each URL is fetched once (cap_documents) and messages are folded into one event
 per alert with the same chain logic as NOAA.
 
-Phase 1 limits, on purpose:
-  - Areas must come as CAP polygons or circles. Geocode-only messages (e.g. MeteoAlarm
-    EMMA_IDs, India's district codes) are skipped and counted: they need boundary
-    lookups (phase 2), like the NWS zone cache.
+Areas: CAP polygons or circles when given; otherwise the message's geocodes are
+resolved to boundaries from cap_geocodes (MeteoAlarm EMMA_IDs; issue #9). Codes we
+have no boundary for (e.g. India's LGD district codes, so far) are skipped and counted.
   - Text is stored in the language the agency used. An English <info> block is
     preferred when the message has one; translation is phase 2.
 """
@@ -56,9 +55,19 @@ SOURCES: list[CapSource] = [
     CapSource("nz-gns-en", "NZ", "GeoNet (New Zealand)",
               "https://api.geonet.org.nz/cap/1.2/GPA1.0/feed/atom1.0/quake"),
     CapSource("hk-hko-xx", "HK", "Hong Kong Observatory", "https://alerts.weather.gov.hk/V1/cap_atom.xml"),
+    # MeteoAlarm (EUMETNET): areas by EMMA_ID, resolved from cap_geocodes.
+    CapSource("it-meteoam-it", "IT", "Aeronautica Militare via MeteoAlarm",
+              "https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-italy"),
+    CapSource("gr-hnms-el", "GR", "HNMS (Greece) via MeteoAlarm",
+              "https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-greece"),
+    CapSource("pt-ipma-pt", "PT", "IPMA (Portugal) via MeteoAlarm",
+              "https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-portugal"),
 ]
 
 INTERVAL = timedelta(minutes=5)
+# The shared client asks for JSON (US feeds); CAP sources serve XML and some (MeteoAlarm)
+# answer 406 to a JSON-only Accept header.
+XML_ACCEPT = {"Accept": "application/atom+xml, application/rss+xml, application/cap+xml, application/xml, text/xml, */*;q=0.5"}
 MAX_NEW_DOCS_PER_POLL = 80     # a big backlog drains over a few polls instead of one burst
 FETCH_CONCURRENCY = 4
 
@@ -207,14 +216,18 @@ def _circle(text: str, segments: int = 24) -> list[tuple[float, float]] | None:
     return ring
 
 
-def areas_of(info: ET.Element) -> tuple[list[list[tuple[float, float]]], list[str]]:
-    """(polygon rings as (lat, lon), area descriptions)."""
-    rings, names = [], []
+def areas_of(info: ET.Element) -> tuple[list[list[tuple[float, float]]], list[str], list[tuple[str, str]]]:
+    """(polygon rings as (lat, lon), area descriptions, (scheme, code) geocodes)."""
+    rings, names, codes = [], [], []
     for area in _children(info, "area"):
         if (desc := _text(area, "areaDesc")):
             names.append(desc)
         for c in area:
             name = _local(c.tag)
+            if name == "geocode":
+                scheme, value = _text(c, "valueName"), _text(c, "value")
+                if scheme and value and (scheme, value) not in codes:
+                    codes.append((scheme, value))
             if name == "polygon" and c.text:
                 ring = _parse_points(c.text)
                 if len(ring) >= 3:
@@ -225,7 +238,7 @@ def areas_of(info: ET.Element) -> tuple[list[list[tuple[float, float]]], list[st
                 ring = _circle(c.text.strip())
                 if ring and len(ring) >= 4:
                     rings.append(ring)
-    return rings, names
+    return rings, names, codes
 
 
 def to_wkt(rings: list[list[tuple[float, float]]]) -> str:
@@ -283,9 +296,9 @@ def normalize_cap(xml: bytes | str, source: CapSource, *, now: datetime | None =
         if expires and expires <= now:
             return None, "expired"
 
-    rings, area_names = areas_of(info)
-    if not rings and not ends:
-        return None, "geocode_only"
+    rings, area_names, codes = areas_of(info)
+    if not rings and not codes and not ends:
+        return None, "no_area"
     points = [p for ring in rings for p in ring[:-1]] or [(0.0, 0.0)]
     lat = sum(p[0] for p in points) / len(points)
     lon = sum(p[1] for p in points) / len(points)
@@ -330,6 +343,7 @@ def normalize_cap(xml: bytes | str, source: CapSource, *, now: datetime | None =
         region="INTL",
         country=source.country,
         area_wkt=to_wkt(rings) if rings else None,
+        geocodes=[] if rings else codes,
         product=event_name[:120] or None,
         marine=any(w in f" {text_l} " for w in MARINE_WORDS),
         references=references,
@@ -339,6 +353,29 @@ def normalize_cap(xml: bytes | str, source: CapSource, *, now: datetime | None =
 
 
 # ── Polling ──────────────────────────────────────────────────────────
+
+RESOLVE_SQL = """
+SELECT ST_AsText(ST_Multi(ST_Union(area::geometry))),
+       ST_Y(ST_PointOnSurface(ST_Union(area::geometry))), ST_X(ST_PointOnSurface(ST_Union(area::geometry))),
+       string_agg(name, '; ' ORDER BY name)
+FROM cap_geocodes WHERE (scheme, code) IN (SELECT * FROM unnest(%s::text[], %s::text[]))
+"""
+
+
+async def resolve_geocodes(conn, ev: NormalizedEvent) -> bool:
+    """Give a geocode-only message its area from cap_geocodes. False if no code is known."""
+    schemes = [s for s, _ in ev.geocodes]
+    codes = [c for _, c in ev.geocodes]
+    row = await (await conn.execute(RESOLVE_SQL, (schemes, codes))).fetchone()
+    if not row or row[0] is None:
+        return False
+    ev.area_wkt, ev.lat, ev.lon = row[0], row[1], row[2]
+    props = ev.raw_payload["properties"]
+    if not props.get("areaDesc") and row[3]:
+        props["areaDesc"] = row[3].title()
+    props["geocodes"] = [f"{s}:{c}" for s, c in ev.geocodes]
+    return True
+
 
 def feed_name(source: CapSource) -> str:
     return f"cap:{source.source_id}"
@@ -358,7 +395,7 @@ class CapOutcome:
 async def _fetch(http: httpx.AsyncClient, sem: asyncio.Semaphore, url: str) -> tuple[str, bytes | None]:
     async with sem:
         try:
-            r = await http.get(url)
+            r = await http.get(url, headers=XML_ACCEPT)
             return url, r.content if r.status_code == 200 else None
         except httpx.HTTPError:
             return url, None
@@ -374,7 +411,7 @@ async def poll_source(source: CapSource, pool: AsyncConnectionPool, http: httpx.
         wm = await _read_watermark(conn, name)  # type: ignore[arg-type]
 
     try:
-        resp = await http.get(source.url, headers=conditional_headers(wm, source.url, source.url))
+        resp = await http.get(source.url, headers={**XML_ACCEPT, **conditional_headers(wm, source.url, source.url)})
     except httpx.HTTPError as e:
         await _record_failure(pool, name, None, f"{type(e).__name__}: {e}")  # type: ignore[arg-type]
         raise
@@ -404,7 +441,7 @@ async def poll_source(source: CapSource, pool: AsyncConnectionPool, http: httpx.
     sem = asyncio.Semaphore(FETCH_CONCURRENCY)
     fetched = await asyncio.gather(*(_fetch(http, sem, u) for u in new))
 
-    events: list[NormalizedEvent] = []
+    parsed: list[tuple[str, NormalizedEvent]] = []
     docs: list[tuple[str, str, str, str | None]] = []
     skipped: Counter = Counter()
     for url, body in fetched:
@@ -413,14 +450,23 @@ async def poll_source(source: CapSource, pool: AsyncConnectionPool, http: httpx.
             continue
         ev, outcome = normalize_cap(body, source)
         if ev is not None:
-            events.append(ev)
-            docs.append((url, source.source_id, "cancel" if ev.cancels else "stored", None))
+            parsed.append((url, ev))
         else:
             skipped[outcome] += 1
             docs.append((url, source.source_id, "skipped", outcome))
 
     out = CapOutcome(source.source_id, 200, new_docs=len(new), skipped=skipped, backlog=len(unseen) - len(new))
     async with pool.connection() as conn, conn.transaction():
+        events: list[NormalizedEvent] = []
+        for url, ev in parsed:
+            if ev.geocodes and not ev.cancels and not await resolve_geocodes(conn, ev):
+                skipped["unknown_geocode"] += 1
+                # Recorded so it isn't refetched every poll; loading boundaries clears
+                # these records (geocodes.py), so they're retried once a scheme arrives.
+                docs.append((url, source.source_id, "skipped", "unknown_geocode"))
+                continue
+            events.append(ev)
+            docs.append((url, source.source_id, "cancel" if ev.cancels else "stored", None))
         known = await known_chain_ids(conn, "cap", events)
         rows, cancels = group_chains(events, known)
         out.upserted = await upsert_events(conn, rows)

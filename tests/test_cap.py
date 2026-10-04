@@ -67,7 +67,7 @@ def test_circle_becomes_an_area():
     ({"msg": "Ack"}, "ack_or_error"),
     ({"expires": NOW - timedelta(minutes=1)}, "expired"),
     ({"urgency": "Past"}, "past"),
-    ({"area": "<geocode><valueName>EMMA_ID</valueName><value>IT001</value></geocode>"}, "geocode_only"),
+    ({"area": "<areaDesc>Nowhere</areaDesc>"}, "no_area"),
 ])
 def test_skips(kwargs, reason):
     assert normalize_cap(cap_doc(**kwargs), SRC) == (None, reason)
@@ -187,3 +187,23 @@ def test_alert_shape_for_cap_events():
     assert a["headline"] == "Extreme rain warning" and a["location_name"] == "Ampurdán"
     assert a["source_attribution"] == "AEMET (Spain)" and a["verification_label"] == "official_confirmed"
     assert a["distance_km"] == 0.0
+
+
+def test_geocode_only_messages_get_their_area_from_cap_geocodes(db_url):
+    with psycopg.connect(db_url, autocommit=True) as c:
+        c.execute("TRUNCATE events, cap_documents CASCADE")
+        c.execute("DELETE FROM cap_geocodes WHERE scheme = 'EMMA_ID' AND code LIKE 'TT%'")
+        c.execute("INSERT INTO cap_geocodes (scheme, code, country, name, area, source) VALUES ('EMMA_ID', 'TT001', "
+                  "'GR', 'TEST ISLANDS', ST_Multi(ST_GeomFromText('POLYGON((26 36, 28 36, 28 38, 26 38, 26 36))', "
+                  "4326))::geography, 'test')")
+    code = "<geocode><valueName>EMMA_ID</valueName><value>{}</value></geocode>"
+    known, unknown = "https://alerts.example.gov/cap/known.xml", "https://alerts.example.gov/cap/unknown.xml"
+    out = poll(db_url, {SRC.url: feed(known, unknown),
+                        known: cap_doc("K1", area=code.format("TT001")),
+                        unknown: cap_doc("U1", area=code.format("TT999"))})
+    assert out.upserted == 1 and out.skipped["unknown_geocode"] == 1
+    with psycopg.connect(db_url) as c:
+        (inside, desc) = c.execute(
+            "SELECT ST_Intersects(area, ST_SetSRID(ST_MakePoint(27, 37), 4326)::geography), "
+            "raw_payload->'properties'->>'areaDesc' FROM events").fetchone()
+    assert inside and desc == "Metro Manila; Rizal"         # the message's own areaDesc is kept
