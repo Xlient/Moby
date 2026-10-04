@@ -10,6 +10,7 @@ worth an alert, and helps you know what to do — even with little or no signal.
 ![Android](https://img.shields.io/badge/Android-Expo%20%2F%20React%20Native-3DDC84)
 ![Backend](https://img.shields.io/badge/Backend-Python%20%C2%B7%20FastAPI%20%C2%B7%20LangGraph-3776AB)
 ![Runs on](https://img.shields.io/badge/Runs%20on-Nebius%20AI%20Cloud-0B1F33)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-db61a2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/Xlient)
 
 </div>
 
@@ -119,6 +120,21 @@ immediately.
 Moby is being built in the open for a competition submission, in sprints: data layer and app
 foundations are done; the agentic fusion pipeline, community reports with human review, and
 notifications are in progress. Feature flags keep anything unfinished switched off in the app.
+
+## Support Moby
+
+Moby is free and open source, built by one independent developer. If it's useful to you, or you
+want early warnings to reach more people, please consider
+[sponsoring the project on GitHub](https://github.com/sponsors/Xlient).
+
+Sponsorship pays for:
+
+- **Keeping alerts running.** Hosting, the database and AI processing cost about $50 a month.
+- **Development time.** It goes towards Bluetooth mesh relay (warnings that spread with no signal),
+  more regions, and offline safety guidance.
+
+Sponsors are thanked in this README. Moby complements official warning systems; it does not
+replace them, and sponsorship doesn't change that.
 
 ## Contributing
 
