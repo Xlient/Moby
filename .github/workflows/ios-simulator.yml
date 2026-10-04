@@ -10,7 +10,6 @@ name: iOS simulator build
 on:
   push:
     tags: ["v*"]
-    branches: [ios-builds]   # TEMPORARY: verify the workflow once; removed before merge
   schedule:
     - cron: "0 6 * * 1"   # Mondays 06:00 UTC
   workflow_dispatch:
@@ -20,7 +19,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-26   # Expo SDK 57 (expo-modules-jsi 57.1) needs Xcode 27
+    runs-on: macos-26   # Expo SDK 57 needs a newer Xcode than macos-15 has (26.3 fails)
     timeout-minutes: 60
     env:
       MOBY_PREBUILD_PLATFORM: ios
