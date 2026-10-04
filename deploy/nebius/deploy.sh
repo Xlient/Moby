@@ -162,7 +162,8 @@ cmd_embed()  { job embed "python -m moby.jobs.embed_events" --env-secret "N_FACT
 cmd_backup() {
   need BACKUP_BUCKET setup
   # The bucket is mounted into the job, so the dump lands in object storage directly.
-  # Needs S3 credentials: set BACKUP_S3_AUTH=<profile>@<mysterybox-secret> (docs/deploy.md).
+  # Needs S3 credentials: BACKUP_S3_AUTH=<profile>@<mysterybox-secret> (saved in .state; docs/deploy.md).
+  # The secret must hold S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY; the local AWS profile supplies region + endpoint.
   job backup "python -m moby.jobs.backup" --env "BACKUP_DIR=/backup" \
     --volume "s3://$BACKUP_BUCKET:/backup:rw${BACKUP_S3_AUTH:+:$BACKUP_S3_AUTH}"
 }
