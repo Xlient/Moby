@@ -1,0 +1,40 @@
+# The ONLY workflow allowed to call models (Token Factory / LangSmith). Ordinary CI has
+# no model secrets and never calls a model.
+#
+# Runs only when a maintainer asks:
+#   - add the `run-evals` label to a PR from this repository (never from forks), or
+#   - Actions → Model evals → Run workflow.
+# Then waits for approval in the protected `model-evals` environment, which is the only
+# place N_FACTORY_ACC_KEY / LANGSMITH_API_KEY are stored.
+name: Model evals
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evals:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.label.name == 'run-evals' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: model-evals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Evals
+        env:
+          N_FACTORY_ACC_KEY: ${{ secrets.N_FACTORY_ACC_KEY }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+          LANGSMITH_TRACING: "true"
+        # Placeholder until the LangGraph eval suite lands: checks the models respond.
+        run: uv run python scripts/verify_models.py
