@@ -36,7 +36,10 @@ jobs:
         run: npm ci
 
       - name: Prebuild (generate ios/ and install pods)
-        run: npx expo prebuild --platform ios --clean
+        run: |
+          npx expo prebuild --platform ios --clean
+          # prebuild reports a failed `pod install` but still exits 0: fail here instead.
+          ls -d ios/*.xcworkspace >/dev/null 2>&1 || { echo "::error::pod install failed (no .xcworkspace)"; exit 1; }
 
       - name: Build for the simulator
         run: |
