@@ -245,11 +245,13 @@ async def apply_cancels(conn: AsyncConnection, feed: FeedName, cancels: list[Nor
 # the graph and are never touched here.
 UPSERT_SQL = """
 INSERT INTO events (
-    source, source_feed, external_id, feed_item_ids, region, country, magnitude, hazard_type, product, marine,
+    source, source_feed, external_id, feed_item_ids, region, country, magnitude, language, translation_status,
+    hazard_type, product, marine,
     severity, title, description, location, area, location_accuracy_m,
     first_reported_at, last_updated_at, expires_at, raw_payload, tier, confidence
 ) VALUES (
-    'official', %(source_feed)s, %(external_id)s, %(item_ids)s, %(region)s, %(country)s, %(magnitude)s, %(hazard_type)s,
+    'official', %(source_feed)s, %(external_id)s, %(item_ids)s, %(region)s, %(country)s, %(magnitude)s,
+    %(language)s, %(translation_status)s, %(hazard_type)s,
     %(product)s, %(marine)s, %(severity)s, %(title)s, %(description)s,
     ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography,
     -- Repair self-intersecting source polygons rather than reject the alert.
@@ -273,6 +275,12 @@ ON CONFLICT (source_feed, external_id) DO UPDATE SET
     area            = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at THEN EXCLUDED.area ELSE events.area END,
     country         = COALESCE(EXCLUDED.country, events.country),
     magnitude       = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at THEN EXCLUDED.magnitude ELSE events.magnitude END,
+    language        = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at THEN EXCLUDED.language ELSE events.language END,
+    -- New wording needs a new translation; unchanged wording keeps the one we have.
+    translation_status = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at
+                               AND (EXCLUDED.title IS DISTINCT FROM events.title
+                                    OR EXCLUDED.description IS DISTINCT FROM events.description)
+                              THEN EXCLUDED.translation_status ELSE events.translation_status END,
     raw_payload     = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at THEN EXCLUDED.raw_payload ELSE events.raw_payload END,
     -- Always take the feed's current expiry: restores an alert a partial snapshot
     -- wrongly expired (see reconcile), and applies extensions/shortenings.
@@ -298,6 +306,8 @@ def _params(row: ChainedEvent) -> dict:
         "region": e.region,
         "country": e.country,
         "magnitude": e.magnitude,
+        "language": None if not e.language or e.language.lower().startswith("en") else e.language,
+        "translation_status": "not_needed" if not e.language or e.language.lower().startswith("en") else "pending",
         "area": e.area_wkt,
         "hazard_type": e.hazard_type,
         "product": e.product,
@@ -454,7 +464,7 @@ async def run(feeds: list[FeedName], once: bool, force: bool = False) -> list[Po
     NHC, JTWC, feeds/centers.py): multi-document sources with their own poll loops."""
     from moby.db import make_pool
 
-    from . import cap, centers
+    from . import cap, centers, translate
 
     async with make_pool() as pool, _http_client() as http:
         specs = [FEEDS[f] for f in feeds if f in FEEDS]
@@ -463,6 +473,8 @@ async def run(feeds: list[FeedName], once: bool, force: bool = False) -> list[Po
             extra.append(cap.run_sources(pool, http, once=once))
         if "centers" in feeds:
             extra.append(centers.run_centers(pool, http, once=once))
+        if "translate" in feeds:
+            extra.append(translate.run_translator(pool, once=once))
         if extra:
             if once:
                 await asyncio.gather(*extra)

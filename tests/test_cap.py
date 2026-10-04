@@ -207,3 +207,34 @@ def test_geocode_only_messages_get_their_area_from_cap_geocodes(db_url):
             "SELECT ST_Intersects(area, ST_SetSRID(ST_MakePoint(27, 37), 4326)::geography), "
             "raw_payload->'properties'->>'areaDesc' FROM events").fetchone()
     assert inside and desc == "Metro Manila; Rizal"         # the message's own areaDesc is kept
+
+
+# ── Translation (issue #11) ──────────────────────────────────────────
+
+def test_translation_checks():
+    from moby.feeds.translate import Translation, check, numbers
+    assert numbers("rachas de 2,5 a 70 km/h a las 12:00") == ["2.5", "70", "12", "00"]
+    src_h, src_b = "Aviso de lluvias", "Lluvias de 75 a 150 mm entre las 12:00 y las 18:00."
+    ok = Translation("Rain warning", "Rain of 75 to 150 mm between 12:00 and 18:00.")
+    assert check(src_h, src_b, ok) is None
+    assert "numbers" in check(src_h, src_b, Translation("Rain warning", "Rain of 75 to 15 mm between 12:00 and 18:00."))
+    assert check(src_h, src_b, Translation("", "x")) == "empty headline"
+
+
+def test_translated_alert_shape_and_push_label():
+    from moby.api.alerts import to_alert
+    from moby.delivery.worker import build_push
+    row = {"event_id": "e2", "source": "official", "source_feed": "cap", "severity": "high", "tier": 2,
+           "title": "Aviso de lluvias intensas en Oaxaca", "description": "Lluvias de 75 a 150 mm. " * 20,
+           "hazard_type": "flood", "first_reported_at": NOW, "lat": 17.0, "lon": -96.7, "product": "Aviso",
+           "raw_payload": {"properties": {"areaDesc": "Oaxaca", "authority": "SMN (Mexico)"}},
+           "language": "es-MX", "translation_status": "done", "title_en": "Heavy rain warning in Oaxaca",
+           "description_en": "Rain of 75 to 150 mm. " * 20, "push_token": "t" * 40}
+    a = to_alert(row)
+    assert a["headline"] == "Heavy rain warning in Oaxaca" and a["translated"] is True
+    assert a["original_language"] == "Spanish" and a["original_headline"].startswith("Aviso de lluvias")
+    p = build_push(row)
+    assert p.body.endswith("(Translated by Moby from Spanish)") and len(p.body) <= 240
+    # A failed translation shows the original only.
+    b = to_alert({**row, "translation_status": "failed"})
+    assert b["headline"].startswith("Aviso de lluvias") and "translated" not in b

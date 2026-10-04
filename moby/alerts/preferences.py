@@ -68,6 +68,7 @@ class AlertPreferences:
 ALERTS_NEAR_SQL = """
 SELECT event_id, source, source_feed, external_id, hazard_type, product, marine, severity, tier,
        title, description, alert_headline, alert_body, distinct_reporter_count,
+       language, title_en, description_en, translation_status,
        first_reported_at, last_updated_at, expires_at, raw_payload,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon,
        -- Inside an alert's area counts as distance 0 (migration 0009).

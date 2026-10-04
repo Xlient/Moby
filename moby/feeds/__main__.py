@@ -27,11 +27,11 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Poll official hazard feeds into Postgres.")
     p.add_argument("command", nargs="?", choices=["poll", "health"], default="poll")
     p.add_argument("--once", action="store_true", help="poll each feed once and exit")
-    p.add_argument("--feed", action="append", choices=[*FEEDS, "cap", "centers"], help="limit to these feeds (repeatable)")
+    p.add_argument("--feed", action="append", choices=[*FEEDS, "cap", "centers", "translate"], help="limit to these feeds (repeatable)")
     p.add_argument("--force", action="store_true",
                    help="with --once: ignore ETag/Last-Modified/body hash and re-normalize (after normalizer changes)")
     args = p.parse_args()
-    feeds = args.feed or [*FEEDS, "cap", "centers"]
+    feeds = args.feed or [*FEEDS, "cap", "centers", "translate"]
 
     if args.command == "health":
         ok, lines = asyncio.run(health(feeds))

@@ -1419,6 +1419,14 @@ export interface components {
             product?: string;
             /** @description Offshore/boating product; absent means false. Hidden unless the user opts in. */
             marine?: boolean;
+            /** @description headline/body are Moby's machine translation into English (issue #11). Clients MUST label it ("Translated by Moby") and offer the original. Absent = the agency's own words. */
+            translated?: boolean;
+            /** @description Language the agency wrote in, e.g. "Spanish". Present when translated. */
+            original_language?: string;
+            /** @description The agency's own headline. Present when translated. */
+            original_headline?: string;
+            /** @description The agency's own text. Present when translated. */
+            original_body?: string;
             /** @description GET /alerts only: distance from the query point to the alert, in km. Measured to the alert's area when it has one, so 0 means "you are inside it". */
             distance_km?: number;
         };

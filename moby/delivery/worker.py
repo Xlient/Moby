@@ -38,6 +38,7 @@ CANDIDATES_SQL = """
 SELECT DISTINCT ON (e.event_id, d.device_id)
        e.event_id, e.source, e.source_feed, e.external_id, e.hazard_type, e.product, e.marine, e.severity, e.tier,
        e.title, e.description, e.alert_headline, e.alert_body,
+       e.language, e.title_en, e.description_en, e.translation_status,
        e.first_reported_at, e.last_updated_at, e.expires_at, e.raw_payload,
        ST_Y(e.location::geometry) AS lat, ST_X(e.location::geometry) AS lon,
        d.device_id, d.push_token
@@ -96,14 +97,21 @@ def build_push(row: dict[str, Any]) -> Push:
     """Contract 3: draft_alert's text when present, else the official wording."""
     alert = to_alert(row)
     title = row.get("alert_headline") or alert["headline"]
+    translated = bool(alert.get("translated"))
     if row.get("alert_body"):
         body = row["alert_body"]
+    elif translated:
+        body = " — ".join(p for p in (alert.get("location_name"), " ".join((alert.get("body") or "").split())) if p)
     else:
         place = alert.get("location_name")
         desc = " ".join((row.get("description") or "").split())
         body = " — ".join(p for p in (place, desc) if p)
-    if len(body) > 240:
-        body = body[:239].rstrip() + "…"
+    # Always keep the translation label: truncate the text, never the label.
+    suffix = f" (Translated by Moby from {alert['original_language']})" if translated else ""
+    limit = 240 - len(suffix)
+    if len(body) > limit:
+        body = body[: limit - 1].rstrip() + "…"
+    body += suffix
     critical = row["severity"] == "critical"
     return Push(
         token=row["push_token"],

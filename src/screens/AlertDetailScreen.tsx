@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { View, ScrollView, StyleSheet } from 'react-native';
@@ -73,6 +73,19 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
       ) : (
         <ScrollView style={styles.container} contentContainerStyle={{ padding: r.gutter }}>
           <AlertCard alert={alert} distanceKm={distance} />
+          {alert.body ? (
+            // The agency's message: what's happening and what to do.
+            <Text variant="bodyLarge" style={[styles.body, { color: theme.text.primary }]}>
+              {alert.body}
+            </Text>
+          ) : null}
+          {alert.translated && (
+            <TranslationNote
+              language={alert.original_language ?? 'the original language'}
+              headline={alert.original_headline}
+              body={alert.original_body}
+            />
+          )}
           {whatToDo.length > 0 && (
             // Saved on the phone: works even if this alert arrived just before the signal went.
             <View style={styles.whatToDo}>
@@ -107,7 +120,44 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
   );
 }
 
+/**
+ * Issue #11: Moby's translation is always labelled, and the agency's own words are
+ * one tap away — a translation must never pass as the agency's instruction.
+ */
+function TranslationNote({ language, headline, body }: { language: string; headline?: string; body?: string }) {
+  const { theme } = useTheme();
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={[styles.translation, { backgroundColor: theme.bg.recessed }]}>
+      <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
+        Translated by Moby from {language}. The official wording is the original.
+      </Text>
+      <Button mode="text" onPress={() => setOpen((o) => !o)} style={styles.alignStart} textColor={theme.text.primary}>
+        {open ? 'Hide original' : 'Show original'}
+      </Button>
+      {open && (
+        <View style={styles.original}>
+          {headline ? <Text variant="titleSmall" style={{ color: theme.text.primary }}>{headline}</Text> : null}
+          {body ? <Text variant="bodyMedium" style={{ color: theme.text.primary }}>{body}</Text> : null}
+        </View>
+      )}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  body: {
+    marginTop: spacing.scale[3],
+  },
+  translation: {
+    marginTop: spacing.scale[3],
+    padding: spacing.scale[3],
+    borderRadius: 12,
+  },
+  original: {
+    gap: spacing.scale[1],
+    paddingTop: spacing.scale[1],
+  },
   container: {
     flex: 1,
   },

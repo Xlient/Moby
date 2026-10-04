@@ -63,13 +63,25 @@ def _verification_label(row: dict[str, Any]) -> str:
     return "corroborated_report" if row["tier"] >= 1 else "unverified_report"
 
 
+LANGUAGE_NAMES = {"es": "Spanish", "pt": "Portuguese", "it": "Italian", "el": "Greek", "is": "Icelandic",
+                  "id": "Indonesian", "ja": "Japanese", "fr": "French", "de": "German", "zh": "Chinese",
+                  "th": "Thai", "vi": "Vietnamese", "ne": "Nepali", "hi": "Hindi", "tl": "Filipino"}
+
+
+def _translated(row: dict[str, Any]) -> bool:
+    """Issue #11: show Moby's English translation only when it passed its checks."""
+    return row.get("translation_status") == "done" and bool(row.get("title_en"))
+
+
 def to_alert(row: dict[str, Any]) -> dict[str, Any]:
+    translated = _translated(row)
     alert = {
         "alert_id": str(row["event_id"]),
         "event_id": str(row["event_id"]),
         # Contract 3: draft_alert's wording when present, so the app and the push agree.
-        "headline": row.get("alert_headline") or _headline(row),
-        "body": (row.get("alert_body") or row.get("description") or "")[:600] or None,
+        "headline": row.get("alert_headline") or (row["title_en"][:120] if translated else _headline(row)),
+        "body": (row.get("alert_body") or (row.get("description_en") if translated else None)
+                 or row.get("description") or "")[:600] or None,
         "severity": row["severity"],
         "location": {"lat": row["lat"], "lon": row["lon"], "frame": "WGS84"},
         "issued_at": row["first_reported_at"].isoformat(),
@@ -87,4 +99,12 @@ def to_alert(row: dict[str, Any]) -> dict[str, Any]:
         if row.get("source") in ("manual", "mesh") and row["tier"] >= 1 else None,
         "distance_km": round(row["distance_km"], 1) if row.get("distance_km") is not None else None,
     }
+    if translated:
+        lang = (row.get("language") or "").split("-")[0].lower()
+        alert.update({
+            "translated": True,
+            "original_language": LANGUAGE_NAMES.get(lang, row.get("language")),
+            "original_headline": (row.get("title") or "")[:300],
+            "original_body": (row.get("description") or "")[:600] or None,
+        })
     return {k: v for k, v in alert.items() if v is not None}

@@ -35,6 +35,8 @@ class NormalizedEvent:
     # The alert's area as WKT MULTIPOLYGON (lon lat order), when the source gives one.
     # Proximity uses it instead of the centre point (migration 0009).
     area_wkt: str | None = None
+    # Language of title/description (BCP 47) when not English; drives translation (0012).
+    language: str | None = None
     # CAP: (scheme, code) area codes, resolved to `area_wkt` from cap_geocodes when the
     # message has no polygon (migration 0011).
     geocodes: list[tuple[str, str]] = field(default_factory=list)

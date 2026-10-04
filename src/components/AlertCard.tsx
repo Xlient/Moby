@@ -108,6 +108,7 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
           ? '<0.1 km'
           : `${distanceKm.toFixed(1)} km`,
     formatTimeAgo(alert.issued_at),
+    alert.translated ? 'Translated' : null,
   ]
     .filter(Boolean)
     .join(' · ');

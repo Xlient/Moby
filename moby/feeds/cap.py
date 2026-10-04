@@ -344,6 +344,7 @@ def normalize_cap(xml: bytes | str, source: CapSource, *, now: datetime | None =
         country=source.country,
         area_wkt=to_wkt(rings) if rings else None,
         geocodes=[] if rings else codes,
+        language=_text(info, "language"),
         product=event_name[:120] or None,
         marine=any(w in f" {text_l} " for w in MARINE_WORDS),
         references=references,
