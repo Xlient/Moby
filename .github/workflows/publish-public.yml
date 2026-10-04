@@ -1,0 +1,84 @@
+# Publishes the allow-listed public subset (public/allowlist.txt + public/overlay) to the
+# public repository on every push to main. The public repo has its own history: only
+# the exported files and a generic sync message ever reach it — never private commits,
+# messages or files.
+#
+# Secret: PUBLIC_REPO_DEPLOY_KEY — private half of a deploy key with write access,
+# added to the public repo (Settings → Deploy keys).
+name: Publish public subset
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-public
+  cancel-in-progress: false
+
+env:
+  PUBLIC_REPO: Xlient/Moby
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check deploy key
+        id: key
+        env:
+          KEY: ${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::notice::PUBLIC_REPO_DEPLOY_KEY not set; skipping publish."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.ok == 'true'
+
+      - uses: astral-sh/setup-uv@v6
+        if: steps.key.outputs.ok == 'true'
+
+      - name: Clone public repo
+        if: steps.key.outputs.ok == 'true'
+        env:
+          KEY: ${{ secrets.PUBLIC_REPO_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh && echo "$KEY" > ~/.ssh/public_deploy && chmod 600 ~/.ssh/public_deploy
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/public_deploy -o IdentitiesOnly=yes"
+          git clone "git@github.com:${PUBLIC_REPO}.git" "$RUNNER_TEMP/public" || {
+            mkdir -p "$RUNNER_TEMP/public" && git -C "$RUNNER_TEMP/public" init -b main
+            git -C "$RUNNER_TEMP/public" remote add origin "git@github.com:${PUBLIC_REPO}.git"
+          }
+
+      - name: Export
+        if: steps.key.outputs.ok == 'true'
+        run: uv run --no-project python scripts/export_public.py "$RUNNER_TEMP/public"
+
+      - name: Secret scan (exported files)
+        if: steps.key.outputs.ok == 'true'
+        run: |
+          docker run --rm -v "$RUNNER_TEMP/public:/repo" -w /repo zricethezav/gitleaks:v8.28.0 \
+            dir --redact --no-banner .
+
+      - name: Commit and push
+        if: steps.key.outputs.ok == 'true'
+        working-directory: ${{ runner.temp }}/public
+        run: |
+          git config user.name "moby-bot"
+          git config user.email "moby-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No public changes."
+            exit 0
+          fi
+          git commit -q -m "Update Moby app ($(date -u +%Y-%m-%d))"
+          GIT_SSH_COMMAND="ssh -i ~/.ssh/public_deploy -o IdentitiesOnly=yes" git push origin HEAD:main
+          rm -f ~/.ssh/public_deploy

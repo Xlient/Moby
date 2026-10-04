@@ -41,7 +41,7 @@ def main() -> int:
             vectors = embedder.embed_documents([i["text"] for i in items])
             client.post(
                 "/internal/v1/embeddings",
-                json=[{"event_id": i["event_id"], "embedding": v} for i, v in zip(items, vectors)],
+                json=[{"event_id": i["event_id"], "embedding": v} for i, v in zip(items, vectors, strict=True)],
             ).raise_for_status()
             total += len(items)
             log.info("embedded %d (total %d)", len(items), total)

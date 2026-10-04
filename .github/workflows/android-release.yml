@@ -1,0 +1,153 @@
+# Signed Android release builds, and (opt-in, approved) upload to Google Play.
+#
+#   git tag v0.2.0 && git push origin v0.2.0      → signed APK + AAB, GitHub Release
+#   Actions → Android release → Run workflow        → same, optionally to Play
+#
+# Secrets (Settings → Secrets and variables → Actions):
+#   ANDROID_UPLOAD_KEYSTORE_BASE64  base64 of the upload keystore (.jks)
+#   ANDROID_UPLOAD_STORE_PASSWORD   keystore password
+#   ANDROID_UPLOAD_KEY_ALIAS        key alias
+#   ANDROID_UPLOAD_KEY_PASSWORD     key password
+#   GOOGLE_MAPS_API_KEY             Maps SDK key (Android-restricted)
+#   PLAY_SERVICE_ACCOUNT_JSON       Play Console service account (publish job only)
+# Variables (non-secret app config, kept out of the public repo):
+#   EXPO_PUBLIC_API_URL, EXPO_PUBLIC_FIREBASE_*, EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
+name: Android release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload the AAB to Google Play (needs approval in the 'play' environment)
+        type: boolean
+        default: false
+      track:
+        description: Play track
+        type: choice
+        options: [internal, alpha, beta, production]
+        default: internal
+
+permissions:
+  contents: write   # create the GitHub Release on tags
+
+jobs:
+  build:
+    name: Build signed APK + AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version_name: ${{ steps.version.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: version
+        name: Version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then NAME="${GITHUB_REF_NAME#v}"; else NAME="0.0.0-dev.${GITHUB_RUN_NUMBER}"; fi
+          # Play needs a strictly higher versionCode for every upload: the run number grows.
+          CODE=$((100 + GITHUB_RUN_NUMBER))
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Version $NAME ($CODE)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"   # the React Native CMake step fails on newer JDKs
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install
+        run: npm ci
+
+      - name: Upload key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::ANDROID_UPLOAD_KEYSTORE_BASE64 is not set; release builds must be signed with the upload key."
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+
+      - name: Prebuild (generate android/)
+        env:
+          MOBY_VERSION_NAME: ${{ steps.version.outputs.name }}
+          MOBY_VERSION_CODE: ${{ steps.version.outputs.code }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build
+        working-directory: android
+        env:
+          MOBY_VERSION_NAME: ${{ steps.version.outputs.name }}
+          MOBY_VERSION_CODE: ${{ steps.version.outputs.code }}
+          MOBY_UPLOAD_STORE_FILE: ${{ runner.temp }}/upload.jks
+          MOBY_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          MOBY_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          MOBY_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          # Inlined into the JS bundle at build time (public client config, not secrets).
+          EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_FIREBASE_API_KEY: ${{ vars.EXPO_PUBLIC_FIREBASE_API_KEY }}
+          EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ vars.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ vars.EXPO_PUBLIC_FIREBASE_PROJECT_ID }}
+          EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ vars.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          EXPO_PUBLIC_FIREBASE_APP_ID: ${{ vars.EXPO_PUBLIC_FIREBASE_APP_ID }}
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+          # Official builds prove themselves to the API with Play Integrity (App Check).
+          EXPO_PUBLIC_APP_CHECK: "true"
+        run: ./gradlew assembleRelease bundleRelease --no-daemon
+
+      - name: Collect outputs
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/Moby.apk "dist/Moby-${{ steps.version.outputs.name }}.apk"
+          cp android/app/build/outputs/bundle/release/app-release.aab "dist/Moby-${{ steps.version.outputs.name }}.aab"
+          (cd dist && sha256sum -- * > SHA256SUMS)
+          rm -f "$RUNNER_TEMP/upload.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moby-android-${{ steps.version.outputs.name }}
+          path: dist/
+          retention-days: 30
+
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.apk
+            dist/SHA256SUMS
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+  publish:
+    name: Upload to Google Play
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Protected environment: a required reviewer approves before anything is uploaded.
+    environment: play
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: moby-android-${{ needs.build.outputs.version_name }}
+          path: dist
+      - uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.xlient.moby
+          releaseFiles: dist/*.aab
+          track: ${{ inputs.track }}
+          # Draft until the app's store listing is complete; switch to 'completed' then.
+          status: draft

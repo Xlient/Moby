@@ -1,0 +1,30 @@
+name: Bug report
+description: Something in the app doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Security problem? Please report it privately instead: see SECURITY.md."
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Open… 2. Tap… 3. See…"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: Pixel 8, Android 16
+  - type: input
+    id: version
+    attributes:
+      label: App version
