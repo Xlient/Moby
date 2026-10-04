@@ -41,6 +41,12 @@ def official_verification(e: NormalizedEvent) -> Verification:
             return Verification(2, 0.8)
         case "cap":
             return Verification(2, 0.9)
+        case "emsc":
+            return Verification(2, 0.85)
+        case "ptwc" | "nhc":
+            return Verification(2, 0.95)   # official tsunami / hurricane warning centres
+        case "jtwc":
+            return Verification(2, 0.85)   # US Navy/Air Force typhoon warnings (advisory abroad)
         case "eonet":
             return Verification(1, 0.7)
     return Verification(0, 0.0)

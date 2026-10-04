@@ -114,7 +114,7 @@ async def healthz():
             await conn.execute("SELECT 1")
     except Exception as e:  # noqa: BLE001
         raise HTTPException(503, f"database unavailable: {type(e).__name__}") from e
-    ok, lines = await feeds_health([*FEEDS, "cap"])  # CAP is reported but never makes feeds_fresh false
+    ok, lines = await feeds_health([*FEEDS, "cap", "centers"])  # CAP is reported but never makes feeds_fresh false
     # Stale feeds are reported but don't fail liveness: the API still serves the
     # last good data, which beats restarting the whole endpoint.
     # "ephemeral" means the endpoint fell back to local disk (see deploy/endpoint/start.sh).

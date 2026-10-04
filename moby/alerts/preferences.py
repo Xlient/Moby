@@ -78,6 +78,7 @@ FROM events
 -- events delivery may push, so a notification always has a matching card on Home.
 WHERE (source = 'official' OR tier >= 1)
   AND reviewer_decision IS DISTINCT FROM 'reject'
+  AND duplicate_of IS NULL                   -- same quake from another network (migration 0010)
   AND tier >= %(min_tier)s
   AND (expires_at IS NULL OR expires_at > %(now)s)
   AND ST_DWithin(COALESCE(area, location), ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, %(radius_m)s)

@@ -51,6 +51,7 @@ JOIN devices d ON d.owner = s.owner AND d.disabled_at IS NULL AND d.registered_a
 LEFT JOIN user_preferences p ON p.owner = d.owner
 WHERE e.tier = 2
   AND e.reviewer_decision IS DISTINCT FROM 'reject'
+  AND e.duplicate_of IS NULL
   AND (e.expires_at IS NULL OR e.expires_at > now())
   AND (e.severity = 'critical'
        OR ((coalesce(jsonb_array_length(p.alert_preferences->'hazard_types'), 0) = 0

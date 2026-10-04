@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
-FeedName = Literal["noaa", "usgs", "eonet", "gdacs", "cap"]
+FeedName = Literal["noaa", "usgs", "eonet", "gdacs", "cap", "emsc", "ptwc", "jtwc", "nhc", "jma", "bipad"]
 HazardType = Literal["flood", "fire", "earthquake", "storm", "landslide", "other"]
 Severity = Literal["low", "medium", "high", "critical"]
 
@@ -35,6 +35,8 @@ class NormalizedEvent:
     # The alert's area as WKT MULTIPOLYGON (lon lat order), when the source gives one.
     # Proximity uses it instead of the centre point (migration 0009).
     area_wkt: str | None = None
+    # Earthquakes: lets the same quake from several networks be matched (migration 0010).
+    magnitude: float | None = None
     # The source's own name for the product ("Flood Warning", "Small Craft Advisory",
     # "earthquake", "TC", "wildfires"), for finer per-user filtering than hazard_type.
     product: str | None = None

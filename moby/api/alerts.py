@@ -6,6 +6,10 @@ SOURCE_ATTRIBUTION = {
     "usgs": "U.S. Geological Survey",
     "gdacs": "GDACS",
     "eonet": "NASA EONET",
+    "emsc": "EMSC",
+    "ptwc": "Pacific Tsunami Warning Center",
+    "nhc": "National Hurricane Center",
+    "jtwc": "Joint Typhoon Warning Center",
 }
 
 
@@ -36,10 +40,12 @@ def _headline(row: dict[str, Any]) -> str:
 def _location_name(row: dict[str, Any]) -> str | None:
     feed, payload = row["source_feed"], row.get("raw_payload") or {}
     props = payload.get("properties") or {}
-    if feed in ("noaa", "cap"):
+    if feed in ("noaa", "cap", "ptwc"):
         name = (props.get("areaDesc") or "").split(";")[0].strip()
     elif feed == "usgs":
         name = props.get("place") or ""
+    elif feed == "emsc":
+        name = (props.get("flynn_region") or "").title()
     elif feed == "gdacs":
         name = props.get("country") or ""
     else:

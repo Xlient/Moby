@@ -98,6 +98,7 @@ def normalize(payload: dict[str, Any]) -> NormalizeResult:
                 lat=lat,
                 lon=lon,
                 region=region,
+                magnitude=float(mag),
                 raw_payload=feature,
             )
         )
