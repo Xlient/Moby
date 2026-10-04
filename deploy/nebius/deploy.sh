@@ -6,6 +6,7 @@
 #   ./deploy/nebius/deploy.sh endpoint   # create the always-on Serverless Endpoint (API + poller + DB)
 #   ./deploy/nebius/deploy.sh redeploy   # push a new image and recreate the endpoint (data is kept)
 #   ./deploy/nebius/deploy.sh embed      # run the embedding Serverless Job once
+#   ./deploy/nebius/deploy.sh guidance   # build a draft guidance bundle (review + publish in /console)
 #   ./deploy/nebius/deploy.sh backup     # run the backup Serverless Job once
 #   ./deploy/nebius/deploy.sh status | logs | stop | start
 #
@@ -175,6 +176,8 @@ job() {  # job <name> <command> [extra flags...]
 }
 
 cmd_embed()  { job embed "python -m moby.jobs.embed_events" --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET"; }
+# Draft guidance bundle from official pages (Ultra); review and publish it in the console.
+cmd_guidance() { job guidance "python -m moby.jobs.guidance" --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET"; }
 cmd_backup() {
   need BACKUP_BUCKET setup
   # The bucket is mounted into the job, so the dump lands in object storage directly.
@@ -201,6 +204,6 @@ cmd_stop()   { need ENDPOINT_ID endpoint; run "$NEBIUS" ai endpoint stop "$ENDPO
 cmd_start()  { need ENDPOINT_ID endpoint; run "$NEBIUS" ai endpoint start "$ENDPOINT_ID"; }
 
 case "${1:-}" in
-  setup|push|endpoint|redeploy|embed|backup|status|logs|stop|start) "cmd_$1" ;;
+  setup|push|endpoint|redeploy|embed|guidance|backup|status|logs|stop|start) "cmd_$1" ;;
   *) sed -n '2,15p' "$0"; exit 1 ;;
 esac

@@ -295,6 +295,15 @@ export class ApiClient {
   // ── Guidance ─────────────────────────────────────────────────────
 
   async getGuidanceManifest(region?: RegionCode): Promise<{ bundles?: GuidanceBundle[] }> {
+    if (USE_MOCK) {
+      const cards = getMockGuidanceCards();
+      return {
+        bundles: [{
+          bundle_id: 'us-mock', region: 'US', version: 'mock', content_hash: `mock-${cards.length}`,
+          size_bytes: 0, generated_at: new Date(0).toISOString(), card_count: cards.length,
+        }],
+      };
+    }
     return this.request<{ bundles?: GuidanceBundle[] }>('GET', '/guidance/manifest', {
       query: region ? { region } : undefined,
     });

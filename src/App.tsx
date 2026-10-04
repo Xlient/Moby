@@ -7,6 +7,9 @@ import { useAuth } from '@/auth/AuthContext';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { api } from '@/api/client';
 import { useBackendSync } from '@/sync/useBackendSync';
+import { syncGuidance } from '@/guidance/guidanceStore';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import type { HazardType } from '@/api/types';
 import { typography } from '@/theme/tokens';
 import { BottomTabs } from '@/components/BottomTabs';
 import { AuthScreen } from '@/screens/AuthScreen';
@@ -30,7 +33,7 @@ type Screen =
   | { name: 'map' }
   | { name: 'alerts' }
   | { name: 'alert-detail'; alertId: string }
-  | { name: 'guidance' }
+  | { name: 'guidance'; hazard?: HazardType }
   | { name: 'report' }
   | { name: 'subscriptions' }
   | { name: 'alert-preferences' }
@@ -100,6 +103,13 @@ export function App() {
   // Push token, preferences and "near me" to the server; notification taps open the alert.
   useBackendSync(navigateToAlert);
 
+  // Keep offline guidance fresh whenever we're online (cheap when nothing changed).
+  const isOnline = useOnlineStatus();
+  useEffect(() => {
+    if (isOnline) syncGuidance();
+  }, [isOnline]);
+  const openGuidance = useCallback((hazard?: HazardType) => push({ name: 'guidance', hazard }), [push]);
+
   const handleTabChange = useCallback((tab: string) => {
     switch (tab) {
       case 'home':
@@ -162,13 +172,14 @@ export function App() {
             onAlertPress={navigateToAlert}
             onSeeAllPress={() => push({ name: 'alerts' })}
             onMapPress={() => push({ name: 'map' })}
+            onGuidancePress={() => openGuidance()}
           />
         )}
         {screen.name === 'alerts' && (
           <AlertsScreen onBack={goBack} onAlertPress={navigateToAlert} />
         )}
         {screen.name === 'alert-detail' && (
-          <AlertDetailScreen alertId={screen.alertId} onBack={goBack} />
+          <AlertDetailScreen alertId={screen.alertId} onBack={goBack} onGuidance={openGuidance} />
         )}
         {screen.name === 'map' && (
           <MapScreen onBack={goBack} onAlertDetail={navigateToAlert} />
@@ -182,7 +193,7 @@ export function App() {
             onTrustReview={() => push({ name: 'trust-review' })}
           />
         )}
-        {screen.name === 'guidance' && <GuidanceScreen onBack={goBack} />}
+        {screen.name === 'guidance' && <GuidanceScreen onBack={goBack} initialHazard={screen.hazard} />}
         {screen.name === 'report' && <ReportScreen onBack={goBack} />}
         {screen.name === 'subscriptions' && <SubscriptionsScreen onBack={goBack} />}
         {screen.name === 'alert-preferences' && <AlertPreferencesScreen onBack={goBack} />}
