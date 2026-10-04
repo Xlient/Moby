@@ -22,3 +22,5 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      - name: API contract and generated types are in sync
+        run: npm run check:types-generated

@@ -36,10 +36,15 @@ language. Moby is built for that moment:
 
 ## This repository
 
-This is the **Moby mobile app** (Expo / React Native). The Moby service it talks to (warning feeds,
-AI pipeline, database) is operated by the maintainer and isn't part of this repository. You don't
-need it to work on the app: with no server configured, **the app runs on built-in sample data**,
-so you can explore and change every screen right away.
+This is the **Moby mobile app** (Expo / React Native) and its **API contract**
+([`api-contract-v1.yaml`](api-contract-v1.yaml)). The Moby service behind that API (warning feeds,
+AI pipeline, database) is operated by the maintainer and isn't part of this repository, and only the
+official signed app can call it. You don't need it: **the app runs on built-in sample data**, so you
+can explore and change every screen right away.
+
+Want to change the API? Edit `api-contract-v1.yaml`, run `npm run generate-types`, update the
+sample data in `src/api/fixtures.ts`, and describe the change in your pull request. The maintainer
+implements it on the service side.
 
 ## Quick start
 
