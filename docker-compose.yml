@@ -1,8 +1,11 @@
-# Local dev database. Extensions are created by db/migrations/0001_extensions.sql
-# (not an init script) so the exact same migrations work on a managed instance.
+# Local stack: Postgres (PostGIS + pgvector), a one-shot migration, and the feed poller.
+# Extensions are created by db/migrations/0001_extensions.sql (not an init script) so
+# the exact same migrations work on a managed instance.
 #
-#   docker compose up -d --build
-#   uv run --env-file .env python scripts/migrate.py
+#   docker compose up -d --build              # db + migrate + poller
+#   docker compose up -d --build db           # just the database (dev on the host)
+#   docker compose logs -f poller
+#   docker compose exec poller python -m moby.feeds health
 services:
   db:
     build: ./db
@@ -23,6 +26,31 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  migrate:
+    build: .
+    image: moby-backend
+    command: ["python", "scripts/migrate.py"]
+    environment:
+      DATABASE_URL: postgresql://moby:moby@db:5432/moby
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  poller:
+    build: .
+    image: moby-backend
+    container_name: moby-poller
+    command: ["python", "-m", "moby.feeds"]
+    environment:
+      DATABASE_URL: postgresql://moby:moby@db:5432/moby
+      # Optional: identify yourself to api.weather.gov (they ask for a contact).
+      NWS_USER_AGENT: ${NWS_USER_AGENT:-moby-early-warning/0.1 (github.com/Xlient/Moby)}
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+    stop_grace_period: 20s
 
 volumes:
   moby-pgdata:

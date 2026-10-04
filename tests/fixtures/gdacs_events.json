@@ -1,0 +1,127 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "bbox": [
+    -171.2,
+    23.1,
+    -171.2,
+    23.1
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -171.2,
+     23.1
+    ]
+   },
+   "properties": {
+    "eventtype": "TC",
+    "eventid": 1001321,
+    "episodeid": 52,
+    "eventname": "NOLO-26",
+    "glide": "",
+    "name": "Tropical Cyclone NOLO-26",
+    "description": "Tropical Cyclone NOLO-26",
+    "htmldescription": "Green Tropical Cyclone NOLO-26 in United States from: 13 Sep 2026  to: 03 Oct 2026 .",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Green/TC.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Green/TC.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=TC&eventid=1001321&episodeid=52",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1001321&episodeid=52&eventtype=TC",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=TC&eventid=1001321"
+    },
+    "alertlevel": "Green",
+    "alertscore": 1,
+    "episodealertlevel": "Green",
+    "episodealertscore": 1.0,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "United States",
+    "fromdate": "2026-09-13T21:00:00",
+    "todate": "2026-10-03T15:00:00",
+    "datemodified": "2026-10-03T15:04:08",
+    "iso3": "",
+    "source": "NOAA",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "countryonland": "",
+    "affectedcountries": [
+     {
+      "iso2": "US",
+      "iso3": "USA",
+      "countryname": "United States"
+     }
+    ],
+    "severitydata": {
+     "severity": 249.9984,
+     "severitytext": "Hurricane/Typhoon > 74 mph (maximum wind speed of 250 km/h)",
+     "severityunit": "km/h"
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "bbox": [
+    -112.1,
+    19.6,
+    -112.1,
+    19.6
+   ],
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -112.1,
+     19.6
+    ]
+   },
+   "properties": {
+    "eventtype": "TC",
+    "eventid": 1001329,
+    "episodeid": 26,
+    "eventname": "RACHEL-26",
+    "glide": "",
+    "name": "Tropical Cyclone RACHEL-26",
+    "description": "Tropical Cyclone RACHEL-26",
+    "htmldescription": "Green Tropical Cyclone RACHEL-26 in Mexico from: 27 Sep 2026  to: 03 Oct 2026 .",
+    "icon": "https://www.gdacs.org/images/gdacs_icons/maps/Green/TC.png",
+    "iconoverall": "https://www.gdacs.org/images/gdacs_icons/maps/Green/TC.png",
+    "url": {
+     "geometry": "https://www.gdacs.org/gdacsapi/api/polygons/getgeometry?eventtype=TC&eventid=1001329&episodeid=26",
+     "report": "https://www.gdacs.org/report.aspx?eventid=1001329&episodeid=26&eventtype=TC",
+     "details": "https://www.gdacs.org/gdacsapi/api/events/geteventdata?eventtype=TC&eventid=1001329"
+    },
+    "alertlevel": "Green",
+    "alertscore": 1,
+    "episodealertlevel": "Green",
+    "episodealertscore": 1.0,
+    "istemporary": "false",
+    "iscurrent": "true",
+    "country": "Mexico",
+    "fromdate": "2026-09-27T09:00:00",
+    "todate": "2026-10-03T15:00:00",
+    "datemodified": "2026-10-03T14:45:58",
+    "iso3": "MEX",
+    "source": "NOAA",
+    "sourceid": "",
+    "polygonlabel": "Centroid",
+    "Class": "Point_Centroid",
+    "countryonland": "",
+    "affectedcountries": [
+     {
+      "iso2": "MX",
+      "iso3": "MEX",
+      "countryname": "Mexico"
+     }
+    ],
+    "severitydata": {
+     "severity": 194.4432,
+     "severitytext": "Hurricane/Typhoon > 74 mph (maximum wind speed of 194 km/h)",
+     "severityunit": "km/h"
+    }
+   }
+  }
+ ]
+}
