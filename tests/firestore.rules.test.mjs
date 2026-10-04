@@ -132,6 +132,29 @@ describe('users/{uid}', () => {
     await assertFails(updateDoc(ref, { home_region: 'CN' }));
   });
 
+  test('owner can save alert preferences', async () => {
+    await seedAliceProfile();
+    await assertSucceeds(updateDoc(doc(alice(), 'users', ALICE.uid), {
+      'settings.alert_preferences': { hazard_types: ['flood', 'fire'], min_severity: 'high', include_marine: true },
+    }));
+  });
+
+  test('profile can be created with alert preferences', async () => {
+    await assertSucceeds(setDoc(doc(alice(), 'users', ALICE.uid), newProfile({
+      settings: { nearby_radius_km: 25,
+                  alert_preferences: { hazard_types: ['flood'], min_severity: 'low', include_marine: false } },
+    })));
+  });
+
+  test('rejects malformed alert preferences', async () => {
+    await seedAliceProfile();
+    const ref = doc(alice(), 'users', ALICE.uid);
+    await assertFails(updateDoc(ref, { 'settings.alert_preferences': { hazard_types: ['tsunami'] } }));
+    await assertFails(updateDoc(ref, { 'settings.alert_preferences': { min_severity: 'extreme' } }));
+    await assertFails(updateDoc(ref, { 'settings.alert_preferences': { include_marine: 'yes' } }));
+    await assertFails(updateDoc(ref, { 'settings.alert_preferences': { notify_everyone: true } }));
+  });
+
   test('cannot add unknown settings', async () => {
     await seedAliceProfile();
     await assertFails(updateDoc(doc(alice(), 'users', ALICE.uid), { 'settings.debug': true }));

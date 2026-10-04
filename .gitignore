@@ -1,14 +1,59 @@
-# Python-generated files
+# Python
 __pycache__/
 *.py[oc]
 build/
+dist/
 wheels/
 *.egg-info
-
-# Virtual environments
 .venv
+.pytest_cache/
+
+# Secrets — never commit
 .env
 .env*.local
-disaster-alert-agent-plan.md
-design-system-mobile.md
-disaster-alert-agent-plan-v3.md
+*-firebase-adminsdk-*.json
+service-account*.json
+
+# Node / Expo
+node_modules/
+.expo/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+*.tsbuildinfo
+
+# Generated native folders (Continuous Native Generation — configure via app.json)
+/ios
+/android
+
+# Signing material and build output
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.apk
+*.aab
+
+# Firebase emulator state and debug logs
+.firebase-emulator-data/
+.firebase/
+*-debug.log
+
+# Nebius deploy state (resource ids)
+deploy/nebius/.state*
+
+# Local git worktrees (e.g. a branch checked out alongside)
+.worktrees/
+
+# OS / editor
+.DS_Store
+.idea/
+
+# Documentation is kept locally, not in the public repo (README.md and LICENSE are the
+# exceptions). Planning docs, design specs and dev/deploy notes live in docs/.
+docs/
+db/README.md
+*-plan*.md
+design-system-mobile*.md

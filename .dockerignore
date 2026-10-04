@@ -1,0 +1,19 @@
+# Keep secrets and bulky client/dev files out of the build context.
+.env
+.env*
+*-firebase-adminsdk-*.json
+service-account*.json
+.git
+.venv
+node_modules
+android
+ios
+.expo
+__pycache__
+*.pyc
+.pytest_cache
+tests
+docs
+assets
+*.apk
+*.aab

@@ -33,11 +33,27 @@ function EmptyState({
   theme,
   radiusKm,
   checkedAt,
+  hiddenCount,
 }: {
   theme: Theme;
   radiusKm: number;
   checkedAt: string | null;
+  hiddenCount: number;
 }) {
+  // Alerts exist but the user's alert types hide them: never call that "all quiet".
+  if (hiddenCount > 0) {
+    return (
+      <View style={[styles.notChecked, { backgroundColor: theme.bg.recessed }]}>
+        <Text variant="titleMedium" style={{ color: theme.text.primary }}>
+          Nothing that matches your alert types
+        </Text>
+        <Text variant="bodyLarge" style={[styles.notCheckedBody, { color: theme.text.secondary }]}>
+          {hiddenCount} other alert{hiddenCount === 1 ? ' is' : 's are'} active within {radiusKm} km.
+          Change what you see in Settings → Alert types.
+        </Text>
+      </View>
+    );
+  }
   // The only centered block in the app. It should read as good news.
   return (
     <View style={[styles.empty, { backgroundColor: theme.bg.recessed }]}>
@@ -102,7 +118,7 @@ export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPr
   const { theme } = useTheme();
   const r = useResponsive();
   const { firstName } = useAuth();
-  const { nearby, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt } = useNearbyAlerts();
+  const { nearby, hiddenCount, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt } = useNearbyAlerts();
   const [pickerVisible, setPickerVisible] = useState(false);
 
   const greeting = firstName
@@ -161,7 +177,7 @@ export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPr
           ) : visible.length === 0 && !cachedAt ? (
             <NotCheckedState theme={theme} isOffline={isOffline} />
           ) : visible.length === 0 ? (
-            <EmptyState theme={theme} radiusKm={radiusKm} checkedAt={cachedAt} />
+            <EmptyState theme={theme} radiusKm={radiusKm} checkedAt={cachedAt} hiddenCount={hiddenCount} />
           ) : (
             <View style={styles.cards}>
               {visible.map(({ alert, distanceKm }) => (

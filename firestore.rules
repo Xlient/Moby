@@ -18,10 +18,26 @@ service cloud.firestore {
       return km in [5, 10, 25, 50, 100];
     }
 
+    function validHazards(h) {
+      return h is list && h.size() <= 6
+        && h.hasOnly(['flood', 'fire', 'earthquake', 'storm', 'landslide', 'other']);
+    }
+
+    // Contract `AlertPreferences`: which alerts a user wants. Optional (older
+    // profiles don't have it; absent means defaults).
+    function validAlertPreferences(p) {
+      return p is map
+        && p.keys().hasOnly(['hazard_types', 'min_severity', 'include_marine'])
+        && (!('hazard_types' in p) || validHazards(p.hazard_types))
+        && (!('min_severity' in p) || validSeverity(p.min_severity))
+        && (!('include_marine' in p) || p.include_marine is bool);
+    }
+
     function validSettings(s) {
       return s is map
-        && s.keys().hasOnly(['nearby_radius_km'])
-        && validRadius(s.nearby_radius_km);
+        && s.keys().hasOnly(['nearby_radius_km', 'alert_preferences'])
+        && validRadius(s.nearby_radius_km)
+        && (!('alert_preferences' in s) || validAlertPreferences(s.alert_preferences));
     }
 
     function validName(n) {

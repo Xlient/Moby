@@ -1,0 +1,125 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "mag": 2.65,
+    "place": "58 km NNW of Rachel, Nevada",
+    "time": 1791035909036,
+    "updated": 1791037457770,
+    "tz": null,
+    "url": "https://earthquake.usgs.gov/earthquakes/eventpage/nn00925220",
+    "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/nn00925220.geojson",
+    "felt": null,
+    "cdi": null,
+    "mmi": null,
+    "alert": null,
+    "status": "automatic",
+    "tsunami": 0,
+    "sig": 108,
+    "net": "nn",
+    "code": "00925220",
+    "ids": ",uu80158431,nn00925220,",
+    "sources": ",uu,nn,",
+    "types": ",origin,phase-data,",
+    "nst": 8,
+    "dmin": 1.162,
+    "rms": 0.4334,
+    "gap": 337,
+    "magType": "ml",
+    "type": "earthquake",
+    "title": "M 2.7 - 58 km NNW of Rachel, Nevada"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -116.0575,
+     38.1089,
+     0.0718
+    ]
+   },
+   "id": "nn00925220"
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "mag": 0.76,
+    "place": "6 km NW of The Geysers, CA",
+    "time": 1791039351760,
+    "updated": 1791039448592,
+    "tz": null,
+    "url": "https://earthquake.usgs.gov/earthquakes/eventpage/nc75443466",
+    "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/nc75443466.geojson",
+    "felt": null,
+    "cdi": null,
+    "mmi": null,
+    "alert": null,
+    "status": "automatic",
+    "tsunami": 0,
+    "sig": 9,
+    "net": "nc",
+    "code": "75443466",
+    "ids": ",nc75443466,",
+    "sources": ",nc,",
+    "types": ",nearby-cities,origin,phase-data,",
+    "nst": 9,
+    "dmin": 0.00932,
+    "rms": 0.02,
+    "gap": 95,
+    "magType": "md",
+    "type": "earthquake",
+    "title": "M 0.8 - 6 km NW of The Geysers, CA"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -122.798164367676,
+     38.8228340148926,
+     3.15000009536743
+    ]
+   },
+   "id": "nc75443466"
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "mag": 4.4,
+    "place": "116 km NNE of Finschhafen, Papua New Guinea",
+    "time": 1791025545564,
+    "updated": 1791026507040,
+    "tz": null,
+    "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000tzc5",
+    "detail": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/detail/us6000tzc5.geojson",
+    "felt": null,
+    "cdi": null,
+    "mmi": null,
+    "alert": null,
+    "status": "reviewed",
+    "tsunami": 0,
+    "sig": 298,
+    "net": "us",
+    "code": "6000tzc5",
+    "ids": ",us6000tzc5,",
+    "sources": ",us,",
+    "types": ",origin,phase-data,",
+    "nst": 26,
+    "dmin": 3.693,
+    "rms": 0.58,
+    "gap": 109,
+    "magType": "mb",
+    "type": "earthquake",
+    "title": "M 4.4 - 116 km NNE of Finschhafen, Papua New Guinea"
+   },
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     148.3446,
+     -5.6287,
+     232.07
+    ]
+   },
+   "id": "us6000tzc5"
+  }
+ ]
+}

@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { db } from './firebase';
-import type { RegionCode, Severity, Subscription } from './types';
+import type { AlertPreferences, RegionCode, Severity, Subscription } from './types';
 
 // ── Firestore layout ─────────────────────────────────────────────────
 //
@@ -29,6 +29,8 @@ import type { RegionCode, Severity, Subscription } from './types';
 
 export interface UserSettings {
   nearby_radius_km: number;
+  /** Absent on profiles created before alert preferences existed: means defaults. */
+  alert_preferences?: AlertPreferences;
 }
 
 export interface UserProfile {
@@ -60,7 +62,7 @@ const subscriptionsCol = (uid: string) => collection(requireDb(), 'users', uid, 
 /** Creates the profile on first sign-in. Leaves an existing profile untouched. */
 export async function ensureUserProfile(
   user: FirebaseUser,
-  defaults: { displayName?: string | null; nearbyRadiusKm: number },
+  defaults: { displayName?: string | null; nearbyRadiusKm: number; alertPreferences: AlertPreferences },
 ): Promise<void> {
   const ref = userDoc(user.uid);
   const snapshot = await getDoc(ref);
@@ -70,7 +72,7 @@ export async function ensureUserProfile(
     display_name: defaults.displayName ?? user.displayName ?? null,
     home_region: 'US',
     roles: ['subscriber', 'reporter'],
-    settings: { nearby_radius_km: defaults.nearbyRadiusKm },
+    settings: { nearby_radius_km: defaults.nearbyRadiusKm, alert_preferences: defaults.alertPreferences },
     created_at: serverTimestamp(),
   });
 }

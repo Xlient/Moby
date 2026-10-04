@@ -1,154 +1,143 @@
-# Early Warning (Moby)
+<div align="center">
 
-Disaster early-warning client, built with **Expo (SDK 57) / React Native**. It runs on
-Android, iOS and the web from one codebase (web goes through `react-native-web`).
+# Moby — early warnings that reach you
 
-## Setup
+**An open-source disaster early-warning app for people in places where official alerts don't reach.**
+Moby combines official hazard feeds with reports from people on the ground, decides carefully what's
+worth an alert, and helps you know what to do — even with little or no signal.
 
-```bash
-npm install
-cp .env.example .env   # optional: API + Firebase settings (EXPO_PUBLIC_* only)
-```
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+![Android](https://img.shields.io/badge/Android-Expo%20%2F%20React%20Native-3DDC84)
+![Backend](https://img.shields.io/badge/Backend-Python%20%C2%B7%20FastAPI%20%C2%B7%20LangGraph-3776AB)
+![Runs on](https://img.shields.io/badge/Runs%20on-Nebius%20AI%20Cloud-0B1F33)
 
-With no `EXPO_PUBLIC_API_URL` set the app runs on the built-in mock data, and with no
-Firebase settings it skips sign-in.
+</div>
 
-## Run in development
+> ⚠️ **Moby complements official warning systems — it does not replace them.** Always follow
+> instructions from local authorities and emergency services.
 
-```bash
-npx expo start --go     # open in Expo Go on your phone (scan the QR code); "a" = Android emulator, "w" = web
-npm run web             # web only
-```
+---
 
-Every native module the app uses today ships in Expo Go, so no build is needed to try it.
-(`expo-dev-client` is installed, so plain `npx expo start` targets a development build;
-`--go` or pressing `s` switches to Expo Go.) Once you add a library with its own native code
-(e.g. Bluetooth for the mesh relay), use a **development build** instead:
+## Why
 
-```bash
-npx expo run:android    # builds + installs a debug build locally (needs Android Studio / SDK)
-# or, in the cloud:
-npx eas-cli@latest build -p android --profile development
-```
+Floods, wildfires, landslides and storms are most dangerous exactly where warnings struggle to
+arrive: trekking routes, valleys, rural areas, places where towers fail first. Often the earliest
+signal is a person who sees the water rising. Moby is built for that moment:
 
-## Accounts and database (Firebase)
+- **Watches official sources for you** — the US National Weather Service, USGS earthquakes,
+  NASA EONET and GDACS — continuously, and shows only what's near you.
+- **Treats trust as a first-class feature.** An agency warning, a report confirmed by several people
+  nearby, and a single unverified report always look different. A rumour should never look like a
+  government warning.
+- **Stays calm until it matters.** Quiet by default; loud only for real hazards. Critical alerts
+  near you always get through, whatever your settings.
+- **Works offline.** Last-known alerts, maps and (soon) safety guidance stay on your phone.
 
-Sign-in is Firebase Auth (email + password). Firestore holds **user-owned data only**:
+## Features
 
-| Path | Contents |
+| | Status |
 |---|---|
-| `users/{uid}` | name, email, roles, `settings.nearby_radius_km` |
-| `users/{uid}/subscriptions/{id}` | watched areas (same shape as `Subscription` in the API contract) |
+| Live official alerts (NWS, USGS, NASA EONET, GDACS), normalized and de-duplicated | ✅ |
+| "Alerts near you" with a radius you choose, list and map always in agreement | ✅ |
+| Clear trust levels: official · confirmed by people nearby · unverified | ✅ |
+| Per-user alert types (hazards, minimum severity, marine) — critical alerts always shown | ✅ |
+| Sign-in with email or Google; settings and watched areas synced to your account | ✅ |
+| Google Maps with a drawn-map fallback when tiles can't load | ✅ |
+| AI pipeline that fuses reports with official data (LangGraph + Nemotron) | 🚧 in progress |
+| Community hazard reports with human review before anything goes public | 🚧 in progress |
+| Push notifications and AI situational briefs | 🗓 planned |
+| Offline safety guidance, on-device assistant, Bluetooth mesh relay | 🗓 planned |
 
-Alerts, events and reports stay with the backend (Postgres + PostGIS) and come through the
-REST API. Access is locked down in `firestore.rules`: users can only touch their own
-documents, can't change their roles, and nothing else is readable. Data access lives in
-`src/api/userData.ts`.
+## How it works
 
-### Project setup (moby-52b4c)
-
-The app talks to the real project by default. Its client config is in `.env`
-(`EXPO_PUBLIC_FIREBASE_*`, copied from `google-services.json`) and `.firebaserc` points the
-Firebase CLI at it. One-time console steps:
-
-1. **Authentication → Sign-in method:** enable **Email/Password** and **Google**.
-2. **Firestore Database:** create the database (production mode is fine — our rules lock it down).
-3. **Project settings → Your apps → Android (`com.xlient.moby`) → Add fingerprint:** add the
-   SHA-1 of every key that signs the app, then download `google-services.json` again and
-   replace the one in the repo root. Debug builds use the React Native debug key:
-   `5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25`.
-   EAS and Play builds have their own keys (`eas credentials`, Play Console → App integrity).
-4. Publish the security rules:
-   ```bash
-   npx -y firebase-tools@15 login
-   npm run deploy:firestore
-   ```
-
-### Google Sign-In
-
-Android uses `@react-native-google-signin/google-signin`: the Google account picker returns
-an ID token for the OAuth **web** client (`EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`), which Firebase
-Auth exchanges for a session (`src/auth/googleSignIn.ts`; the web build uses Firebase's popup).
-`app.config.ts` sets `android.googleServicesFile`, so `expo prebuild` adds the Google Services
-Gradle plugin to `android/build.gradle` and `android/app/build.gradle`; don't edit those by
-hand. A "isn't set up for this version of the app" error means the signing SHA-1 isn't
-registered (step 3).
-
-### Local development with the emulators (no Firebase project needed)
-
-```bash
-npm run emulators         # Auth :9099, Firestore :8080, UI http://127.0.0.1:4000 — needs Java 21+
-npm run start:emulators   # Metro with the app pointed at the emulators (project demo-moby)
-npm run test:rules        # security-rule tests, with the emulators running
+```mermaid
+flowchart LR
+  subgraph Sources
+    NWS[NWS alerts] --- USGS[USGS quakes] --- EONET[NASA EONET] --- GDACS[GDACS]
+    People[Reports from people nearby]
+  end
+  Sources --> Poller[Feed poller<br/>conditional polling, no gaps]
+  Poller --> DB[(Postgres<br/>PostGIS + pgvector)]
+  People --> Graph[LangGraph pipeline<br/>structure → fuse → score → route]
+  Graph --> DB
+  DB --> API[FastAPI]
+  API --> App[Moby app<br/>Android · Expo]
+  Jobs[Serverless jobs<br/>embeddings · backups · briefs] <--> API
+  Graph -. Nemotron via Nebius Token Factory .- LLM((LLMs))
 ```
 
-Inside the Android emulator, `localhost` is mapped to `10.0.2.2` automatically; for a
-physical phone set `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST` to your computer's LAN IP. Emulator
-data is saved to `.firebase-emulator-data/` on exit. A test account for the emulator is in
-`tests/emulator-test-account.json`.
+- **Backend** (`moby/`): Python 3.14, FastAPI, LangGraph, psycopg. Official feeds are polled with
+  ETag / If-Modified-Since, normalized into one event schema, and linked across updates (an NWS
+  alert and its updates stay one event). Urgency decisions are deterministic; models help structure
+  and match reports, and a human approves before any community report becomes a public alert.
+- **Models**: NVIDIA Nemotron 3 (Nano, Super, Ultra) and Qwen3 embeddings, served by
+  [Nebius Token Factory](https://nebius.com/).
+- **Data**: Postgres 17 with PostGIS (where things are) and pgvector (what they're about).
+- **App**: Expo / React Native with React Native Paper, Firebase Auth + Firestore for accounts.
+- **Hosting**: one [Nebius](https://nebius.com/) Serverless Endpoint runs the API, poller and
+  database; Nebius Serverless Jobs handle background work (embeddings, backups).
 
-### Maps
+## Quick start
 
-Android uses Google Maps (`react-native-maps`). The key comes from `GOOGLE_MAPS_API_KEY` in
-`.env` via `app.config.ts` (rebuild after changing it). Restrict the key in Google Cloud to
-**Maps SDK for Android** and the app's package + SHA-1. The basemap is styled muted
-(`src/theme/mapStyle.ts`) so only severity is saturated. The web build shows a plain diagram.
+### Backend (API, feed poller, database)
 
-## Android builds
-
-> **Java versions:** the Android build needs **JDK 17** (React Native's native build fails on
-> newer JDKs with "A restricted method in java.lang.System has been called"); the Firebase
-> emulators need **JDK 21+**. Set `JAVA_HOME` accordingly, or set Android Studio's Gradle JDK
-> to 17.
-
-`android/` is **generated** (Continuous Native Generation) and is gitignored. Configure
-native settings in `app.json` (package name `com.xlient.moby`, version, icons,
-permissions), not by editing generated files.
-
-### Cloud builds with EAS (no Android SDK needed)
-
-One-time setup:
+Requires Docker and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-npm install -g eas-cli      # or prefix commands with npx eas-cli@latest
-eas login
-eas init                    # links the project to your Expo account (writes projectId into app.json)
+git clone https://github.com/Xlient/Moby.git && cd Moby
+cp .env.example .env                 # add your Nebius Token Factory key (only needed for AI features)
+docker compose up -d --build         # Postgres + PostGIS + pgvector, migrations, live feed poller
+uv sync
+uv run --env-file .env uvicorn moby.api.app:app --reload
 ```
 
-Then:
+Then try it — active alerts within 100 km of San Francisco:
 
-| Command | Profile | Output |
-|---|---|---|
-| `npm run build:android:apk` | `preview` | Installable `.apk` for testers (sideload / QR link) |
-| `npm run build:android:aab` | `production` | `.aab` for Google Play |
-| `eas build -p android --profile development` | `development` | Dev-client `.apk` for `expo start --dev-client` |
+```bash
+curl "http://localhost:8000/v1/alerts?lat=37.77&lon=-122.42&radius_km=100"
+```
 
-EAS generates and stores the signing keystore on the first build. Profiles live in
-`eas.json`.
+Run the tests with `uv run --env-file .env pytest`.
 
-### Local builds
+### Android app
 
-- `npm run build:android:local` runs the same EAS `preview` build on your machine
-  (needs the Android SDK and a JDK, 17 or newer).
-- Or generate the native project and use Gradle directly:
+The app lives on the `expo-android` branch while it's being merged. Requires Node.js, Android Studio
+(SDK + an emulator) and **JDK 17**.
 
-  ```bash
-  npx expo prebuild -p android
-  cd android && ./gradlew assembleRelease   # → app/build/outputs/apk/release/Moby.apk
-  ```
+```bash
+git switch expo-android
+npm install
+cp .env.example .env                 # Firebase + Google Maps settings; leave blank to run on mock data
+npx expo run:android
+```
 
-  Without EAS this release APK is signed with the debug keystore, so it's fine for
-  testing but not for Play.
+With no backend or Firebase configured, the app runs on built-in sample alerts so you can explore it
+immediately.
 
-### Versioning
+## Project status
 
-`appVersionSource` is `local`: bump `expo.version` and `expo.android.versionCode` in
-`app.json` before each Play upload.
+Moby is being built in the open for a competition submission, in sprints: data layer and app
+foundations are done; the agentic fusion pipeline, community reports with human review, and
+notifications are in progress. Feature flags keep anything unfinished switched off in the app.
 
-## Project layout
+## Contributing
 
-- `index.ts` → `src/Root.tsx` (providers, safe area, status bar) → `src/App.tsx` (screen state, Android back button)
-- `src/screens`, `src/components` — React Native UI (react-native-paper + react-native-svg)
-- `src/lib/storage.ts` — synchronous on-device key-value cache (expo-sqlite; `storage.web.ts` uses localStorage)
-- `src/hooks/useOnlineStatus.ts` — connectivity via NetInfo
-- `src/config/env.ts` — `EXPO_PUBLIC_*` build-time config
+Issues and pull requests are welcome. Please keep two principles intact in any change:
+
+1. **Trust stays visible.** Unverified reports must never look like official warnings.
+2. **Never a false all-clear.** If the app can't check, it says so — it never shows "all quiet".
+
+Run the tests before opening a PR (`uv run pytest` for the backend, `npx tsc --noEmit` for the app).
+
+## Data sources & acknowledgements
+
+Hazard data comes from the [US National Weather Service](https://www.weather.gov/documentation/services-web-api),
+the [USGS Earthquake Hazards Program](https://earthquake.usgs.gov/earthquakes/feed/),
+[NASA EONET](https://eonet.gsfc.nasa.gov/) and [GDACS](https://www.gdacs.org/). These organisations
+do not endorse Moby; their data is used under their public terms. Models are served by Nebius Token
+Factory; NVIDIA Nemotron and Qwen models are the work of their respective authors.
+
+## License
+
+Moby is free software, licensed under the [GNU General Public License v3.0](LICENSE): you may use,
+study, share and modify it, and distributed versions must remain open under the same license.
