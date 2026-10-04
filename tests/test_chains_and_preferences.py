@@ -26,7 +26,8 @@ from moby.feeds.poller import apply_cancels, group_chains, known_chain_ids, reco
 from moby.feeds.schema import NormalizedEvent
 
 ROOT = Path(__file__).resolve().parent.parent
-T0 = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
+# Relative to now: the DB tests check that alerts expiring 6 h after T0 are still active.
+T0 = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(hours=2)
 
 
 def nws(item_id: str, *, sent: datetime = T0, refs=(), cancel=False, severity="Moderate",
