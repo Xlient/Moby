@@ -1,7 +1,9 @@
-# Postgres 17 + PostGIS (from the postgis image) + pgvector (added from PGDG apt).
-# Neither upstream image ships both, so we layer pgvector on top of PostGIS.
-FROM postgis/postgis:17-3.5
+# Postgres 17 + pgvector (official multi-arch image) + PostGIS (from PGDG apt).
+# Neither upstream image ships both. We start from pgvector because postgis/postgis
+# has no arm64 build (Apple Silicon); pgvector/pgvector is multi-arch and already
+# has the PGDG apt repo configured, so PostGIS is a single package install.
+FROM pgvector/pgvector:pg17
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-17-pgvector \
+    && apt-get install -y --no-install-recommends postgresql-17-postgis-3 \
     && rm -rf /var/lib/apt/lists/*

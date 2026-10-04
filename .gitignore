@@ -12,3 +12,34 @@ wheels/
 disaster-alert-agent-plan.md
 design-system-mobile.md
 disaster-alert-agent-plan-v3.md
+.env*.local
+
+# Node / Expo (client lives on the expo-android branch)
+node_modules/
+.expo/
+/android
+/ios
+
+# Firebase: service-account keys must never be committed; emulator state/logs
+*-firebase-adminsdk-*.json
+service-account*.json
+.firebase-emulator-data/
+*-debug.log
+
+# OS / editor
+.DS_Store
+.idea/
+
+# Local git worktrees (e.g. the app branch checked out alongside)
+.worktrees/
+
+# Nebius deploy state (resource ids)
+deploy/nebius/.state
+deploy/nebius/.state*
+
+# Documentation is kept locally, not in the public repo (README.md and LICENSE are the
+# exceptions). Planning docs, design specs and dev/deploy notes live in docs/.
+docs/
+db/README.md
+*-plan*.md
+design-system-mobile*.md

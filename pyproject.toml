@@ -5,8 +5,24 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "fastapi>=0.115",
+    "httpx>=0.28",
     "langchain>=1.4.0",
+    "langchain-openai>=1.0",
     "langgraph>=1.2.11",
+    "langsmith>=0.4",
     "openai>=3.16.2",
-    "psycopg[binary]>=3.2",
+    "psycopg[binary,pool]>=3.2",
+    "pydantic-settings>=2.6",
+    "uvicorn>=0.32",
 ]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28",
+    "pytest>=8.3",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
