@@ -7,16 +7,29 @@ import { typography, spacing, radius } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useAuth } from '@/auth/AuthContext';
 import { useNearbyRadius } from '@/hooks/useNearbyRadius';
+import { ALL_HAZARDS, useAlertPreferences } from '@/hooks/useAlertPreferences';
+import type { AlertPreferences } from '@/api/types';
 import { useSubscriptions } from '@/hooks/useSubscriptions';
 import { RadiusPicker } from '@/components/RadiusPicker';
 
 interface SettingsScreenProps {
   onSubscriptions: () => void;
+  onAlertPreferences: () => void;
   onCardReview?: () => void;
   onTrustReview?: () => void;
 }
 
 const APP_VERSION = Constants.expoConfig?.version ?? '0.1.0';
+
+/** "All types", "3 types, high and up", "5 types, critical only, marine"… */
+function summarizeAlertPreferences(p: AlertPreferences): string {
+  const count = (p.hazard_types ?? ALL_HAZARDS).length;
+  const parts = [count === ALL_HAZARDS.length ? 'All types' : `${count} type${count === 1 ? '' : 's'}`];
+  if (p.min_severity === 'critical') parts.push('critical only');
+  else if (p.min_severity !== 'low') parts.push(`${p.min_severity} and up`);
+  if (p.include_marine) parts.push('marine');
+  return parts.join(', ');
+}
 
 function Row({ children, last = false }: { children: ReactNode; last?: boolean }) {
   const { theme } = useTheme();
@@ -155,11 +168,12 @@ function NameRow() {
   );
 }
 
-export function SettingsScreen({ onSubscriptions, onCardReview, onTrustReview }: SettingsScreenProps) {
+export function SettingsScreen({ onSubscriptions, onAlertPreferences, onCardReview, onTrustReview }: SettingsScreenProps) {
   const { theme, isDark, toggleTheme } = useTheme();
   const r = useResponsive();
   const { user, isConfigured, signOut } = useAuth();
   const [radiusKm, setRadiusKm] = useNearbyRadius();
+  const [alertPrefs] = useAlertPreferences();
   const { subscriptions } = useSubscriptions();
   const [pickerVisible, setPickerVisible] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -210,6 +224,7 @@ export function SettingsScreen({ onSubscriptions, onCardReview, onTrustReview }:
         )}
 
         <Section title="Alerts">
+          <LinkRow label="Alert types" value={summarizeAlertPreferences(alertPrefs)} onPress={onAlertPreferences} />
           <LinkRow label="Nearby radius" value={`${radiusKm} km`} onPress={() => setPickerVisible(true)} />
           <LinkRow label="Watched areas" value={areasValue} onPress={onSubscriptions} last />
         </Section>

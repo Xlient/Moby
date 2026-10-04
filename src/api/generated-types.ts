@@ -214,6 +214,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/alert-preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace the caller's alert preferences
+         * @description Applies to GET /alerts and to push delivery alike, so what a user sees and what notifies them never disagree. An empty hazard_types list is treated as "all". Critical alerts bypass these preferences.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AlertPreferences"];
+                };
+            };
+            responses: {
+                /** @description Saved (normalized) preferences */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AlertPreferences"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/devices": {
         parameters: {
             query?: never;
@@ -605,6 +649,12 @@ export interface paths {
                     radius_km?: number;
                     min_tier?: 0 | 1 | 2;
                     since?: string;
+                    /** @description Only these hazard types. Defaults to the caller's saved preferences, else all. */
+                    hazard_types?: components["schemas"]["HazardType"][];
+                    /** @description Defaults to the caller's saved preferences, else low. */
+                    min_severity?: components["schemas"]["Severity"];
+                    /** @description Include marine (offshore/boating) products. Defaults to the caller's saved preferences, else false. */
+                    include_marine?: boolean;
                 };
                 header?: never;
                 path?: never;
@@ -1037,6 +1087,16 @@ export interface components {
             home_region: components["schemas"]["RegionCode"];
             /** Format: date-time */
             created_at?: string;
+            alert_preferences?: components["schemas"]["AlertPreferences"];
+        };
+        /** @description What a user wants to be alerted about. Defaults: every hazard type, every severity, marine off (marine products are ~70% of NWS alerts and only matter on the water). Critical alerts are always delivered: these preferences only ever filter lower severities, never a critical alert within the user's radius. */
+        AlertPreferences: {
+            /** @description Empty or absent means all. */
+            hazard_types?: components["schemas"]["HazardType"][];
+            /** @default low */
+            min_severity: components["schemas"]["Severity"];
+            /** @default false */
+            include_marine: boolean;
         };
         ReportSubmission: {
             /** @description Client-generated UUID. Idempotency key — safe to retry. */
@@ -1124,6 +1184,10 @@ export interface components {
             location_name?: string;
             /** @description Distinct originating reporters behind a corroborated_report (relay hops and repeat reports from one device do not count — see escalation caution rules). Omitted for official_confirmed; 1 or omitted for unverified_report. */
             corroboration_count?: number;
+            /** @description The source's own product name, e.g. "Flood Warning", "Small Craft Advisory", "earthquake". Finer-grained than hazard_type. */
+            product?: string;
+            /** @description Offshore/boating product; absent means false. Hidden unless the user opts in. */
+            marine?: boolean;
         };
         SituationalBrief: {
             event_id: string;

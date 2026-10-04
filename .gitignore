@@ -12,3 +12,46 @@ wheels/
 disaster-alert-agent-plan.md
 design-system-mobile.md
 disaster-alert-agent-plan-v3.md
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+*.tsbuildinfo
+
+# Generated native folders (Continuous Native Generation — configure via app.json)
+/ios
+/android
+
+# Signing material and build output
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.apk
+*.aab
+
+# OS / editor
+.DS_Store
+.idea/
+
+# Firebase emulator state and debug logs
+.firebase-emulator-data/
+.firebase/
+*-debug.log
+
+# Firebase Admin service-account keys — never commit
+*-firebase-adminsdk-*.json
+service-account*.json
+
+# Documentation is kept locally, not in the public repo (README.md and LICENSE are the
+# exceptions). Planning docs, design specs and dev/deploy notes live in docs/.
+docs/
+db/README.md
+*-plan*.md
+design-system-mobile*.md

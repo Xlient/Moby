@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import type { Alert } from '@/api/types';
+import type { Alert, AlertPreferences } from '@/api/types';
 import { compareAlerts } from '@/lib/alerts';
 import { USER_CENTER, distanceKm } from '@/lib/geo';
 import { RADIUS_OPTIONS, useNearbyRadius, type RadiusKm } from './useNearbyRadius';
 import { useAlerts } from './useAlerts';
+import { matchesAlertPreferences, useAlertPreferences } from './useAlertPreferences';
 
 export interface NearbyAlert {
   alert: Alert;
@@ -12,8 +13,11 @@ export interface NearbyAlert {
 }
 
 export interface UseNearbyAlertsResult {
-  /** Alerts within the radius, highest severity first. */
+  /** Alerts within the radius that match the user's alert preferences, highest severity first. */
   nearby: NearbyAlert[];
+  /** Within the radius but filtered out by alert preferences (so the UI can say so). */
+  hiddenCount: number;
+  preferences: AlertPreferences;
   radiusKm: RadiusKm;
   setRadiusKm: (next: RadiusKm) => void;
   loading: boolean;
@@ -37,18 +41,20 @@ export function useNearbyAlerts(): UseNearbyAlertsResult {
   // TODO(location): replace the demo location with the device position.
   const center = USER_CENTER;
   const { alerts, loading, error, isOffline, cachedAt } = useAlerts(center.lat, center.lon, MAX_RADIUS_KM);
+  const [preferences] = useAlertPreferences();
 
-  const nearby = useMemo(
-    () =>
-      alerts
-        .flatMap((alert): NearbyAlert[] => {
-          if (!alert.location) return [];
-          const d = distanceKm(center.lat, center.lon, alert.location.lat, alert.location.lon);
-          return d <= radiusKm ? [{ alert, distanceKm: Math.round(d * 10) / 10 }] : [];
-        })
-        .sort((a, b) => compareAlerts(a.alert, b.alert)),
-    [alerts, center.lat, center.lon, radiusKm],
-  );
+  const { nearby, hiddenCount } = useMemo(() => {
+    const inRadius = alerts.flatMap((alert): NearbyAlert[] => {
+      if (!alert.location) return [];
+      const d = distanceKm(center.lat, center.lon, alert.location.lat, alert.location.lon);
+      return d <= radiusKm ? [{ alert, distanceKm: Math.round(d * 10) / 10 }] : [];
+    });
+    const wanted = inRadius.filter(({ alert }) => matchesAlertPreferences(preferences, alert));
+    return {
+      nearby: wanted.sort((a, b) => compareAlerts(a.alert, b.alert)),
+      hiddenCount: inRadius.length - wanted.length,
+    };
+  }, [alerts, center.lat, center.lon, radiusKm, preferences]);
 
-  return { nearby, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt };
+  return { nearby, hiddenCount, preferences, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt };
 }

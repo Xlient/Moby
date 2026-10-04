@@ -1,11 +1,17 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.3.0
+  version: 0.4.0
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.4.0 — Additive only, no breaking changes (per-user alert preferences, marine alerts):
+      + AlertPreferences schema; User.alert_preferences
+      + PUT /me/alert-preferences
+      + GET /alerts: hazard_types, min_severity, include_marine (default to the caller's
+        saved preferences when signed in)
+      + Alert.product, Alert.marine
     0.3.0 — Additive only, no breaking changes (fields the mobile alert card needs):
       + Alert.hazard_type          (drives the card's hazard icon)
       + Alert.location_name        (place shown in the card's metadata line)
@@ -139,6 +145,27 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
+
+  /me/alert-preferences:
+    put:
+      tags: [auth]
+      summary: Replace the caller's alert preferences
+      description: >
+        Applies to GET /alerts and to push delivery alike, so what a user sees and what
+        notifies them never disagree. An empty hazard_types list is treated as "all".
+        Critical alerts bypass these preferences.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AlertPreferences' }
+      responses:
+        '200':
+          description: Saved (normalized) preferences
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertPreferences' }
+        '400': { $ref: '#/components/responses/BadRequest' }
 
   /me/devices:
     post:
@@ -366,6 +393,22 @@ paths:
         - name: since
           in: query
           schema: { type: string, format: date-time }
+        - name: hazard_types
+          in: query
+          description: Only these hazard types. Defaults to the caller's saved preferences, else all.
+          style: form
+          explode: false
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/HazardType' }
+        - name: min_severity
+          in: query
+          description: Defaults to the caller's saved preferences, else low.
+          schema: { $ref: '#/components/schemas/Severity' }
+        - name: include_marine
+          in: query
+          description: Include marine (offshore/boating) products. Defaults to the caller's saved preferences, else false.
+          schema: { type: boolean }
       responses:
         '200':
           description: OK
@@ -695,6 +738,26 @@ components:
           items: { type: string, enum: [subscriber, reporter, reviewer, admin] }
         home_region: { $ref: '#/components/schemas/RegionCode' }
         created_at: { type: string, format: date-time }
+        alert_preferences: { $ref: '#/components/schemas/AlertPreferences' }
+
+    AlertPreferences:
+      type: object
+      description: >
+        What a user wants to be alerted about. Defaults: every hazard type, every
+        severity, marine off (marine products are ~70% of NWS alerts and only matter
+        on the water). Critical alerts are always delivered: these preferences only
+        ever filter lower severities, never a critical alert within the user's radius.
+      properties:
+        hazard_types:
+          type: array
+          description: Empty or absent means all.
+          items: { $ref: '#/components/schemas/HazardType' }
+        min_severity:
+          allOf: [{ $ref: '#/components/schemas/Severity' }]
+          default: low
+        include_marine:
+          type: boolean
+          default: false
 
     ReportSubmission:
       type: object
@@ -803,6 +866,14 @@ components:
             Distinct originating reporters behind a corroborated_report (relay hops and
             repeat reports from one device do not count — see escalation caution rules).
             Omitted for official_confirmed; 1 or omitted for unverified_report.
+        product:
+          type: string
+          description: >
+            The source's own product name, e.g. "Flood Warning", "Small Craft Advisory",
+            "earthquake". Finer-grained than hazard_type.
+        marine:
+          type: boolean
+          description: Offshore/boating product; absent means false. Hidden unless the user opts in.
 
     SituationalBrief:
       type: object

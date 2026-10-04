@@ -16,7 +16,7 @@ interface AlertsScreenProps {
 export function AlertsScreen({ onBack, onAlertPress }: AlertsScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
-  const { nearby, radiusKm, isOffline, cachedAt } = useNearbyAlerts();
+  const { nearby, hiddenCount, radiusKm, isOffline, cachedAt } = useNearbyAlerts();
 
   return (
     <View style={styles.container}>
@@ -33,12 +33,15 @@ export function AlertsScreen({ onBack, onAlertPress }: AlertsScreenProps) {
           >
             {isOffline ? 'Offline — showing saved info. ' : ''}
             {nearby.length} within {radiusKm} km, most serious first.
+            {hiddenCount > 0 ? ` ${hiddenCount} more hidden by your alert types.` : ''}
           </Text>
         }
         ListEmptyComponent={
           <Text variant="bodyLarge" style={{ color: theme.text.secondary }}>
             {/* Never claim "all quiet" if we haven't been able to check. */}
-            {cachedAt
+            {hiddenCount > 0
+              ? 'Nothing that matches your alert types. Change them in Settings → Alert types.'
+              : cachedAt
               ? `All quiet within ${radiusKm} km.`
               : 'Can’t check for alerts yet. We’ll look as soon as you have signal.'}
           </Text>

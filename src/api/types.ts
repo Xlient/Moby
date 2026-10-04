@@ -27,6 +27,7 @@ export type GuidanceBundle = components['schemas']['GuidanceBundle'];
 
 // ── User & auth ──────────────────────────────────────────────────────
 export type User = components['schemas']['User'];
+export type AlertPreferences = components['schemas']['AlertPreferences'];
 export type AuthTokens = components['schemas']['AuthTokens'];
 
 // ── Reports ──────────────────────────────────────────────────────────

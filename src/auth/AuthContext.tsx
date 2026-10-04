@@ -31,6 +31,11 @@ import {
   getNearbyRadius,
   setNearbyRadiusRemoteSink,
 } from '@/hooks/useNearbyRadius';
+import {
+  applyRemoteAlertPreferences,
+  getAlertPreferences,
+  setAlertPreferencesRemoteSink,
+} from '@/hooks/useAlertPreferences';
 
 interface AuthContextValue {
   user: User | null;
@@ -118,7 +123,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const displayName = pendingName.current ?? user.displayName;
     pendingName.current = null;
-    ensureUserProfile(user, { displayName, nearbyRadiusKm: getNearbyRadius() })
+    ensureUserProfile(user, {
+      displayName,
+      nearbyRadiusKm: getNearbyRadius(),
+      alertPreferences: getAlertPreferences(),
+    })
       .catch((err) => console.warn('Could not create user profile', err))
       .finally(() => {
         if (cancelled) return;
@@ -128,6 +137,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setProfile(p);
             if (p?.settings?.nearby_radius_km !== undefined) {
               applyRemoteNearbyRadius(p.settings.nearby_radius_km);
+            }
+            if (p?.settings?.alert_preferences !== undefined) {
+              applyRemoteAlertPreferences(p.settings.alert_preferences);
             }
           },
           (err) => console.warn('Could not load user profile', err),
@@ -139,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
-  // Mirror radius changes made on this device to the profile.
+  // Mirror radius and alert-preference changes made on this device to the profile.
   useEffect(() => {
     if (!user) return;
     setNearbyRadiusRemoteSink((next) => {
@@ -147,7 +159,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn('Could not save radius', err),
       );
     });
-    return () => setNearbyRadiusRemoteSink(null);
+    setAlertPreferencesRemoteSink((next) => {
+      updateUserSettings(user.uid, { alert_preferences: next }).catch((err) =>
+        console.warn('Could not save alert preferences', err),
+      );
+    });
+    return () => {
+      setNearbyRadiusRemoteSink(null);
+      setAlertPreferencesRemoteSink(null);
+    };
   }, [user]);
 
   const signIn = useCallback(async (email: string, password: string) => {
