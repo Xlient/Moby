@@ -18,6 +18,8 @@ import { GuidanceCard } from '@/components/GuidanceCard';
 import { cardsForHazard, useGuidance } from '@/guidance/guidanceStore';
 import type { HazardType } from '@/api/types';
 import { alertDistanceKm } from '@/lib/geo';
+import { EmergencyNumbers } from '@/components/EmergencyNumbers';
+import { countryAt } from '@/data/emergencyNumbers';
 import { fetchCenter, useUserCenter } from '@/location/UserLocationContext';
 
 interface AlertDetailScreenProps {
@@ -86,6 +88,7 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
               body={alert.original_body}
             />
           )}
+          <EmergencyNumbers country={alert.country ?? countryAt(center.lat, center.lon)} />
           {whatToDo.length > 0 && (
             // Saved on the phone: works even if this alert arrived just before the signal went.
             <View style={styles.whatToDo}>

@@ -94,6 +94,7 @@ def to_alert(row: dict[str, Any]) -> dict[str, Any]:
         "location_name": _location_name(row),
         "product": row.get("product"),
         "marine": bool(row.get("marine")),
+        "country": row.get("country"),
         # "Confirmed by N nearby" on community alerts; omitted for official ones (contract).
         "corroboration_count": row.get("distinct_reporter_count") or None
         if row.get("source") in ("manual", "mesh") and row["tier"] >= 1 else None,

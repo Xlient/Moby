@@ -1419,6 +1419,8 @@ export interface components {
             product?: string;
             /** @description Offshore/boating product; absent means false. Hidden unless the user opts in. */
             marine?: boolean;
+            /** @description ISO 3166-1 alpha-2 of the issuing authority or event, when known (e.g. for emergency numbers). */
+            country?: string;
             /** @description headline/body are Moby's machine translation into English (issue #11). Clients MUST label it ("Translated by Moby") and offer the original. Absent = the agency's own words. */
             translated?: boolean;
             /** @description Language the agency wrote in, e.g. "Spanish". Present when translated. */

@@ -9,6 +9,9 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResponsive } from '@/hooks/useResponsive';
 import { cardsForHazard, useGuidance } from '@/guidance/guidanceStore';
 import { formatTimeAgo } from '@/lib/alerts';
+import { EmergencyNumbers } from '@/components/EmergencyNumbers';
+import { countryAt } from '@/data/emergencyNumbers';
+import { useUserCenter } from '@/location/UserLocationContext';
 import type { HazardType } from '@/api/types';
 
 interface GuidanceScreenProps {
@@ -36,6 +39,9 @@ export function GuidanceScreen({ onBack, initialHazard }: GuidanceScreenProps) {
   const r = useResponsive();
   const isOnline = useOnlineStatus();
   const { cards, syncedAt } = useGuidance();
+  const center = useUserCenter();
+  // Only from a real fix: never show the demo city's numbers as "where you are".
+  const country = center.source === 'device' ? countryAt(center.lat, center.lon) : undefined;
   const [hazard, setHazard] = useState<HazardType | undefined>(initialHazard);
   const shown = cardsForHazard(cards, hazard);
 
@@ -50,6 +56,8 @@ export function GuidanceScreen({ onBack, initialHazard }: GuidanceScreenProps) {
         <Text style={[typography.meta, { color: theme.text.secondary }]}>
           Always follow instructions from local authorities and emergency services first.
         </Text>
+
+        <EmergencyNumbers country={country} />
 
         <View style={styles.chips} accessibilityRole="radiogroup">
           {FILTERS.map((f) => {

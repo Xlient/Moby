@@ -982,6 +982,9 @@ components:
         marine:
           type: boolean
           description: Offshore/boating product; absent means false. Hidden unless the user opts in.
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 of the issuing authority or event, when known (e.g. for emergency numbers).
         translated:
           type: boolean
           description: >
