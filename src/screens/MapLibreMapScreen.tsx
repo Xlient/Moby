@@ -1,28 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Button, IconButton, ProgressBar, Surface, Text } from 'react-native-paper';
-import { useQuery } from '@tanstack/react-query';
 import {
   Camera,
-  GeoJSONSource,
-  Layer,
   Map,
   OfflineManager,
-  RasterDEMSource,
   UserLocation,
   type CameraRef,
-  type LngLatBounds,
   type OfflinePack,
 } from '@maplibre/maplibre-react-native';
 import { useTheme } from '@/theme/ThemeContext';
 import { spacing } from '@/theme/tokens';
-import { api } from '@/api/client';
 import { useNearbyAlerts } from '@/hooks/useNearbyAlerts';
-import { fetchCenter } from '@/location/UserLocationContext';
 import { RadiusChip, RadiusPicker } from '@/components/RadiusPicker';
-import { RADIUS_OPTIONS } from '@/hooks/useNearbyRadius';
 import { countryAt } from '@/data/emergencyNumbers';
-import { basemapFor, TERRAIN_TILES } from '@/maps/basemap';
+import { basemapFor } from '@/maps/basemap';
+import { AlertMapLayers } from '@/maps/AlertMapLayers';
+import { boundsAround } from '@/maps/geo';
 import { PinSheet } from './MapScreen';
 import { DiagramMapScreen } from './DiagramMapScreen';
 
@@ -35,21 +29,7 @@ interface Props {
   onAlertDetail: (alertId: string) => void;
 }
 
-const MAX_RADIUS_KM: number = RADIUS_OPTIONS[RADIUS_OPTIONS.length - 1] ?? 100;
 
-function circle(lat: number, lon: number, km: number, steps = 64): GeoJSON.Polygon {
-  const ring = Array.from({ length: steps + 1 }, (_, i) => {
-    const t = (2 * Math.PI * i) / steps;
-    return [lon + (km / (111.32 * Math.cos((lat * Math.PI) / 180))) * Math.sin(t), lat + (km / 111.32) * Math.cos(t)];
-  });
-  return { type: 'Polygon', coordinates: [ring] };
-}
-
-function boundsAround(lat: number, lon: number, km: number): LngLatBounds {
-  const dLat = km / 111.32;
-  const dLon = km / (111.32 * Math.cos((lat * Math.PI) / 180));
-  return [lon - dLon, lat - dLat, lon + dLon, lat + dLat];
-}
 
 function mb(bytes: number): string {
   return `${(bytes / 1_048_576).toFixed(bytes < 10_485_760 ? 1 : 0)} MB`;
@@ -67,36 +47,9 @@ export function MapLibreMapScreen({ onBack, onAlertDetail }: Props) {
   const country = center.source === 'device' ? countryAt(center.lat, center.lon) : undefined;
   const basemap = useMemo(() => basemapFor(country, isDark), [country, isDark]);
   const selected = nearby.find((n) => n.alert.alert_id === selectedId) ?? null;
-  const visibleIds = useMemo(() => new Set(nearby.map((n) => n.alert.alert_id)), [nearby]);
 
-  // Areas for the same alerts the list shows (preferences and radius applied on-device).
-  const q = fetchCenter(center);
-  const areasQuery = useQuery({
-    queryKey: ['alert-areas', q.lat, q.lon],
-    queryFn: () => api.getAlertAreas({ lat: q.lat, lon: q.lon, radius_km: MAX_RADIUS_KM }),
-    staleTime: 60_000,
-  });
-  const areas = useMemo<GeoJSON.FeatureCollection>(() => ({
-    type: 'FeatureCollection',
-    features: (areasQuery.data?.features ?? []).filter((f) => visibleIds.has(f.properties.alert_id)),
-  }), [areasQuery.data, visibleIds]);
-  const withArea = useMemo(() => new Set(areas.features.map((f) => f.properties?.alert_id)), [areas]);
 
-  // Alerts without an area (earthquakes, reports) still get a pin.
-  const pins = useMemo<GeoJSON.FeatureCollection>(() => ({
-    type: 'FeatureCollection',
-    features: nearby
-      .filter(({ alert }) => alert.location && !withArea.has(alert.alert_id))
-      .map(({ alert }) => ({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [alert.location!.lon, alert.location!.lat] },
-        properties: { alert_id: alert.alert_id, severity: alert.severity },
-      })),
-  }), [nearby, withArea]);
 
-  const ring = useMemo(() => circle(center.lat, center.lon, radiusKm), [center.lat, center.lon, radiusKm]);
-  const sev = theme.severity;
-  const severityColor = ['match', ['get', 'severity'], 'critical', sev.critical, 'high', sev.high, 'medium', sev.medium, sev.low];
 
   const recenter = () =>
     camera.current?.fitBounds(boundsAround(center.lat, center.lon, radiusKm * 1.15), { duration: 400 });
@@ -105,17 +58,6 @@ export function MapLibreMapScreen({ onBack, onAlertDetail }: Props) {
     recenter();
   }, [radiusKm, center.source]);
 
-  const select = (e: { nativeEvent: { features: GeoJSON.Feature[] }; stopPropagation: () => void }) => {
-    // Otherwise the tap also reaches Map.onPress, which clears the selection.
-    e.stopPropagation();
-    // Overlapping warnings: show the most severe one under the finger.
-    const rank = { critical: 0, high: 1, medium: 2, low: 3 } as Record<string, number>;
-    const top = [...e.nativeEvent.features].sort(
-      (a, b) => (rank[a.properties?.severity] ?? 9) - (rank[b.properties?.severity] ?? 9),
-    )[0];
-    const id = top?.properties?.alert_id;
-    if (typeof id === 'string') setSelectedId(id);
-  };
 
   if (failed) {
     return (
@@ -144,46 +86,7 @@ export function MapLibreMapScreen({ onBack, onAlertDetail }: Props) {
         />
 
         {/* Terrain: hillshading makes valleys, ridges and coasts readable at a glance. */}
-        <RasterDEMSource id="terrain" tiles={TERRAIN_TILES} encoding="terrarium" tileSize={256} maxzoom={14}>
-          <Layer
-            id="hillshade"
-            type="hillshade"
-            // Only exaggeration: maplibre-react-native 11.4 on Android crashes on a single
-            // 'hillshade-shadow-color' (it expects the newer multi-light array form).
-            paint={{ 'hillshade-exaggeration': isDark ? 0.25 : 0.35 }}
-          />
-        </RasterDEMSource>
-
-        <GeoJSONSource id="radius" data={ring}>
-          <Layer id="radius-line" type="line" paint={{ 'line-color': theme.accent.calm, 'line-width': 2 }} />
-        </GeoJSONSource>
-
-        {/* Warning areas, most severe on top; tap selects the alert. */}
-        <GeoJSONSource id="areas" data={areas} onPress={select}>
-          <Layer
-            id="areas-fill"
-            type="fill"
-            paint={{ 'fill-color': severityColor as never, 'fill-opacity': 0.12 }}
-          />
-          <Layer
-            id="areas-line"
-            type="line"
-            paint={{ 'line-color': severityColor as never, 'line-width': ['case', ['==', ['get', 'alert_id'], selectedId ?? ''], 3, 1.5] as never }}
-          />
-        </GeoJSONSource>
-
-        <GeoJSONSource id="pins" data={pins} onPress={select}>
-          <Layer
-            id="pins-circle"
-            type="circle"
-            paint={{
-              'circle-radius': ['case', ['==', ['get', 'alert_id'], selectedId ?? ''], 10, 7] as never,
-              'circle-color': severityColor as never,
-              'circle-stroke-color': theme.bg.raised,
-              'circle-stroke-width': 2,
-            }}
-          />
-        </GeoJSONSource>
+        <AlertMapLayers nearby={nearby} center={center} radiusKm={radiusKm} selectedId={selectedId} onSelect={setSelectedId} />
 
         <UserLocation accuracy />
       </Map>
@@ -198,7 +101,7 @@ export function MapLibreMapScreen({ onBack, onAlertDetail }: Props) {
         </Surface>
         <Surface elevation={1} style={[styles.notice, { backgroundColor: theme.bg.raised }]}>
           <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
-            Preview map · {basemap.kind === 'tianditu' ? 'Tianditu (China)' : 'OpenStreetMap'}
+            Map · {basemap.kind === 'tianditu' ? 'Tianditu (China)' : 'OpenStreetMap'}
             {isOffline ? ' · offline: showing saved alerts' : ''}
           </Text>
         </Surface>

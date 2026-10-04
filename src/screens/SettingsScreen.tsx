@@ -234,13 +234,13 @@ export function SettingsScreen({ onSubscriptions, onAlertPreferences, onCardRevi
         <Section title="Appearance">
           <Row>
             <View style={{ flex: 1 }}>
-              <Text style={rowLabel}>Terrain map (preview)</Text>
-              <Text style={rowValue}>Open-source maps with terrain, warning areas and offline download</Text>
+              <Text style={rowLabel}>Terrain map</Text>
+              <Text style={rowValue}>Terrain, warning areas and offline maps. Turn off for the classic Google map.</Text>
             </View>
             <Switch
               value={mapEngine === 'maplibre'}
               onValueChange={(on) => setMapEngine(on ? 'maplibre' : 'google')}
-              accessibilityLabel="Terrain map preview"
+              accessibilityLabel="Terrain map"
               trackColor={{ false: theme.line.hairline, true: theme.accent.calm }}
               thumbColor={theme.bg.raised}
             />

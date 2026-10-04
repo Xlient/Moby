@@ -2,8 +2,9 @@ import { useCallback, useSyncExternalStore } from 'react';
 import { kv } from '@/lib/storage';
 
 /**
- * Which map renderer to use (issue #21 spike). Google (react-native-maps) stays the
- * default; MapLibre is a preview: terrain, warning areas and offline packs.
+ * Which map renderer to use (issue #21). MapLibre is the default: terrain, warning
+ * areas, offline maps, and it works in China (Google tiles don't). Google
+ * (react-native-maps) remains as "Classic map" in Settings.
  */
 export type MapEngine = 'google' | 'maplibre';
 
@@ -11,7 +12,7 @@ const KEY = 'map-engine';
 const listeners = new Set<() => void>();
 
 function read(): MapEngine {
-  return kv.get(KEY) === 'maplibre' ? 'maplibre' : 'google';
+  return kv.get(KEY) === 'google' ? 'google' : 'maplibre';
 }
 
 let current: MapEngine = read();
