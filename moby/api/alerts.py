@@ -10,6 +10,7 @@ SOURCE_ATTRIBUTION = {
     "ptwc": "Pacific Tsunami Warning Center",
     "nhc": "National Hurricane Center",
     "jtwc": "Joint Typhoon Warning Center",
+    "jma": "Japan Meteorological Agency",
 }
 
 
@@ -40,7 +41,7 @@ def _headline(row: dict[str, Any]) -> str:
 def _location_name(row: dict[str, Any]) -> str | None:
     feed, payload = row["source_feed"], row.get("raw_payload") or {}
     props = payload.get("properties") or {}
-    if feed in ("noaa", "cap", "ptwc"):
+    if feed in ("noaa", "cap", "ptwc", "jma", "bipad"):
         name = (props.get("areaDesc") or "").split(";")[0].strip()
     elif feed == "usgs":
         name = props.get("place") or ""

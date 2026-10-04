@@ -371,11 +371,13 @@ async def poll_center(name: str, pool: AsyncConnectionPool, http: httpx.AsyncCli
 
 
 async def run_centers(pool: AsyncConnectionPool, http: httpx.AsyncClient, *, once: bool,
-                      names: tuple[str, ...] = ("ptwc", "nhc", "jtwc")) -> None:
+                      names: tuple[str, ...] = ("ptwc", "nhc", "jtwc", "jma")) -> None:
+    from . import jma
+
     async def loop(name: str) -> None:
         while True:
             try:
-                r = await poll_center(name, pool, http)
+                r = await (jma.poll_jma(pool, http) if name == "jma" else poll_center(name, pool, http))
                 log.info("%s: %d active, skipped=%s", name, len(r.events), dict(r.skipped))
             except Exception as e:  # noqa: BLE001 - one centre down never stops the others
                 log.warning("%s: poll failed: %s", name, e)

@@ -47,6 +47,10 @@ def official_verification(e: NormalizedEvent) -> Verification:
             return Verification(2, 0.95)   # official tsunami / hurricane warning centres
         case "jtwc":
             return Verification(2, 0.85)   # US Navy/Air Force typhoon warnings (advisory abroad)
+        case "jma":
+            return Verification(2, 0.95)   # Japan's official warning authority
+        case "bipad":
+            return Verification(2, 0.85)   # Government of Nepal portal (DHM, Department of Roads)
         case "eonet":
             return Verification(1, 0.7)
     return Verification(0, 0.0)

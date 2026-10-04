@@ -28,7 +28,7 @@ from psycopg_pool import AsyncConnectionPool
 from moby.config import get_settings
 from moby.escalation.official import official_verification
 
-from . import dedupe, emsc, eonet, gdacs, noaa, usgs
+from . import bipad, dedupe, emsc, eonet, gdacs, noaa, usgs
 from .geo import centroid
 from .schema import FeedName, NormalizedEvent, NormalizeResult
 
@@ -50,6 +50,7 @@ FEEDS: dict[FeedName, FeedSpec] = {
     "eonet": FeedSpec("eonet", timedelta(minutes=10), eonet.normalize, lambda _gap: eonet.URL),
     "gdacs": FeedSpec("gdacs", timedelta(minutes=15), gdacs.normalize, lambda _gap: gdacs.URL),
     "emsc": FeedSpec("emsc", timedelta(seconds=90), emsc.normalize, emsc.url_for_gap),
+    "bipad": FeedSpec("bipad", timedelta(minutes=5), bipad.normalize, lambda _gap: bipad.URL),
 }
 
 QUAKE_FEEDS = {"usgs", "emsc", "jma"}
@@ -499,7 +500,7 @@ async def health(feeds: list[FeedName]) -> tuple[bool, list[str]]:
         )).fetchall()
     by_feed = {r[0]: r[1:] for r in rows}
     if "centers" in feeds:
-        for name in ("ptwc", "nhc", "jtwc"):
+        for name in ("ptwc", "nhc", "jtwc", "jma"):
             last_ok, failures, error = by_feed.get(name, (None, 0, None))
             fresh = last_ok is not None and now - last_ok <= timedelta(minutes=30)
             lines.append(f"{'ok ' if fresh else 'warn'} {name:<6} last success "
