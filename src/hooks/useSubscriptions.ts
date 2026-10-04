@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { useAuth } from '@/auth/AuthContext';
+import { env } from '@/config/env';
 import {
   addSubscription,
   removeSubscription,
@@ -21,12 +22,17 @@ export interface UseSubscriptionsResult {
 }
 
 /**
- * Watched areas. Signed in, they live in Firestore under the user's account and
- * update live. Without Firebase configured, the mock API's sample areas are shown.
+ * Watched areas.
+ * - Real API, signed in: stored on the server (`/subscriptions`), where the delivery
+ *   worker matches them against new alerts to send push notifications.
+ * - Mock API, signed in: Firestore under the user's account (demo builds).
+ * - Otherwise: the mock API's sample areas, read-only.
  */
 export function useSubscriptions(): UseSubscriptionsResult {
   const { user, isConfigured } = useAuth();
-  const useFirestore = isConfigured && !!user;
+  const queryClient = useQueryClient();
+  const useServer = !env.useMock && !!user;
+  const useFirestore = !useServer && isConfigured && !!user;
 
   const [live, setLive] = useState<Subscription[] | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
@@ -45,8 +51,9 @@ export function useSubscriptions(): UseSubscriptionsResult {
     );
   }, [useFirestore, user]);
 
-  const mock = useQuery({
-    queryKey: ['subscriptions'],
+  // Server (useServer) or the mock API's samples: the same endpoint either way.
+  const listed = useQuery({
+    queryKey: ['subscriptions', useServer ? user?.uid : 'mock'],
     queryFn: () => api.getSubscriptions(),
     enabled: !useFirestore,
     staleTime: 2 * 60_000,
@@ -55,17 +62,27 @@ export function useSubscriptions(): UseSubscriptionsResult {
   const add = useCallback(
     async (subscription: NewSubscription) => {
       if (!user) throw new Error('Sign in to save areas.');
-      await addSubscription(user.uid, subscription);
+      if (useServer) {
+        await api.createSubscription(subscription);
+        await queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      } else {
+        await addSubscription(user.uid, subscription);
+      }
     },
-    [user],
+    [user, useServer, queryClient],
   );
 
   const remove = useCallback(
     async (id: string) => {
       if (!user) throw new Error('Sign in to change your areas.');
-      await removeSubscription(user.uid, id);
+      if (useServer) {
+        await api.deleteSubscription(id);
+        await queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      } else {
+        await removeSubscription(user.uid, id);
+      }
     },
-    [user],
+    [user, useServer, queryClient],
   );
 
   if (useFirestore) {
@@ -80,10 +97,10 @@ export function useSubscriptions(): UseSubscriptionsResult {
   }
 
   return {
-    subscriptions: mock.data ?? [],
-    loading: mock.isLoading,
-    error: mock.error ? 'Could not load your areas.' : null,
-    canEdit: false,
+    subscriptions: listed.data ?? [],
+    loading: listed.isLoading,
+    error: listed.error ? 'Could not load your areas.' : null,
+    canEdit: useServer,
     addSubscription: add,
     deleteSubscription: remove,
   };

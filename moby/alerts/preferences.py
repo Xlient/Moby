@@ -66,12 +66,16 @@ class AlertPreferences:
 
 
 ALERTS_NEAR_SQL = """
-SELECT event_id, source_feed, external_id, hazard_type, product, marine, severity, tier,
-       title, description, first_reported_at, last_updated_at, expires_at, raw_payload,
+SELECT event_id, source, source_feed, external_id, hazard_type, product, marine, severity, tier,
+       title, description, alert_headline, alert_body, distinct_reporter_count,
+       first_reported_at, last_updated_at, expires_at, raw_payload,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon,
        ST_Distance(location, ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography) / 1000.0 AS distance_km
 FROM events
-WHERE source = 'official'
+-- Official alerts, plus community events once corroborated (tier >= 1) — the same
+-- events delivery may push, so a notification always has a matching card on Home.
+WHERE (source = 'official' OR tier >= 1)
+  AND reviewer_decision IS DISTINCT FROM 'reject'
   AND tier >= %(min_tier)s
   AND (expires_at IS NULL OR expires_at > %(now)s)
   AND ST_DWithin(location, ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, %(radius_m)s)
@@ -95,8 +99,8 @@ async def alerts_near(
     min_tier: int = 0,
     limit: int = 200,
 ) -> list[dict[str, Any]]:
-    """Active official events within radius_km of (lat, lon) that the user wants,
-    most severe first. Uses the GiST index on events.location."""
+    """Active events within radius_km of (lat, lon) that the user wants — official ones
+    and corroborated community ones — most severe first. Uses the GiST index on events.location."""
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             ALERTS_NEAR_SQL,

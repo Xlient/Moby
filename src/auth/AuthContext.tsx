@@ -59,6 +59,21 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+// Work that needs the session one last time (e.g. telling the server this phone
+// should stop getting the person's push alerts). Best-effort and time-boxed: a
+// sign-out never waits on the network for long or fails because of it.
+const beforeSignOut = new Set<() => Promise<void>>();
+
+export function onBeforeSignOut(fn: () => Promise<void>): () => void {
+  beforeSignOut.add(fn);
+  return () => beforeSignOut.delete(fn);
+}
+
+async function runBeforeSignOut(): Promise<void> {
+  const all = Promise.allSettled([...beforeSignOut].map((fn) => fn()));
+  await Promise.race([all, new Promise((resolve) => setTimeout(resolve, 3000))]);
+}
+
 function friendlyError(code: string): string {
   switch (code) {
     case 'auth/invalid-email':
@@ -227,6 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOutFn = useCallback(async () => {
     if (!auth) return;
+    await runBeforeSignOut();
     await firebaseSignOut(auth);
     await signOutOfGoogle();
   }, []);

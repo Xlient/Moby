@@ -6,6 +6,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { useAuth } from '@/auth/AuthContext';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { api } from '@/api/client';
+import { useBackendSync } from '@/sync/useBackendSync';
 import { typography } from '@/theme/tokens';
 import { BottomTabs } from '@/components/BottomTabs';
 import { AuthScreen } from '@/screens/AuthScreen';
@@ -95,6 +96,9 @@ export function App() {
     (alertId: string) => push({ name: 'alert-detail', alertId }),
     [push],
   );
+
+  // Push token, preferences and "near me" to the server; notification taps open the alert.
+  useBackendSync(navigateToAlert);
 
   const handleTabChange = useCallback((tab: string) => {
     switch (tab) {

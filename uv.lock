@@ -653,6 +653,7 @@ dependencies = [
     { name = "openai" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pydantic-settings" },
+    { name = "requests" },
     { name = "uvicorn" },
 ]
 
@@ -674,6 +675,7 @@ requires-dist = [
     { name = "openai", specifier = ">=3.16.2" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2" },
     { name = "pydantic-settings", specifier = ">=2.6" },
+    { name = "requests", specifier = ">=2.32" },
     { name = "uvicorn", specifier = ">=0.32" },
 ]
 
