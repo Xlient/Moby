@@ -9,13 +9,16 @@ import asyncio
 import logging
 import os
 import signal
+import time
 
 from moby.db import make_pool
+from moby.privacy.retention import apply_retention
 
 from .fcm import FcmSender, Push, Result
 from .worker import deliver_once
 
 INTERVAL = 30
+RETENTION_EVERY_S = 6 * 3600
 log = logging.getLogger("moby.delivery")
 
 
@@ -34,7 +37,16 @@ async def run(once: bool, dry: bool) -> None:
     else:
         sender, record = FcmSender(creds), True
     async with make_pool(max_size=2) as pool:
+        last_retention = 0.0
         while True:
+            # Retention (moby/privacy/retention.py) piggybacks on this always-on loop.
+            if time.monotonic() - last_retention >= RETENTION_EVERY_S:
+                try:
+                    async with pool.connection() as conn:
+                        await apply_retention(conn)
+                    last_retention = time.monotonic()
+                except Exception:
+                    log.exception("retention failed")
             try:
                 async with pool.connection() as conn:
                     if record:

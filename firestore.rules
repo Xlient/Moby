@@ -75,7 +75,8 @@ service cloud.firestore {
         && validName(request.resource.data.display_name)
         && validSettings(request.resource.data.settings);
 
-      allow delete: if false;
+      // Account deletion (Settings → Privacy & data): owners can delete their profile.
+      allow delete: if isOwner(uid);
 
       match /subscriptions/{subscriptionId} {
         allow read, delete: if isOwner(uid);

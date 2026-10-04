@@ -37,6 +37,7 @@ RUN uv sync --frozen --no-install-project
 COPY moby ./moby
 COPY scripts ./scripts
 COPY db ./db
+COPY legal ./legal
 COPY deploy/endpoint/start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh && useradd --system --uid 10001 --home /app moby
 
