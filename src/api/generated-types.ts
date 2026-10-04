@@ -333,7 +333,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description Accepted for processing */
+                /** @description Durably received (or already received — same client_event_id). Fusion runs afterwards; poll GET /reports/{client_event_id} for the outcome. */
                 202: {
                     headers: {
                         [name: string]: unknown;
@@ -343,8 +343,62 @@ export interface paths {
                     };
                 };
                 400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                /** @description client_event_id already used by a different reporter */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Too many reports from this reporter; retry later */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reports/{client_event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status of one of the caller's own reports */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    client_event_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReportAccepted"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1117,10 +1171,19 @@ export interface components {
         };
         ReportAccepted: {
             client_event_id: string;
-            /** @description Fused event this report was attached to */
-            event_id: string;
-            /** @enum {integer} */
-            tier: 0 | 1 | 2;
+            report_id: string;
+            /**
+             * @description pending until the fusion pipeline has processed the report.
+             * @enum {string}
+             */
+            status: "pending" | "fused" | "failed";
+            /** @description Fused event this report was attached to (once fused) */
+            event_id?: string;
+            /**
+             * @description The event's tier (once fused)
+             * @enum {integer}
+             */
+            tier?: 0 | 1 | 2;
             merged_into_existing?: boolean;
         };
         Event: {
