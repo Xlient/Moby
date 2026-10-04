@@ -45,6 +45,12 @@
       "@react-native-google-signin/google-signin",
       "./plugins/withApkName",
       "./plugins/withReleaseSigning"
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Moby uses your location to show alerts near you and to place the hazard reports you send."
+        }
+      ]
     ]
   }
 }

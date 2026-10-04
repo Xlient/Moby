@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import type { Alert, AlertPreferences } from '@/api/types';
 import { compareAlerts } from '@/lib/alerts';
-import { USER_CENTER, distanceKm } from '@/lib/geo';
+import { distanceKm } from '@/lib/geo';
+import { fetchCenter, useUserCenter, type UserCenter } from '@/location/UserLocationContext';
 import { RADIUS_OPTIONS, useNearbyRadius, type RadiusKm } from './useNearbyRadius';
 import { useAlerts } from './useAlerts';
 import { matchesAlertPreferences, useAlertPreferences } from './useAlertPreferences';
@@ -25,6 +26,8 @@ export interface UseNearbyAlertsResult {
   isOffline: boolean;
   /** When the alert list was last fetched (ISO), if ever. */
   cachedAt: string | null;
+  /** Where "near" is measured from. */
+  center: UserCenter;
 }
 
 const MAX_RADIUS_KM = RADIUS_OPTIONS[RADIUS_OPTIONS.length - 1];
@@ -38,9 +41,9 @@ const MAX_RADIUS_KM = RADIUS_OPTIONS[RADIUS_OPTIONS.length - 1];
  */
 export function useNearbyAlerts(): UseNearbyAlertsResult {
   const [radiusKm, setRadiusKm] = useNearbyRadius();
-  // TODO(location): replace the demo location with the device position.
-  const center = USER_CENTER;
-  const { alerts, loading, error, isOffline, cachedAt } = useAlerts(center.lat, center.lon, MAX_RADIUS_KM);
+  const center = useUserCenter();
+  const q = fetchCenter(center);
+  const { alerts, loading, error, isOffline, cachedAt } = useAlerts(q.lat, q.lon, MAX_RADIUS_KM);
   const [preferences] = useAlertPreferences();
 
   const { nearby, hiddenCount } = useMemo(() => {
@@ -56,5 +59,5 @@ export function useNearbyAlerts(): UseNearbyAlertsResult {
     };
   }, [alerts, center.lat, center.lon, radiusKm, preferences]);
 
-  return { nearby, hiddenCount, preferences, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt };
+  return { nearby, hiddenCount, preferences, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt, center };
 }

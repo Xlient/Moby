@@ -1,4 +1,4 @@
-import type { Alert, HazardType, Severity } from '@/api/types';
+import type { Alert, HazardType, ObservedEffect, Severity } from '@/api/types';
 
 export const SEVERITY_RANK: Record<Severity, number> = {
   critical: 0,
@@ -77,4 +77,24 @@ export function pinPath(severity: Severity): string {
     case 'low':
       return 'M12 21a9 9 0 110-18 9 9 0 010 18z';
   }
+}
+
+const EFFECT_LABELS: Record<ObservedEffect, string> = {
+  rising_water: 'Rising water',
+  smoke_or_fire_visible: 'Smoke or flames',
+  ground_shaking: 'Shaking',
+  blocked_road: 'Blocked road or trail',
+  structural_damage: 'Damage to buildings',
+  other: 'Other observation',
+};
+
+export function effectLabel(effect: ObservedEffect | undefined): string {
+  return effect ? EFFECT_LABELS[effect] : 'No details given';
+}
+
+/** "At the spot" / "200 m away" / "1.2 km away", from a distance already rounded to 100 m. */
+export function formatDistanceFromEvent(m: number): string {
+  if (m < 100) return 'At the spot';
+  if (m < 1000) return `${m} m away`;
+  return `${(m / 1000).toFixed(1)} km away`;
 }

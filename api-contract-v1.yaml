@@ -1,11 +1,16 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.4.0
+  version: 0.5.0
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.5.0 — Reports are write-first (fusion runs after the 202):
+      ~ ReportAccepted: event_id and tier are now optional (set once fusion has run);
+        + report_id, + status (pending | fused | failed)
+      + GET /reports/{client_event_id} (the reporter's own report status)
+      + 409 on POST /reports when the client_event_id belongs to another reporter; 429 when rate limited
     0.4.0 — Additive only, no breaking changes (per-user alert preferences, marine alerts):
       + AlertPreferences schema; User.alert_preferences
       + PUT /me/alert-preferences
@@ -205,11 +210,35 @@ paths:
             schema: { $ref: '#/components/schemas/ReportSubmission' }
       responses:
         '202':
-          description: Accepted for processing
+          description: >
+            Durably received (or already received — same client_event_id). Fusion runs
+            afterwards; poll GET /reports/{client_event_id} for the outcome.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReportAccepted' }
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: client_event_id already used by a different reporter
+        '429':
+          description: Too many reports from this reporter; retry later
+
+  /reports/{client_event_id}:
+    get:
+      tags: [reports]
+      summary: Status of one of the caller's own reports
+      parameters:
+        - name: client_event_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportAccepted' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /events/{event_id}:
     get:
@@ -226,6 +255,26 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Event' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /events/{event_id}/reports:
+    get:
+      tags: [reports]
+      summary: Community reports fused into an event (public, coarse)
+      description: >
+        For the alert detail screen. Never includes notes, reporter identity or exact
+        positions — only distance from the event, rounded to 100 m.
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventReports' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /events/{event_id}/confirm:
@@ -585,7 +634,10 @@ paths:
     post:
       tags: [review]
       summary: Approve, reject, or hold an event
-      description: Resumes the paused LangGraph checkpoint for this event.
+      description: >
+        Records the decision (review_queue.status = decided, events.reviewer_decision).
+        The fusion pipeline then resumes its paused checkpoint for this event.
+        409 if another reviewer already decided it.
       parameters:
         - name: event_id
           in: path
@@ -607,6 +659,9 @@ paths:
       responses:
         '204': { description: Recorded }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Already decided by another reviewer
 
 components:
 
@@ -782,11 +837,16 @@ components:
 
     ReportAccepted:
       type: object
-      required: [client_event_id, event_id, tier]
+      required: [client_event_id, report_id, status]
       properties:
         client_event_id: { type: string }
-        event_id: { type: string, description: Fused event this report was attached to }
-        tier: { type: integer, enum: [0, 1, 2] }
+        report_id: { type: string }
+        status:
+          type: string
+          enum: [pending, fused, failed]
+          description: pending until the fusion pipeline has processed the report.
+        event_id: { type: string, description: Fused event this report was attached to (once fused) }
+        tier: { type: integer, enum: [0, 1, 2], description: The event's tier (once fused) }
         merged_into_existing: { type: boolean }
 
     Event:
@@ -874,6 +934,31 @@ components:
         marine:
           type: boolean
           description: Offshore/boating product; absent means false. Hidden unless the user opts in.
+
+    EventReports:
+      type: object
+      required: [event_id, distinct_reporter_count, reports]
+      properties:
+        event_id: { type: string }
+        distinct_reporter_count:
+          type: integer
+          description: Distinct people behind the reports (repeat reports from one person count once).
+        reports:
+          type: array
+          description: Newest first, at most 50.
+          items: { $ref: '#/components/schemas/ReportSummary' }
+
+    ReportSummary:
+      type: object
+      required: [hazard_type, severity, observed_at, distance_from_event_m]
+      properties:
+        hazard_type: { $ref: '#/components/schemas/HazardType' }
+        observed_effect: { $ref: '#/components/schemas/ObservedEffect' }
+        severity: { $ref: '#/components/schemas/Severity' }
+        observed_at: { type: string, format: date-time }
+        distance_from_event_m: { type: integer, description: Rounded to 100 m. }
+        captured_offline: { type: boolean }
+        via_mesh: { type: boolean, description: Arrived over the Bluetooth mesh. }
 
     SituationalBrief:
       type: object

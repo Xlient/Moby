@@ -5,6 +5,8 @@ import type {
   GuidanceCard,
   Subscription,
   BriefPending,
+  EventReports,
+  ReportSummary,
 } from './types';
 
 // ── Helpers: relative dates ──────────────────────────────────────────
@@ -297,6 +299,28 @@ export function getMockAlerts(): Alert[] {
 
 export function getMockAlert(alertId: string): Alert | undefined {
   return mockAlerts.find((a) => a.alert_id === alertId);
+}
+
+const mockEventReports: Record<string, ReportSummary[]> = {
+  'event-003': [
+    { hazard_type: 'landslide', observed_effect: 'blocked_road', severity: 'medium', observed_at: minutesAgo(118), distance_from_event_m: 0, captured_offline: false },
+    { hazard_type: 'landslide', observed_effect: 'blocked_road', severity: 'high', observed_at: minutesAgo(131), distance_from_event_m: 200, captured_offline: true },
+    { hazard_type: 'landslide', observed_effect: 'structural_damage', severity: 'medium', observed_at: minutesAgo(140), distance_from_event_m: 300, captured_offline: false, via_mesh: true },
+    { hazard_type: 'landslide', observed_effect: 'blocked_road', severity: 'medium', observed_at: minutesAgo(152), distance_from_event_m: 100, captured_offline: false },
+  ],
+  'event-004': [
+    { hazard_type: 'other', observed_effect: 'other', severity: 'low', observed_at: minutesAgo(31), distance_from_event_m: 0, captured_offline: false },
+  ],
+  'event-006': [
+    { hazard_type: 'storm', observed_effect: 'other', severity: 'medium', observed_at: minutesAgo(20), distance_from_event_m: 0, captured_offline: false },
+    { hazard_type: 'storm', observed_effect: 'other', severity: 'medium', observed_at: minutesAgo(26), distance_from_event_m: 100, captured_offline: false },
+    { hazard_type: 'storm', observed_effect: 'blocked_road', severity: 'high', observed_at: minutesAgo(29), distance_from_event_m: 100, captured_offline: false },
+  ],
+};
+
+export function getMockEventReports(eventId: string): EventReports {
+  const reports = mockEventReports[eventId] ?? [];
+  return { event_id: eventId, distinct_reporter_count: reports.length, reports };
 }
 
 export function getMockConfig(): ClientConfig {

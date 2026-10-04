@@ -4,7 +4,18 @@ Public, read-only:
   GET  /healthz                     liveness + database + feed freshness
   GET  /v1/alerts                   active alerts near a point, filtered by preferences
   GET  /v1/events/{event_id}        one event (contract `Alert` shape)
+  GET  /v1/events/{event_id}/reports  community reports behind an event (coarse, no notes)
   GET  /v1/config                   client feature flags
+
+Signed-in users (Firebase ID token):
+  POST /v1/reports                  submit a ground report (write-first, 202)
+  GET  /v1/reports/{client_event_id} status of one of your own reports
+
+Reviewer console: /console/ (static page; Google sign-in via Firebase)
+
+Reviewers (Firebase custom claim reviewer=true):
+  GET  /v1/review/queue             events paused for human review
+  POST /v1/review/{event_id}/decision  approve / reject / hold
 
 Internal (Bearer MOBY_SERVICE_TOKEN; used by Serverless Jobs, never by the app):
   GET  /internal/v1/embedding-queue events still missing an embedding
@@ -22,10 +33,12 @@ import os
 import shutil
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 from psycopg_pool import AsyncConnectionPool
@@ -38,6 +51,8 @@ from moby.feeds.schema import Severity
 from moby.llm import EMBEDDING_DIM
 
 from .alerts import to_alert
+from .reports import router as reports_router
+from .review import router as review_router
 
 pool: AsyncConnectionPool | None = None
 
@@ -53,7 +68,26 @@ async def lifespan(_: FastAPI):
         await pool.close()
 
 
-app = FastAPI(title="Moby early-warning API", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="Moby early-warning API", version="0.5.0", lifespan=lifespan)
+app.include_router(reports_router)
+app.include_router(review_router)
+
+# ── Reviewer console (static page; it signs in with Firebase and calls /v1/review) ──
+CONSOLE_DIR = Path(__file__).resolve().parent.parent / "console"
+
+
+@app.get("/console/config", include_in_schema=False)
+async def console_config():
+    # Public Firebase web config (identifiers, not secrets) so the page can sign in.
+    s = get_settings()
+    return {
+        "auth_disabled": s.moby_auth_disabled,
+        "firebase": {"apiKey": s.firebase_web_api_key, "authDomain": s.firebase_auth_domain,
+                     "projectId": s.firebase_project_id},
+    }
+
+
+app.mount("/console", StaticFiles(directory=CONSOLE_DIR, html=True), name="console")
 
 
 def _pool() -> AsyncConnectionPool:
@@ -112,6 +146,49 @@ async def get_event(event_id: uuid.UUID):
     if row is None:
         raise HTTPException(404, "event not found")
     return to_alert(row)
+
+
+@app.get("/v1/events/{event_id}/reports")
+async def event_reports(event_id: uuid.UUID):
+    """Community reports fused into an event, for the alert detail screen.
+
+    Public, so deliberately coarse: no note (free text can identify people), no
+    reporter id, and position only as a distance from the event rounded to 100 m.
+    """
+    async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute("SELECT 1 FROM events WHERE event_id = %s", (event_id,))
+        if await cur.fetchone() is None:
+            raise HTTPException(404, "event not found")
+        await cur.execute(
+            """SELECT r.hazard_type, r.observed_effect, r.severity, r.observed_at, r.captured_offline, r.source,
+                      round(ST_Distance(r.location, e.location) / 100) * 100 AS distance_m
+               FROM reports r JOIN events e USING (event_id)
+               WHERE r.event_id = %s AND r.fusion_status = 'fused'
+               ORDER BY r.observed_at DESC LIMIT 50""",
+            (event_id,),
+        )
+        rows = await cur.fetchall()
+        await cur.execute(
+            "SELECT count(DISTINCT reporter_hash) AS people FROM reports WHERE event_id = %s AND fusion_status = 'fused'",
+            (event_id,),
+        )
+        people = (await cur.fetchone())["people"]
+    return {
+        "event_id": str(event_id),
+        "distinct_reporter_count": people,
+        "reports": [
+            {
+                "hazard_type": r["hazard_type"],
+                **({"observed_effect": r["observed_effect"]} if r["observed_effect"] else {}),
+                "severity": r["severity"],
+                "observed_at": r["observed_at"].isoformat(),
+                "distance_from_event_m": int(r["distance_m"]),
+                "captured_offline": r["captured_offline"],
+                "via_mesh": r["source"] == "mesh",
+            }
+            for r in rows
+        ],
+    }
 
 
 @app.get("/v1/config")
