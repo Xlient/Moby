@@ -105,8 +105,15 @@ export function MapLibreMapScreen({ onBack, onAlertDetail }: Props) {
     recenter();
   }, [radiusKm, center.source]);
 
-  const select = (e: { nativeEvent: { features: GeoJSON.Feature[] } }) => {
-    const id = e.nativeEvent.features[0]?.properties?.alert_id;
+  const select = (e: { nativeEvent: { features: GeoJSON.Feature[] }; stopPropagation: () => void }) => {
+    // Otherwise the tap also reaches Map.onPress, which clears the selection.
+    e.stopPropagation();
+    // Overlapping warnings: show the most severe one under the finger.
+    const rank = { critical: 0, high: 1, medium: 2, low: 3 } as Record<string, number>;
+    const top = [...e.nativeEvent.features].sort(
+      (a, b) => (rank[a.properties?.severity] ?? 9) - (rank[b.properties?.severity] ?? 9),
+    )[0];
+    const id = top?.properties?.alert_id;
     if (typeof id === 'string') setSelectedId(id);
   };
 
@@ -141,11 +148,9 @@ export function MapLibreMapScreen({ onBack, onAlertDetail }: Props) {
           <Layer
             id="hillshade"
             type="hillshade"
-            paint={{
-              'hillshade-exaggeration': isDark ? 0.25 : 0.35,
-              'hillshade-shadow-color': isDark ? '#000000' : '#3d4a4f',
-              'hillshade-highlight-color': isDark ? '#3a4446' : '#ffffff',
-            }}
+            // Only exaggeration: maplibre-react-native 11.4 on Android crashes on a single
+            // 'hillshade-shadow-color' (it expects the newer multi-light array form).
+            paint={{ 'hillshade-exaggeration': isDark ? 0.25 : 0.35 }}
           />
         </RasterDEMSource>
 
@@ -158,7 +163,7 @@ export function MapLibreMapScreen({ onBack, onAlertDetail }: Props) {
           <Layer
             id="areas-fill"
             type="fill"
-            paint={{ 'fill-color': severityColor as never, 'fill-opacity': 0.22 }}
+            paint={{ 'fill-color': severityColor as never, 'fill-opacity': 0.12 }}
           />
           <Layer
             id="areas-line"
