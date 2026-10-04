@@ -1,0 +1,55 @@
+# iOS Simulator build: no Apple Developer account needed (unsigned, simulator only).
+# Proves iOS still builds and gives a .app you can drag onto a simulator.
+#
+# macOS runners use Actions minutes 10x faster than Linux, so this runs on release
+# tags, weekly, and on demand — not on every pull request.
+#
+# Device builds, TestFlight and the App Store need the Apple Developer Program (#23).
+name: iOS simulator build
+
+on:
+  push:
+    tags: ["v*"]
+    branches: [ios-builds]   # TEMPORARY: verify the workflow once; removed before merge
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      MOBY_PREBUILD_PLATFORM: ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Prebuild (generate ios/ and install pods)
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Build for the simulator
+        run: |
+          WORKSPACE=$(ls -d ios/*.xcworkspace | head -1)
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+          xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release \
+            -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO | tail -n 40
+          APP=$(ls -d build/Build/Products/Release-iphonesimulator/*.app | head -1)
+          mkdir -p dist && (cd "$(dirname "$APP")" && zip -qry "$GITHUB_WORKSPACE/dist/Moby-simulator.zip" "$(basename "$APP")")
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: moby-ios-simulator
+          path: dist/Moby-simulator.zip
+          retention-days: 14
