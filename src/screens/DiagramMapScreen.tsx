@@ -15,7 +15,8 @@ import type { RadiusKm } from '@/hooks/useNearbyRadius';
 import { useNearbyAlerts } from '@/hooks/useNearbyAlerts';
 import { RadiusChip, RadiusPicker } from '@/components/RadiusPicker';
 import { AlertCard } from '@/components/AlertCard';
-import { USER_CENTER, latLonToXY, distanceKm } from '@/lib/geo';
+import { latLonToXY, distanceKm } from '@/lib/geo';
+import { useUserCenter } from '@/location/UserLocationContext';
 import { typography, spacing, radius as radiusTokens } from '@/theme/tokens';
 import type { Alert } from '@/api/types';
 import { pinPath } from '@/lib/alerts';
@@ -118,8 +119,9 @@ function BottomSheet({
   onViewDetails: () => void;
   onDismiss: () => void;
 }) {
+  const center = useUserCenter();
   const dist = alert.location
-    ? distanceKm(USER_CENTER.lat, USER_CENTER.lon, alert.location.lat, alert.location.lon)
+    ? distanceKm(center.lat, center.lon, alert.location.lat, alert.location.lon)
     : undefined;
 
   return (
@@ -197,7 +199,7 @@ export function DiagramMapScreen({ onBack, onAlertDetail, notice }: DiagramMapSc
   const { theme } = useTheme();
   const isOnline = useOnlineStatus();
   // Same source as the home list, so pins always match it for the same radius.
-  const { nearby, radiusKm: nearbyRadius, setRadiusKm: setNearbyRadius } = useNearbyAlerts();
+  const { nearby, radiusKm: nearbyRadius, setRadiusKm: setNearbyRadius, center } = useNearbyAlerts();
   const [pickerVisible, setPickerVisible] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -349,7 +351,7 @@ export function DiagramMapScreen({ onBack, onAlertDetail, notice }: DiagramMapSc
         {size.width > 0 &&
           alertsInRadius.map((alert) => {
             if (!alert.location) return null;
-            const pos = latLonToXY(alert.location.lat, alert.location.lon, USER_CENTER);
+            const pos = latLonToXY(alert.location.lat, alert.location.lon, center);
             const px = cx + pos.x * scaleFactor * zoom;
             const py = cy + pos.y * scaleFactor * zoom;
             const isUnverified = alert.verification_label === 'unverified_report';

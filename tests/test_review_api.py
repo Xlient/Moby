@@ -119,3 +119,15 @@ def test_reviewer_claim_is_read_from_the_token(monkeypatch):
         auth_module.require_reviewer("Bearer plain")
     assert e.value.status_code == 403
     get_settings.cache_clear()
+
+
+def test_event_reports_are_public_and_coarse(client, db_url):
+    eid = seed(db_url, reason="tier1_corroborated", minutes_ago=5, reports=3)
+    with psycopg.connect(db_url, autocommit=True) as c:   # a pending report isn't part of the event yet
+        c.execute("UPDATE reports SET fusion_status = 'pending' WHERE note = 'note 2'")
+    body = client.get(f"/v1/events/{eid}/reports").json()
+    assert body["distinct_reporter_count"] == 2 and len(body["reports"]) == 2
+    rep = body["reports"][0]
+    assert rep["observed_effect"] == "rising_water" and rep["distance_from_event_m"] == 0
+    assert "note" not in rep and "reporter" not in rep and "location" not in rep
+    assert client.get(f"/v1/events/{uuid.uuid4()}/reports").status_code == 404

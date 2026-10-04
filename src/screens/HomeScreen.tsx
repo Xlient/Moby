@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { ScrollView, View, StyleSheet } from 'react-native';
+import { Linking, ScrollView, View, StyleSheet } from 'react-native';
 import { Avatar, Button, FAB, Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import type { Theme } from '@/theme/tokens';
 import { spacing, radius } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useAuth } from '@/auth/AuthContext';
+import { useRetryLocation } from '@/location/UserLocationContext';
 import { useNearbyAlerts } from '@/hooks/useNearbyAlerts';
 import { AlertCard } from '@/components/AlertCard';
 import { MapPreviewCard } from '@/components/MapPreviewCard';
@@ -118,8 +119,9 @@ export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPr
   const { theme } = useTheme();
   const r = useResponsive();
   const { firstName } = useAuth();
-  const { nearby, hiddenCount, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt } = useNearbyAlerts();
+  const { nearby, hiddenCount, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt, center } = useNearbyAlerts();
   const [pickerVisible, setPickerVisible] = useState(false);
+  const retryLocation = useRetryLocation();
 
   const greeting = firstName
     ? `${greetingFor(new Date().getHours())}, ${firstName}`
@@ -166,6 +168,25 @@ export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPr
             >
               Saved {formatTimeAgo(cachedAt)}
             </Text>
+          )}
+
+          {center.source === 'demo' && center.problem && (
+            // Never silently show someone else's area as "near you".
+            <View style={styles.savedNote}>
+              <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
+                {center.problem === 'denied'
+                  ? 'Location is off for Moby, so these are alerts around San Francisco, not where you are.'
+                  : 'Can’t find where you are yet, so these are alerts around San Francisco.'}
+              </Text>
+              <Button
+                mode="text"
+                onPress={() => (center.problem === 'denied' ? Linking.openSettings() : retryLocation())}
+                style={styles.alignStart}
+                textColor={theme.text.primary}
+              >
+                {center.problem === 'denied' ? 'Turn on location' : 'Try again'}
+              </Button>
+            </View>
           )}
 
           {loading ? (
@@ -264,6 +285,9 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  alignStart: {
+    alignSelf: 'flex-start',
   },
   savedNote: {
     marginTop: -spacing.scale[1],

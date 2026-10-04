@@ -4,6 +4,7 @@ Public, read-only:
   GET  /healthz                     liveness + database + feed freshness
   GET  /v1/alerts                   active alerts near a point, filtered by preferences
   GET  /v1/events/{event_id}        one event (contract `Alert` shape)
+  GET  /v1/events/{event_id}/reports  community reports behind an event (coarse, no notes)
   GET  /v1/config                   client feature flags
 
 Signed-in users (Firebase ID token):
@@ -145,6 +146,49 @@ async def get_event(event_id: uuid.UUID):
     if row is None:
         raise HTTPException(404, "event not found")
     return to_alert(row)
+
+
+@app.get("/v1/events/{event_id}/reports")
+async def event_reports(event_id: uuid.UUID):
+    """Community reports fused into an event, for the alert detail screen.
+
+    Public, so deliberately coarse: no note (free text can identify people), no
+    reporter id, and position only as a distance from the event rounded to 100 m.
+    """
+    async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute("SELECT 1 FROM events WHERE event_id = %s", (event_id,))
+        if await cur.fetchone() is None:
+            raise HTTPException(404, "event not found")
+        await cur.execute(
+            """SELECT r.hazard_type, r.observed_effect, r.severity, r.observed_at, r.captured_offline, r.source,
+                      round(ST_Distance(r.location, e.location) / 100) * 100 AS distance_m
+               FROM reports r JOIN events e USING (event_id)
+               WHERE r.event_id = %s AND r.fusion_status = 'fused'
+               ORDER BY r.observed_at DESC LIMIT 50""",
+            (event_id,),
+        )
+        rows = await cur.fetchall()
+        await cur.execute(
+            "SELECT count(DISTINCT reporter_hash) AS people FROM reports WHERE event_id = %s AND fusion_status = 'fused'",
+            (event_id,),
+        )
+        people = (await cur.fetchone())["people"]
+    return {
+        "event_id": str(event_id),
+        "distinct_reporter_count": people,
+        "reports": [
+            {
+                "hazard_type": r["hazard_type"],
+                **({"observed_effect": r["observed_effect"]} if r["observed_effect"] else {}),
+                "severity": r["severity"],
+                "observed_at": r["observed_at"].isoformat(),
+                "distance_from_event_m": int(r["distance_m"]),
+                "captured_offline": r["captured_offline"],
+                "via_mesh": r["source"] == "mesh",
+            }
+            for r in rows
+        ],
+    }
 
 
 @app.get("/v1/config")

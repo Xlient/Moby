@@ -33,6 +33,8 @@ export type AuthTokens = components['schemas']['AuthTokens'];
 // ── Reports ──────────────────────────────────────────────────────────
 export type ReportSubmission = components['schemas']['ReportSubmission'];
 export type ReportAccepted = components['schemas']['ReportAccepted'];
+export type EventReports = components['schemas']['EventReports'];
+export type ReportSummary = components['schemas']['ReportSummary'];
 
 // ── Subscriptions ────────────────────────────────────────────────────
 export type Subscription = components['schemas']['Subscription'];

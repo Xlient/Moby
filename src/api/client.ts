@@ -12,6 +12,7 @@ import type {
   Subscription,
   User,
   Event,
+  EventReports,
   HazardType,
 } from './types';
 import {
@@ -21,6 +22,7 @@ import {
   getMockBrief,
   getMockGuidanceCards,
   getMockSubscriptions,
+  getMockEventReports,
 } from './fixtures';
 import { env } from '@/config/env';
 
@@ -191,6 +193,12 @@ export class ApiClient {
 
   async getEvent(eventId: string): Promise<Event> {
     return this.request<Event>('GET', `/events/${encodeURIComponent(eventId)}`);
+  }
+
+  /** Community reports behind an event (public and coarse: no notes, no reporters). */
+  async getEventReports(eventId: string): Promise<EventReports> {
+    if (USE_MOCK) return getMockEventReports(eventId);
+    return this.request<EventReports>('GET', `/events/${encodeURIComponent(eventId)}/reports`);
   }
 
   async confirmEvent(

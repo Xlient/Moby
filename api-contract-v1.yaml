@@ -257,6 +257,26 @@ paths:
               schema: { $ref: '#/components/schemas/Event' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /events/{event_id}/reports:
+    get:
+      tags: [reports]
+      summary: Community reports fused into an event (public, coarse)
+      description: >
+        For the alert detail screen. Never includes notes, reporter identity or exact
+        positions — only distance from the event, rounded to 100 m.
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EventReports' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /events/{event_id}/confirm:
     post:
       tags: [reports]
@@ -914,6 +934,31 @@ components:
         marine:
           type: boolean
           description: Offshore/boating product; absent means false. Hidden unless the user opts in.
+
+    EventReports:
+      type: object
+      required: [event_id, distinct_reporter_count, reports]
+      properties:
+        event_id: { type: string }
+        distinct_reporter_count:
+          type: integer
+          description: Distinct people behind the reports (repeat reports from one person count once).
+        reports:
+          type: array
+          description: Newest first, at most 50.
+          items: { $ref: '#/components/schemas/ReportSummary' }
+
+    ReportSummary:
+      type: object
+      required: [hazard_type, severity, observed_at, distance_from_event_m]
+      properties:
+        hazard_type: { $ref: '#/components/schemas/HazardType' }
+        observed_effect: { $ref: '#/components/schemas/ObservedEffect' }
+        severity: { $ref: '#/components/schemas/Severity' }
+        observed_at: { type: string, format: date-time }
+        distance_from_event_m: { type: integer, description: Rounded to 100 m. }
+        captured_offline: { type: boolean }
+        via_mesh: { type: boolean, description: Arrived over the Bluetooth mesh. }
 
     SituationalBrief:
       type: object

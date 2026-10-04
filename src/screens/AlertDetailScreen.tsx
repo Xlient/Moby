@@ -8,9 +8,12 @@ import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { AlertCard } from '@/components/AlertCard';
 import { BriefPanel } from '@/components/BriefPanel';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { ContributingReports } from '@/components/ContributingReports';
 import { useBrief } from '@/hooks/useBrief';
+import { useEventReports } from '@/hooks/useEventReports';
 import { useAlerts } from '@/hooks/useAlerts';
-import { USER_CENTER, distanceKm } from '@/lib/geo';
+import { distanceKm } from '@/lib/geo';
+import { useUserCenter } from '@/location/UserLocationContext';
 
 interface AlertDetailScreenProps {
   alertId: string;
@@ -22,6 +25,7 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
   const r = useResponsive();
   const { isEnabled } = useFeatureFlags();
   const { alerts } = useAlerts();
+  const center = useUserCenter();
 
   const alert = useMemo(
     () => alerts.find((a) => a.alert_id === alertId),
@@ -29,9 +33,12 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
   );
 
   const { state: briefState } = useBrief(alert?.event_id);
+  // Official alerts come from agencies, not people nearby; only community alerts have reports.
+  const fromCommunity = !!alert && alert.verification_label !== 'official_confirmed';
+  const reports = useEventReports(alert?.event_id, fromCommunity);
 
   const distance = alert?.location
-    ? Math.round(distanceKm(USER_CENTER.lat, USER_CENTER.lon, alert.location.lat, alert.location.lon) * 10) / 10
+    ? Math.round(distanceKm(center.lat, center.lon, alert.location.lat, alert.location.lon) * 10) / 10
     : undefined;
 
   return (
@@ -47,6 +54,14 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
       ) : (
         <ScrollView style={styles.container} contentContainerStyle={{ padding: r.gutter }}>
           <AlertCard alert={alert} distanceKm={distance} />
+          {fromCommunity && (
+            <ContributingReports
+              data={reports.data}
+              loading={reports.loading}
+              error={reports.error}
+              onRetry={reports.refetch}
+            />
+          )}
           {isEnabled('situational_brief') && <BriefPanel state={briefState} />}
         </ScrollView>
       )}

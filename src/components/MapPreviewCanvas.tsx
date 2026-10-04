@@ -2,7 +2,7 @@ import { View, StyleSheet } from 'react-native';
 import MapView, { Circle, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useTheme } from '@/theme/ThemeContext';
 import { mapStyleDark, mapStyleLight } from '@/theme/mapStyle';
-import { USER_CENTER } from '@/lib/geo';
+import { useUserCenter } from '@/location/UserLocationContext';
 import { regionForRadius, toLatLng } from '@/lib/mapGeometry';
 import type { NearbyAlert } from '@/hooks/useNearbyAlerts';
 import { useMapLoadFallback } from '@/hooks/useMapLoadFallback';
@@ -21,9 +21,8 @@ interface MapPreviewCanvasProps {
  */
 export function MapPreviewCanvas({ nearby, radiusKm }: MapPreviewCanvasProps) {
   const { theme, isDark } = useTheme();
-  // TODO(location): centre on the device position.
-  const center = USER_CENTER;
-  const mapKey = `${radiusKm}-${isDark ? 'dark' : 'light'}`;
+  const center = useUserCenter();
+  const mapKey = `${radiusKm}-${isDark ? 'dark' : 'light'}-${center.lat.toFixed(3)},${center.lon.toFixed(3)}`;
   const { failed, onMapLoaded } = useMapLoadFallback(mapKey);
 
   // No tiles (no signal, Google unreachable): the diagram still shows the pins.
@@ -32,7 +31,7 @@ export function MapPreviewCanvas({ nearby, radiusKm }: MapPreviewCanvasProps) {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <MapView
-        // Remount on radius/theme change: lite mode doesn't animate region changes.
+        // Remount on radius/theme/centre change: lite mode doesn't animate region changes.
         key={mapKey}
         onMapLoaded={onMapLoaded}
         provider={PROVIDER_GOOGLE}
