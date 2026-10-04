@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26   # Expo SDK 57 (expo-modules-jsi 57.1) needs Xcode 27
     timeout-minutes: 60
     env:
       MOBY_PREBUILD_PLATFORM: ios
