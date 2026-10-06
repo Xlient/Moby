@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     token_factory_api_key: SecretStr | None = Field(default=None, validation_alias="N_FACTORY_ACC_KEY")
     token_factory_base_url: str = "https://api.tokenfactory.nebius.com/v1/"
 
+    # Tavily web search / extract (moby/search/tavily.py). Optional: features that use
+    # it degrade gracefully without it. Never set in ordinary CI (model-evals only).
+    tavily_api_key: SecretStr | None = Field(default=None, validation_alias="TAVILY_API_KEY")
+
     # Exact model strings, verified by scripts/verify_models.py (see docs/models.md).
     model_nano: str = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
     model_super: str = "nvidia/nemotron-3-super-120b-a12b"

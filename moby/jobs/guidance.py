@@ -13,7 +13,7 @@ Anything that fails is dropped and logged, never "fixed". The surviving cards ar
 posted as a *draft* bundle; a reviewer reads them (with their evidence) and
 publishes. Plain Python by design — not a LangGraph node.
 
-    MOBY_API_URL=... MOBY_SERVICE_TOKEN=... N_FACTORY_ACC_KEY=... python -m moby.jobs.guidance [--dry-run]
+    MOBY_API_URL=... MOBY_SERVICE_TOKEN=... N_FACTORY_ACC_KEY=... python -m moby.jobs.guidance [--dry-run] [--fetcher tavily]
 """
 import argparse
 import json
@@ -243,10 +243,38 @@ def dedupe_ids(cards: list[dict]) -> list[dict]:
     return cards
 
 
+def tavily_texts(urls: list[str]) -> dict[str, str]:
+    """Main-content text of the curated sources via Tavily Extract (navigation and
+    footers stripped, so line citations point at real guidance). Only for pages on our
+    SOURCES list, which excludes sites that refuse automated access: Tavily is a
+    cleaner reader here, never a way around a site's choice.
+    Pages Tavily can't read are fetched directly instead."""
+    from moby.search.tavily import Tavily, TavilyNotConfigured
+
+    try:
+        client = Tavily()
+    except TavilyNotConfigured:
+        log.warning("TAVILY_API_KEY not set: fetching pages directly")
+        return {}
+    texts: dict[str, str] = {}
+    for i in range(0, len(urls), 20):
+        try:
+            got = client.extract(urls[i:i + 20], fmt="text")
+        except httpx.HTTPError as e:
+            log.warning("Tavily extract failed (%s): fetching directly", e)
+            continue
+        texts.update({u: "\n".join(" ".join(line.split()) for line in t.splitlines() if len(line.strip()) > 2)
+                      [:MAX_SOURCE_CHARS] for u, t in got.items()})
+    log.info("Tavily extracted %d of %d pages", len(texts), len(urls))
+    return texts
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Build a draft guidance bundle from official sources.")
     p.add_argument("--dry-run", action="store_true", help="print the cards instead of uploading them")
     p.add_argument("--hazard", choices=HAZARDS, action="append", help="only these hazards (repeatable)")
+    p.add_argument("--fetcher", choices=["direct", "tavily"], default="direct",
+                   help="tavily: clean page text via Tavily Extract (needs TAVILY_API_KEY); falls back to direct")
     args = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -255,15 +283,19 @@ def main() -> int:
     reviewed_at = datetime.now(timezone.utc).isoformat()
     sources = [s for s in SOURCES if not args.hazard or s.hazard in args.hazard]
 
+    extracted = tavily_texts([s.url for s in sources]) if args.fetcher == "tavily" else {}
+
     cards: list[dict] = []
     with httpx.Client(follow_redirects=True, timeout=30,
                       headers={"User-Agent": "Mozilla/5.0 moby-guidance/0.1 (+https://github.com/Xlient/Moby)"}) as web:
         for src in sources:
-            try:
-                text = fetch(web, src.url)
-            except httpx.HTTPError as e:
-                log.warning("skip %s: %s", src.url, e)
-                continue
+            text = extracted.get(src.url)
+            if text is None:
+                try:
+                    text = fetch(web, src.url)
+                except httpx.HTTPError as e:
+                    log.warning("skip %s: %s", src.url, e)
+                    continue
             kept, dropped = cards_for(src, text, llm, reviewed_at)
             for d in dropped:
                 log.warning("dropped %s", d)
