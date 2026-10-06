@@ -34,7 +34,12 @@
       "permissions": [
         "android.permission.ACCESS_NETWORK_STATE"
       ],
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -46,10 +51,13 @@
       "@react-native-google-signin/google-signin",
       "./plugins/withApkName",
       "./plugins/withReleaseSigning",
+      "./plugins/withoutLocationService",
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Moby uses your location to show alerts near you and to place the hazard reports you send."
+          "locationWhenInUsePermission": "Moby uses your location to show alerts near you and to place the hazard reports you send.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
         }
       ],
       "@maplibre/maplibre-react-native",

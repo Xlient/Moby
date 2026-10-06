@@ -103,4 +103,5 @@ def test_legal_pages(client):
     r = client.get("/legal/privacy")
     assert r.status_code == 200 and "<h1>Moby privacy policy</h1>" in r.text and "<table>" in r.text
     assert client.get("/legal/terms").status_code == 200
+    assert "Delete my account" in client.get("/legal/delete-account").text
     assert client.get("/legal/other").status_code == 422

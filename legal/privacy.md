@@ -44,7 +44,7 @@ Official warnings come from public agencies. We don't send them your data.
 You can, at any time:
 - **download your data:** Settings → Privacy & data → Download my data;
 - **delete your account and data:** Settings → Privacy & data → Delete my account. Or ask us at
-  [CONTACT EMAIL], or via [WEB DELETION PAGE];
+  [CONTACT EMAIL], or via the [account deletion page](/legal/delete-account);
 - **correct** your name and settings in the app;
 - **turn off location for alerts**, or send reports with an approximate location;
 - **object** to processing, or **withdraw consent**, without affecting what was done before.

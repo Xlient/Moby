@@ -21,16 +21,18 @@ function daysAgo(days: number): string {
 
 // ── Mock config ──────────────────────────────────────────────────────
 
+// Mirrors the server's GET /v1/config (moby/api/app.py), so demo builds and store
+// screenshots show exactly what ships. Flip a flag here locally to work on its UI.
 export const mockConfig: ClientConfig = {
   min_supported_client: '1.0.0',
   flags: {
-    situational_brief: true,
-    cascade_analysis: true,
+    situational_brief: false,
+    cascade_analysis: false,
     offline_guidance_cards: true,
-    on_device_assistant: true,
-    mesh_relay: true,
-    proximity_confirmation: true,
-    early_tier_opt_in: true,
+    on_device_assistant: false,
+    mesh_relay: false,
+    proximity_confirmation: false,
+    early_tier_opt_in: false,
   },
 };
 
@@ -218,7 +220,7 @@ export const mockGuidanceCards: GuidanceCard[] = [
   {
     card_id: 'card-flood-001',
     hazard_type: 'flood',
-    applies_when: 'flash_flood_warning',
+    applies_when: 'Flash flood warning in your area',
     title: 'Flash Flood Safety: What To Do Right Now',
     body:
       '1. Move to higher ground immediately \u2014 do not wait for official orders if you see rising water.\n' +
@@ -235,7 +237,7 @@ export const mockGuidanceCards: GuidanceCard[] = [
   {
     card_id: 'card-earthquake-001',
     hazard_type: 'earthquake',
-    applies_when: 'ground_shaking_detected',
+    applies_when: 'The ground is shaking',
     title: 'Earthquake: Drop, Cover, and Hold On',
     body:
       '1. DROP to your hands and knees to prevent being knocked down.\n' +
@@ -253,7 +255,7 @@ export const mockGuidanceCards: GuidanceCard[] = [
   {
     card_id: 'card-storm-001',
     hazard_type: 'storm',
-    applies_when: 'severe_thunderstorm_watch',
+    applies_when: 'Severe thunderstorm watch',
     title: 'Severe Thunderstorm Safety',
     body:
       '1. Move indoors to a sturdy building. Avoid sheds, isolated trees, and open fields.\n' +

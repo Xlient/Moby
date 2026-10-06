@@ -291,13 +291,15 @@ table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ddd;padding
 
 
 @app.get("/legal/{doc}", response_class=HTMLResponse, include_in_schema=False)
-async def legal(doc: Literal["privacy", "terms"]):
-    """Privacy policy and terms, linked from the app and the store listing."""
+async def legal(doc: Literal["privacy", "terms", "delete-account"]):
+    """Privacy policy, terms and account deletion, linked from the app and the store listing
+    (Google Play requires a web page for deleting an account)."""
     import markdown
 
     text = (LEGAL_DIR / f"{doc}.md").read_text()
     body = markdown.markdown(text, extensions=["tables"])
-    return LEGAL_PAGE.format(title="Moby privacy policy" if doc == "privacy" else "Moby terms of use", body=body)
+    titles = {"privacy": "Moby privacy policy", "terms": "Moby terms of use", "delete-account": "Delete your Moby account"}
+    return LEGAL_PAGE.format(title=titles[doc], body=body)
 
 
 @app.get("/v1/config")
