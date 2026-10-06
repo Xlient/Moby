@@ -3,13 +3,18 @@
 Public, read-only:
   GET  /healthz                     liveness + database + feed freshness
   GET  /v1/alerts                   active alerts near a point, filtered by preferences
-  GET  /v1/events/{event_id}        one event (contract `Alert` shape)
+  GET  /v1/events/{event_id}        one event (contract `Alert` shape); also /v1/alerts/{alert_id}
   GET  /v1/events/{event_id}/reports  community reports behind an event (coarse, no notes)
+  GET  /v1/events/{event_id}/brief  situational brief (200), or 202 while it is being written
   GET  /v1/config                   client feature flags
 
 Signed-in users (Firebase ID token):
   POST /v1/reports                  submit a ground report (write-first, 202)
   GET  /v1/reports/{client_event_id} status of one of your own reports
+  POST /v1/me/devices               register this phone's push token (DELETE on sign-out)
+  GET|PUT /v1/me/alert-preferences  what may notify you (critical always does)
+  PUT|DELETE /v1/me/near-me         the area around the phone (~1 km precision)
+  GET|POST /v1/subscriptions, DELETE /v1/subscriptions/{id}  saved areas
 
 Reviewer console: /console/ (static page; Google sign-in via Firebase)
 
@@ -37,7 +42,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
@@ -52,6 +57,7 @@ from moby.llm import EMBEDDING_DIM
 
 from .alerts import to_alert
 from .reports import router as reports_router
+from .me import router as me_router
 from .review import router as review_router
 
 pool: AsyncConnectionPool | None = None
@@ -71,6 +77,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Moby early-warning API", version="0.5.0", lifespan=lifespan)
 app.include_router(reports_router)
 app.include_router(review_router)
+app.include_router(me_router)
 
 # ── Reviewer console (static page; it signs in with Firebase and calls /v1/review) ──
 CONSOLE_DIR = Path(__file__).resolve().parent.parent / "console"
@@ -133,11 +140,13 @@ async def get_alerts(
 
 
 @app.get("/v1/events/{event_id}")
+@app.get("/v1/alerts/{event_id}")  # contract /alerts/{alert_id}: alert_id is the event_id
 async def get_event(event_id: uuid.UUID):
     async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            """SELECT event_id, source_feed, external_id, hazard_type, product, marine, severity, tier,
-                      title, description, first_reported_at, last_updated_at, expires_at, raw_payload,
+            """SELECT event_id, source, source_feed, external_id, hazard_type, product, marine, severity, tier,
+                      title, description, alert_headline, alert_body, distinct_reporter_count,
+                      first_reported_at, last_updated_at, expires_at, raw_payload,
                       ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon
                FROM events WHERE event_id = %s""",
             (event_id,),
@@ -189,6 +198,39 @@ async def event_reports(event_id: uuid.UUID):
             for r in rows
         ],
     }
+
+
+@app.get("/v1/events/{event_id}/brief")
+async def event_brief(event_id: uuid.UUID):
+    """Contract 4. 200 with the brief, 202 while the situational_brief job is working on
+    it. A brief that was never requested or failed is a 404: the app shows the alert
+    on its own and never waits on this route."""
+    async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            """SELECT e.brief_status, b.generated_at, b.model, b.summary, b.likely_progression, b.exposed_areas,
+                      b.official_guidance, b.uncertainty, b.sources
+               FROM events e LEFT JOIN briefs b USING (event_id) WHERE e.event_id = %s""",
+            (event_id,),
+        )
+        row = await cur.fetchone()
+    if row is None:
+        raise HTTPException(404, "event not found")
+    if row["summary"] is not None:
+        brief = {
+            "event_id": str(event_id),
+            "generated_at": row["generated_at"].isoformat(),
+            "model": row["model"],
+            "summary": row["summary"],
+            "likely_progression": row["likely_progression"],
+            "exposed_areas": row["exposed_areas"],
+            "official_guidance": row["official_guidance"],
+            "uncertainty": row["uncertainty"],
+            "sources": row["sources"],
+        }
+        return {k: v for k, v in brief.items() if v is not None}
+    if row["brief_status"] == "pending":
+        return JSONResponse({"status": "pending", "retry_after_seconds": 15}, status_code=202)
+    raise HTTPException(404, "no brief for this event")
 
 
 @app.get("/v1/config")

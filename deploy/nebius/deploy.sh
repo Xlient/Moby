@@ -82,6 +82,21 @@ cmd_setup() {
     save SALT_SECRET "$NAME-reporter-salt"
     echo "created secret $NAME-reporter-salt" >&2
   fi
+  if [ -z "${FCM_SECRET:-}" ]; then
+    # Push delivery credentials: a Firebase service-account JSON key (FCM_KEY=path, or the
+    # *-firebase-adminsdk-*.json in the repo root). Optional — without it the endpoint
+    # runs the delivery worker dry. Stored only in MysteryBox, never printed.
+    local key_file="${FCM_KEY:-$(ls "$ROOT"/*-firebase-adminsdk-*.json 2>/dev/null | head -1)}"
+    if [ -n "$key_file" ] && [ -f "$key_file" ]; then
+      local payload; payload="$(python3 -c 'import json,sys; print(json.dumps([{"key":"FIREBASE_SERVICE_ACCOUNT_JSON","string_value":open(sys.argv[1]).read()}]))' "$key_file")"
+      "$NEBIUS" mysterybox secret create "${P[@]}" --name "$NAME-fcm-service-account" \
+        --secret-version-payload "$payload" >/dev/null
+      save FCM_SECRET "$NAME-fcm-service-account"
+      echo "created secret $NAME-fcm-service-account" >&2
+    else
+      echo "no Firebase service-account key found (set FCM_KEY=path): push delivery will run dry" >&2
+    fi
+  fi
   if [ -z "${BACKUP_BUCKET:-}" ]; then
     run "$NEBIUS" storage bucket create "${P[@]}" --name "$NAME-backups" >/dev/null
     save BACKUP_BUCKET "$NAME-backups"
@@ -130,6 +145,7 @@ cmd_endpoint() {
     --volume "$DATA_FS_ID:/data" \
     --env-secret "MOBY_SERVICE_TOKEN=$SERVICE_SECRET" \
     --env-secret "MOBY_REPORTER_SALT=$SALT_SECRET" \
+    ${FCM_SECRET:+--env-secret "FIREBASE_SERVICE_ACCOUNT_JSON=$FCM_SECRET"} \
     --env "FIREBASE_PROJECT_ID=$fb_project" \
     --env "FIREBASE_WEB_API_KEY=$fb_key" \
     --env "FIREBASE_AUTH_DOMAIN=$fb_domain" \

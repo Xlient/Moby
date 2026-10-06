@@ -152,6 +152,15 @@ paths:
               schema: { $ref: '#/components/schemas/User' }
 
   /me/alert-preferences:
+    get:
+      tags: [auth]
+      summary: The caller's alert preferences (defaults if never set)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertPreferences' }
     put:
       tags: [auth]
       summary: Replace the caller's alert preferences
@@ -193,6 +202,45 @@ paths:
                 platform: { type: string, enum: [ios, android] }
       responses:
         '204': { description: Registered }
+
+  /me/devices/{device_id}:
+    delete:
+      tags: [auth]
+      summary: Stop push to this device (called on sign-out)
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Removed (or was not registered) }
+
+  /me/near-me:
+    put:
+      tags: [subscriptions]
+      summary: Set the area around the phone, for push
+      description: >
+        Kept by the app in step with the device position and the Home radius, so
+        notifications match what Home lists. Stored at ~1 km precision (2 decimal
+        places). Pushes for it start at medium severity; critical always gets through.
+        Never appears in GET /subscriptions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [center, radius_km]
+              properties:
+                center: { $ref: '#/components/schemas/GeoPoint' }
+                radius_km: { type: number, maximum: 500 }
+      responses:
+        '204': { description: Saved }
+    delete:
+      tags: [subscriptions]
+      summary: Stop push for the area around the phone
+      responses:
+        '204': { description: Removed }
 
   # ---------- reports ----------
 

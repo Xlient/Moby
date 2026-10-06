@@ -1,5 +1,6 @@
 import type {
   Alert,
+  AlertPreferences,
   BriefPending,
   CascadeAssessment,
   ClientConfig,
@@ -158,6 +159,24 @@ export class ApiClient {
   }): Promise<void> {
     return this.request<void>('POST', '/me/devices', {
       body: data,
+      noContent: true,
+    });
+  }
+
+  /** On sign-out: this phone stops receiving the person's alerts. */
+  async unregisterDevice(deviceId: string): Promise<void> {
+    return this.request<void>('DELETE', `/me/devices/${encodeURIComponent(deviceId)}`, { noContent: true });
+  }
+
+  /** Same preferences drive what the app lists and what may notify (critical always does). */
+  async putAlertPreferences(prefs: AlertPreferences): Promise<AlertPreferences> {
+    return this.request<AlertPreferences>('PUT', '/me/alert-preferences', { body: prefs });
+  }
+
+  /** The area around the phone, for push. The server keeps it at ~1 km precision. */
+  async putNearMe(center: { lat: number; lon: number }, radiusKm: number): Promise<void> {
+    return this.request<void>('PUT', '/me/near-me', {
+      body: { center: { ...center, frame: 'WGS84' }, radius_km: radiusKm },
       noContent: true,
     });
   }

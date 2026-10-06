@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/api/client';
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
@@ -27,10 +29,19 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
   const { alerts } = useAlerts();
   const center = useUserCenter();
 
-  const alert = useMemo(
+  const listed = useMemo(
     () => alerts.find((a) => a.alert_id === alertId),
     [alerts, alertId],
   );
+  // Opened from a notification, the alert may not be in the nearby list (a saved area
+  // elsewhere, or not fetched yet): load it on its own.
+  const single = useQuery({
+    queryKey: ['alert', alertId],
+    queryFn: () => api.getAlert(alertId),
+    enabled: !listed,
+    staleTime: 60_000,
+  });
+  const alert = listed ?? single.data;
 
   const { state: briefState } = useBrief(alert?.event_id);
   // Official alerts come from agencies, not people nearby; only community alerts have reports.
@@ -48,7 +59,7 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
       {!alert ? (
         <View style={styles.notFound}>
           <Text style={[typography.body, { color: theme.text.secondary }]}>
-            This alert is no longer available.
+            {single.isLoading ? 'Loading alert…' : 'This alert is no longer available.'}
           </Text>
         </View>
       ) : (

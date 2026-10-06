@@ -40,28 +40,35 @@ def _location_name(row: dict[str, Any]) -> str | None:
 
 
 def _verification_label(row: dict[str, Any]) -> str:
-    # Derived, never stored (migration 0002): official + tier 2 is "official_confirmed".
-    if row["tier"] >= 2:
+    # Derived, never stored (migration 0002): only an agency's alert is "official_confirmed".
+    # A community event at tier 2 (confirmed by people nearby / a reviewer) stays a report.
+    official = row.get("source", "official") == "official"
+    if row["tier"] >= 2 and official:
         return "official_confirmed"
-    return "corroborated_report" if row["tier"] == 1 else "unverified_report"
+    return "corroborated_report" if row["tier"] >= 1 else "unverified_report"
 
 
 def to_alert(row: dict[str, Any]) -> dict[str, Any]:
     alert = {
         "alert_id": str(row["event_id"]),
         "event_id": str(row["event_id"]),
-        "headline": _headline(row),
-        "body": (row.get("description") or "")[:600] or None,
+        # Contract 3: draft_alert's wording when present, so the app and the push agree.
+        "headline": row.get("alert_headline") or _headline(row),
+        "body": (row.get("alert_body") or row.get("description") or "")[:600] or None,
         "severity": row["severity"],
         "location": {"lat": row["lat"], "lon": row["lon"], "frame": "WGS84"},
         "issued_at": row["first_reported_at"].isoformat(),
         "expires_at": row["expires_at"].isoformat() if row.get("expires_at") else None,
         "verification_label": _verification_label(row),
-        "source_attribution": SOURCE_ATTRIBUTION.get(row["source_feed"]),
+        "source_attribution": SOURCE_ATTRIBUTION.get(row["source_feed"])
+        or ("Community reports" if row.get("source") in ("manual", "mesh") else None),
         "hazard_type": row["hazard_type"],
         "location_name": _location_name(row),
         "product": row.get("product"),
         "marine": bool(row.get("marine")),
+        # "Confirmed by N nearby" on community alerts; omitted for official ones (contract).
+        "corroboration_count": row.get("distinct_reporter_count") or None
+        if row.get("source") in ("manual", "mesh") and row["tier"] >= 1 else None,
         "distance_km": round(row["distance_km"], 1) if row.get("distance_km") is not None else None,
     }
     return {k: v for k, v in alert.items() if v is not None}
