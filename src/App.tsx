@@ -25,6 +25,7 @@ import { GuidanceScreen } from '@/screens/GuidanceScreen';
 import { ReportScreen } from '@/screens/ReportScreen';
 import { SubscriptionsScreen } from '@/screens/SubscriptionsScreen';
 import { AlertPreferencesScreen } from '@/screens/AlertPreferencesScreen';
+import { PrivacyScreen } from '@/screens/PrivacyScreen';
 import { TrustReviewScreen } from '@/screens/TrustReviewScreen';
 import { AlertCardReviewScreen } from '@/screens/AlertCardReviewScreen';
 
@@ -39,6 +40,7 @@ type Screen =
   | { name: 'report' }
   | { name: 'subscriptions' }
   | { name: 'alert-preferences' }
+  | { name: 'privacy' }
   | { name: 'trust-review' }
   | { name: 'alert-card-review' };
 
@@ -58,6 +60,7 @@ function getActiveTab(screen: Screen): string {
     case 'settings':
     case 'subscriptions':
     case 'alert-preferences':
+    case 'privacy':
       return 'settings';
   }
 }
@@ -195,6 +198,7 @@ export function App() {
           <SettingsScreen
             onSubscriptions={() => push({ name: 'subscriptions' })}
             onAlertPreferences={() => push({ name: 'alert-preferences' })}
+            onPrivacy={() => push({ name: 'privacy' })}
             onCardReview={() => push({ name: 'alert-card-review' })}
             onTrustReview={() => push({ name: 'trust-review' })}
           />
@@ -203,6 +207,7 @@ export function App() {
         {screen.name === 'report' && <ReportScreen onBack={goBack} />}
         {screen.name === 'subscriptions' && <SubscriptionsScreen onBack={goBack} />}
         {screen.name === 'alert-preferences' && <AlertPreferencesScreen onBack={goBack} />}
+        {screen.name === 'privacy' && <PrivacyScreen onBack={goBack} />}
         {screen.name === 'trust-review' && <TrustReviewScreen onBack={goBack} />}
         {screen.name === 'alert-card-review' && <AlertCardReviewScreen onBack={goBack} />}
       </View>

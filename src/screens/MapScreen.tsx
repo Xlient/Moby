@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
 import { Button, IconButton, Surface, Text } from 'react-native-paper';
 import MapView, { Circle, Marker, Polygon, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useTheme } from '@/theme/ThemeContext';
@@ -94,10 +94,12 @@ export function MapScreen({ onBack, onAlertDetail }: MapScreenProps) {
       <MapView
         onMapLoaded={onMapLoaded}
         ref={mapRef}
-        provider={PROVIDER_GOOGLE}
+        // Google Maps on Android; Apple Maps on iOS (no extra key needed).
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         style={StyleSheet.absoluteFill}
         initialRegion={regionForRadius(center, radiusKm)}
         customMapStyle={isDark ? mapStyleDark : mapStyleLight}
+        userInterfaceStyle={isDark ? 'dark' : 'light'}
         rotateEnabled={false}
         pitchEnabled={false}
         toolbarEnabled={false}

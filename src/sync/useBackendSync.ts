@@ -7,6 +7,7 @@ import { useAlertPreferences } from '@/hooks/useAlertPreferences';
 import { useNearbyRadius } from '@/hooks/useNearbyRadius';
 import { fetchCenter, useUserCenterPassive } from '@/location/UserLocationContext';
 import { alertIdOf, deviceId, pushSupported, setUpPush } from '@/lib/notifications';
+import { usePrivacySettings } from '@/lib/privacySettings';
 
 /**
  * Keeps the backend in step with this phone so push matches what the app shows
@@ -22,7 +23,8 @@ export function useBackendSync(onOpenAlert: (alertId: string) => void): void {
   const active = !!user && !env.useMock;
   const [prefs] = useAlertPreferences();
   const [radiusKm] = useNearbyRadius();
-  const center = useUserCenterPassive();   // Home asks for location; sync never prompts
+  const center = useUserCenterPassive();
+  const { followLocation } = usePrivacySettings();   // Home asks for location; sync never prompts
 
   // ── Push token ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -79,6 +81,14 @@ export function useBackendSync(onOpenAlert: (alertId: string) => void): void {
       sentNearMe.current = null;
       return;
     }
+    // "Alerts follow my location" off: remove the server's copy and send nothing more.
+    if (!followLocation) {
+      if (sentNearMe.current !== 'off') {
+        api.deleteNearMe().then(() => { sentNearMe.current = 'off'; })
+          .catch((err) => console.warn('Could not remove near-me area', err));
+      }
+      return;
+    }
     if (center.source !== 'device') return;
     const key = `${coarse.lat},${coarse.lon},${radiusKm}`;
     if (key === sentNearMe.current) return;
@@ -88,7 +98,7 @@ export function useBackendSync(onOpenAlert: (alertId: string) => void): void {
         sentNearMe.current = key;
       })
       .catch((err) => console.warn('Could not sync near-me area', err));
-  }, [active, center.source, coarse.lat, coarse.lon, radiusKm]);
+  }, [active, followLocation, center.source, coarse.lat, coarse.lon, radiusKm]);
 
   // ── Tapped notifications ───────────────────────────────────────────
   const openRef = useRef(onOpenAlert);

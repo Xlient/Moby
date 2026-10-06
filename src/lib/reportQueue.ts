@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 import { api, ApiRequestError } from '@/api/client';
 import type { ReportAccepted, ReportSubmission } from '@/api/types';
 import { kv } from './storage';
+import { approximate, getPrivacySettings } from './privacySettings';
 
 // Offline-first report queue (design system: "Must complete fully offline and show
 // 'Queued — will send when you have signal.'").
@@ -76,8 +77,13 @@ export function enqueueReport(
   submission: Omit<ReportSubmission, 'captured_offline'>,
   capturedOffline: boolean,
 ): QueuedReport {
+  // "Approximate location in reports" (Settings → Privacy & data): round before it leaves the phone.
+  const loc = submission.location;
+  const location = getPrivacySettings().approximateReports && loc
+    ? { ...loc, ...approximate(loc.lat, loc.lon), accuracy_m: Math.max(loc.accuracy_m ?? 0, 500) }
+    : loc;
   const entry: QueuedReport = {
-    submission: { ...submission, captured_offline: capturedOffline },
+    submission: { ...submission, location, captured_offline: capturedOffline },
     state: 'queued',
     attempts: 0,
     nextAttemptAt: 0,

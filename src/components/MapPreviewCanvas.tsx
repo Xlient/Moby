@@ -1,4 +1,4 @@
-import { View, StyleSheet } from 'react-native';
+import { Platform, View, StyleSheet } from 'react-native';
 import MapView, { Circle, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useTheme } from '@/theme/ThemeContext';
 import { mapStyleDark, mapStyleLight } from '@/theme/mapStyle';
@@ -34,11 +34,13 @@ export function MapPreviewCanvas({ nearby, radiusKm }: MapPreviewCanvasProps) {
         // Remount on radius/theme/centre change: lite mode doesn't animate region changes.
         key={mapKey}
         onMapLoaded={onMapLoaded}
-        provider={PROVIDER_GOOGLE}
+        // Google Maps on Android; Apple Maps on iOS (no extra key needed).
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
         liteMode
         style={StyleSheet.absoluteFill}
         initialRegion={regionForRadius(center, radiusKm, 1.15)}
         customMapStyle={isDark ? mapStyleDark : mapStyleLight}
+        userInterfaceStyle={isDark ? 'dark' : 'light'}
         scrollEnabled={false}
         zoomEnabled={false}
         rotateEnabled={false}
