@@ -283,3 +283,21 @@ def test_mutable_documents_are_reread(db_url):
     routes[u] = cap_doc("TS2", msg="Cancel", references="test@example.gov,TS1,2026-10-04T00:00:00+00:00", area="")
     out = run(routes)
     assert out.new_docs == 1 and out.cancelled == 1
+
+
+def test_alert_areas_geojson(db_url, monkeypatch):
+    from fastapi.testclient import TestClient
+    from moby.config import get_settings
+    with psycopg.connect(db_url, autocommit=True) as c:
+        c.execute("TRUNCATE events, cap_documents CASCADE")
+    u = "https://alerts.example.gov/cap/area.xml"
+    poll(db_url, {SRC.url: feed(u), u: cap_doc("AREA1")})
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    get_settings.cache_clear()
+    from moby.api.app import app
+    with TestClient(app) as client:
+        fc = client.get("/v1/alerts/areas?lat=14.1&lon=121.1&radius_km=10").json()
+    get_settings.cache_clear()
+    (f,) = fc["features"]
+    assert fc["type"] == "FeatureCollection" and f["geometry"]["type"] in ("Polygon", "MultiPolygon")
+    assert f["properties"]["severity"] == "high" and f["properties"]["alert_id"] == f["id"]

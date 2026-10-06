@@ -28,6 +28,35 @@ import {
 import { env } from '@/config/env';
 import { appCheckToken } from '@/lib/appCheck';
 
+export interface AlertAreas {
+  type: 'FeatureCollection';
+  features: {
+    type: 'Feature';
+    id?: string;
+    geometry: GeoJSON.Geometry;
+    properties: { alert_id: string; severity: Alert['severity']; hazard_type?: Alert['hazard_type'] };
+  }[];
+}
+
+function mockAlertAreas(alerts: Alert[]): AlertAreas {
+  const features = alerts.flatMap((a) => {
+    if (!a.location || !a.affected_radius_km) return [];
+    const { lat, lon } = a.location;
+    const r = a.affected_radius_km;
+    const ring = Array.from({ length: 33 }, (_, i) => {
+      const t = (2 * Math.PI * i) / 32;
+      return [lon + (r / (111.32 * Math.cos((lat * Math.PI) / 180))) * Math.sin(t), lat + (r / 111.32) * Math.cos(t)];
+    });
+    return [{
+      type: 'Feature' as const,
+      id: a.alert_id,
+      geometry: { type: 'Polygon' as const, coordinates: [ring] },
+      properties: { alert_id: a.alert_id, severity: a.severity, hazard_type: a.hazard_type },
+    }];
+  });
+  return { type: 'FeatureCollection', features };
+}
+
 // ── Configuration ────────────────────────────────────────────────────
 
 const BASE_URL: string = env.apiUrl;
@@ -199,6 +228,12 @@ export class ApiClient {
     return this.request<{ alerts?: Alert[] }>('GET', '/alerts', {
       query: params as Record<string, string | number | boolean | undefined>,
     });
+  }
+
+  /** Warning areas for the map (GeoJSON). Mock: a circle per alert from affected_radius_km. */
+  async getAlertAreas(params: { lat: number; lon: number; radius_km: number }): Promise<AlertAreas> {
+    if (USE_MOCK) return mockAlertAreas(getMockAlerts());
+    return this.request<AlertAreas>('GET', '/alerts/areas', { query: params });
   }
 
   async getAlert(alertId: string): Promise<Alert> {
