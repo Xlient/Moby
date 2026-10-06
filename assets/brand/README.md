@@ -1,10 +1,10 @@
-# Waypoint brand
+# Moby brand
 
-- `waypoint-mark.svg`: the mark, a map pin broadcasting a warning. Source of every icon.
-- `waypoint-icon.svg`: the full-bleed app icon (navy background with a teal glow).
+- `moby-mark.svg`: the mark, a map pin broadcasting a warning. Source of every icon.
+- `moby-icon.svg`: the full-bleed app icon (navy background with a teal glow).
 - `render.js`: regenerates the app icons in `assets/` (`icon.png`, the Android adaptive
   foreground, background and monochrome images, `splash-icon.png`, `favicon.png`) and
-  `waypoint-mark.png` for decks. Run it with `sharp` installed: `node render.js`.
+  `moby-mark.png` for decks. Run it with `sharp` installed: `node render.js`.
 
 ## Palette
 

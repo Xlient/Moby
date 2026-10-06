@@ -1,8 +1,8 @@
-// Renders the Waypoint brand assets (issue: app logo). Run: npm i --no-save sharp && node render.js
+// Renders the Moby brand assets (issue: app logo). Run: npm i --no-save sharp && node render.js
 /* global Buffer */
 const sharp = require('sharp');
 const fs = require('fs');
-const mark = fs.readFileSync('waypoint-mark.svg', 'utf8');
+const mark = fs.readFileSync('moby-mark.svg', 'utf8');
 const markInner = mark.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
 const svg = (body, bg = '') =>
   Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">${bg}${body}</svg>`);
@@ -20,7 +20,7 @@ const out = async (name, buf, size) => sharp(buf).resize(size, size).png().toFil
   await out('../android-icon-monochrome.png', svg(`<g transform="translate(225 235) scale(0.56)">${mono}</g>`), 1024); // themed icons (Android 13+)
   await out('../splash-icon.png', svg(at(0.9)), 1024);                     // centred on the navy splash
   await out('../favicon.png', svg(at(0.86), bg), 48);
-  await out('waypoint-mark.png', svg(at(0.95)), 1024);                     // transparent, for decks
-  await out('waypoint-icon-preview.png', svg(at(0.78), bg), 512);
+  await out('moby-mark.png', svg(at(0.95)), 1024);                     // transparent, for decks
+  await out('moby-icon-preview.png', svg(at(0.78), bg), 512);
   console.log('rendered');
 })();
