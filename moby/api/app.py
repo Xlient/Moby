@@ -7,6 +7,7 @@ Public, read-only:
   GET  /v1/events/{event_id}/reports  community reports behind an event (coarse, no notes)
   GET  /v1/events/{event_id}/brief  situational brief (200), or 202 while it is being written
   GET  /v1/config                   client feature flags
+  GET  /v1/guidance/manifest, /v1/guidance/cards  published offline guidance (see guidance.py)
 
 Signed-in users (Firebase ID token):
   POST /v1/reports                  submit a ground report (write-first, 202)
@@ -57,6 +58,7 @@ from moby.llm import EMBEDDING_DIM
 
 from .alerts import to_alert
 from .reports import router as reports_router
+from .guidance import router as guidance_router
 from .me import router as me_router
 from .review import router as review_router
 
@@ -78,6 +80,7 @@ app = FastAPI(title="Moby early-warning API", version="0.5.0", lifespan=lifespan
 app.include_router(reports_router)
 app.include_router(review_router)
 app.include_router(me_router)
+app.include_router(guidance_router)
 
 # ── Reviewer console (static page; it signs in with Firebase and calls /v1/review) ──
 CONSOLE_DIR = Path(__file__).resolve().parent.parent / "console"
@@ -241,7 +244,7 @@ async def get_config():
         "flags": {
             "situational_brief": False,
             "cascade_analysis": False,
-            "offline_guidance_cards": False,
+            "offline_guidance_cards": True,   # Week 5: synced cards + built-in fallbacks
             "on_device_assistant": False,
             "mesh_relay": False,
             "proximity_confirmation": False,

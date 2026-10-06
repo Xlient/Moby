@@ -2,9 +2,9 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { View, ScrollView, StyleSheet } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Button, Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
-import { typography } from '@/theme/tokens';
+import { spacing, typography } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { AlertCard } from '@/components/AlertCard';
@@ -14,15 +14,22 @@ import { ContributingReports } from '@/components/ContributingReports';
 import { useBrief } from '@/hooks/useBrief';
 import { useEventReports } from '@/hooks/useEventReports';
 import { useAlerts } from '@/hooks/useAlerts';
+import { GuidanceCard } from '@/components/GuidanceCard';
+import { cardsForHazard, useGuidance } from '@/guidance/guidanceStore';
+import type { HazardType } from '@/api/types';
 import { distanceKm } from '@/lib/geo';
 import { useUserCenter } from '@/location/UserLocationContext';
 
 interface AlertDetailScreenProps {
   alertId: string;
   onBack: () => void;
+  onGuidance: (hazard?: HazardType) => void;
 }
 
-export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
+/** Most urgent first; the alert detail shows only the top few. */
+const WHAT_TO_DO_CARDS = 2;
+
+export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
   const { isEnabled } = useFeatureFlags();
@@ -47,6 +54,8 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
   // Official alerts come from agencies, not people nearby; only community alerts have reports.
   const fromCommunity = !!alert && alert.verification_label !== 'official_confirmed';
   const reports = useEventReports(alert?.event_id, fromCommunity);
+  const { cards } = useGuidance();
+  const whatToDo = cardsForHazard(cards, alert?.hazard_type ?? 'other').slice(0, WHAT_TO_DO_CARDS);
 
   const distance = alert?.location
     ? Math.round(distanceKm(center.lat, center.lon, alert.location.lat, alert.location.lon) * 10) / 10
@@ -65,6 +74,25 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
       ) : (
         <ScrollView style={styles.container} contentContainerStyle={{ padding: r.gutter }}>
           <AlertCard alert={alert} distanceKm={distance} />
+          {whatToDo.length > 0 && (
+            // Saved on the phone: works even if this alert arrived just before the signal went.
+            <View style={styles.whatToDo}>
+              <Text variant="titleMedium" accessibilityRole="header" style={{ color: theme.text.primary }}>
+                What to do
+              </Text>
+              {whatToDo.map((card) => (
+                <GuidanceCard key={card.card_id} card={card} compact />
+              ))}
+              <Button
+                mode="text"
+                onPress={() => onGuidance(alert.hazard_type)}
+                style={styles.alignStart}
+                textColor={theme.text.primary}
+              >
+                More safety guidance
+              </Button>
+            </View>
+          )}
           {fromCommunity && (
             <ContributingReports
               data={reports.data}
@@ -83,6 +111,13 @@ export function AlertDetailScreen({ alertId, onBack }: AlertDetailScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  whatToDo: {
+    marginTop: spacing.scale[4],
+    gap: spacing.scale[3],
+  },
+  alignStart: {
+    alignSelf: 'flex-start',
   },
   notFound: {
     flex: 1,
