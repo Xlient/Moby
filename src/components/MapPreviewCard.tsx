@@ -4,6 +4,8 @@ import { useTheme } from '@/theme/ThemeContext';
 import { spacing, radius } from '@/theme/tokens';
 import type { NearbyAlert } from '@/hooks/useNearbyAlerts';
 import { MapPreviewCanvas } from './MapPreviewCanvas';
+import { MapLibrePreviewCanvas } from './MapLibrePreviewCanvas';
+import { useMapEngine } from '@/maps/mapEngine';
 
 interface MapPreviewCardProps {
   nearby: NearbyAlert[];
@@ -20,6 +22,7 @@ interface MapPreviewCardProps {
  */
 export function MapPreviewCard({ nearby, radiusKm, isOffline, onPress, onRadiusPress }: MapPreviewCardProps) {
   const { theme } = useTheme();
+  const [engine] = useMapEngine();
   const summary =
     nearby.length === 0
       ? `Nothing within ${radiusKm} km`
@@ -34,7 +37,11 @@ export function MapPreviewCard({ nearby, radiusKm, isOffline, onPress, onRadiusP
       style={[styles.card, { backgroundColor: theme.bg.recessed }]}
     >
       <View style={styles.canvas} pointerEvents="box-none">
-        <MapPreviewCanvas nearby={nearby} radiusKm={radiusKm} />
+        {engine === 'maplibre' ? (
+          <MapLibrePreviewCanvas nearby={nearby} radiusKm={radiusKm} />
+        ) : (
+          <MapPreviewCanvas nearby={nearby} radiusKm={radiusKm} />
+        )}
 
         {isOffline && (
           <View style={[styles.offlineTag, { backgroundColor: theme.bg.raised }]}>

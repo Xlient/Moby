@@ -1,5 +1,6 @@
 import type {
   Alert,
+  AlertPreferences,
   BriefPending,
   CascadeAssessment,
   ClientConfig,
@@ -25,6 +26,36 @@ import {
   getMockEventReports,
 } from './fixtures';
 import { env } from '@/config/env';
+import { appCheckToken } from '@/lib/appCheck';
+
+export interface AlertAreas {
+  type: 'FeatureCollection';
+  features: {
+    type: 'Feature';
+    id?: string;
+    geometry: GeoJSON.Geometry;
+    properties: { alert_id: string; severity: Alert['severity']; hazard_type?: Alert['hazard_type'] };
+  }[];
+}
+
+function mockAlertAreas(alerts: Alert[]): AlertAreas {
+  const features = alerts.flatMap((a) => {
+    if (!a.location || !a.affected_radius_km) return [];
+    const { lat, lon } = a.location;
+    const r = a.affected_radius_km;
+    const ring = Array.from({ length: 33 }, (_, i) => {
+      const t = (2 * Math.PI * i) / 32;
+      return [lon + (r / (111.32 * Math.cos((lat * Math.PI) / 180))) * Math.sin(t), lat + (r / 111.32) * Math.cos(t)];
+    });
+    return [{
+      type: 'Feature' as const,
+      id: a.alert_id,
+      geometry: { type: 'Polygon' as const, coordinates: [ring] },
+      properties: { alert_id: a.alert_id, severity: a.severity, hazard_type: a.hazard_type },
+    }];
+  });
+  return { type: 'FeatureCollection', features };
+}
 
 // ── Configuration ────────────────────────────────────────────────────
 
@@ -97,6 +128,9 @@ export class ApiClient {
         headers['Authorization'] = `Bearer ${token}`;
       }
     }
+    // Only the official app can call the API (server: moby/api/appcheck.py).
+    const appCheck = await appCheckToken();
+    if (appCheck) headers['X-Firebase-AppCheck'] = appCheck;
 
     if (options.body !== undefined) {
       headers['Content-Type'] = 'application/json';
@@ -162,6 +196,24 @@ export class ApiClient {
     });
   }
 
+  /** On sign-out: this phone stops receiving the person's alerts. */
+  async unregisterDevice(deviceId: string): Promise<void> {
+    return this.request<void>('DELETE', `/me/devices/${encodeURIComponent(deviceId)}`, { noContent: true });
+  }
+
+  /** Same preferences drive what the app lists and what may notify (critical always does). */
+  async putAlertPreferences(prefs: AlertPreferences): Promise<AlertPreferences> {
+    return this.request<AlertPreferences>('PUT', '/me/alert-preferences', { body: prefs });
+  }
+
+  /** The area around the phone, for push. The server keeps it at ~1 km precision. */
+  async putNearMe(center: { lat: number; lon: number }, radiusKm: number): Promise<void> {
+    return this.request<void>('PUT', '/me/near-me', {
+      body: { center: { ...center, frame: 'WGS84' }, radius_km: radiusKm },
+      noContent: true,
+    });
+  }
+
   // ── Alerts ───────────────────────────────────────────────────────
 
   async getAlerts(params?: {
@@ -176,6 +228,12 @@ export class ApiClient {
     return this.request<{ alerts?: Alert[] }>('GET', '/alerts', {
       query: params as Record<string, string | number | boolean | undefined>,
     });
+  }
+
+  /** Warning areas for the map (GeoJSON). Mock: a circle per alert from affected_radius_km. */
+  async getAlertAreas(params: { lat: number; lon: number; radius_km: number }): Promise<AlertAreas> {
+    if (USE_MOCK) return mockAlertAreas(getMockAlerts());
+    return this.request<AlertAreas>('GET', '/alerts/areas', { query: params });
   }
 
   async getAlert(alertId: string): Promise<Alert> {
@@ -231,6 +289,8 @@ export class ApiClient {
       const token = await this.getToken();
       if (token) headers['Authorization'] = `Bearer ${token}`;
     }
+    const appCheck = await appCheckToken();
+    if (appCheck) headers['X-Firebase-AppCheck'] = appCheck;
 
     const res = await fetch(fullUrl, { method: 'GET', headers });
 
@@ -262,6 +322,8 @@ export class ApiClient {
       const token = await this.getToken();
       if (token) headers['Authorization'] = `Bearer ${token}`;
     }
+    const appCheck = await appCheckToken();
+    if (appCheck) headers['X-Firebase-AppCheck'] = appCheck;
 
     const res = await fetch(fullUrl, { method: 'GET', headers });
 
@@ -276,6 +338,15 @@ export class ApiClient {
   // ── Guidance ─────────────────────────────────────────────────────
 
   async getGuidanceManifest(region?: RegionCode): Promise<{ bundles?: GuidanceBundle[] }> {
+    if (USE_MOCK) {
+      const cards = getMockGuidanceCards();
+      return {
+        bundles: [{
+          bundle_id: 'us-mock', region: 'US', version: 'mock', content_hash: `mock-${cards.length}`,
+          size_bytes: 0, generated_at: new Date(0).toISOString(), card_count: cards.length,
+        }],
+      };
+    }
     return this.request<{ bundles?: GuidanceBundle[] }>('GET', '/guidance/manifest', {
       query: region ? { region } : undefined,
     });

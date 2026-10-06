@@ -6,6 +6,10 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { useAuth } from '@/auth/AuthContext';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { api } from '@/api/client';
+import { useBackendSync } from '@/sync/useBackendSync';
+import { syncGuidance } from '@/guidance/guidanceStore';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import type { HazardType } from '@/api/types';
 import { typography } from '@/theme/tokens';
 import { BottomTabs } from '@/components/BottomTabs';
 import { AuthScreen } from '@/screens/AuthScreen';
@@ -13,6 +17,8 @@ import { HomeScreen } from '@/screens/HomeScreen';
 import { AlertDetailScreen } from '@/screens/AlertDetailScreen';
 import { AlertsScreen } from '@/screens/AlertsScreen';
 import { MapScreen } from '@/screens/MapScreen';
+import { MapLibreMapScreen } from '@/screens/MapLibreMapScreen';
+import { useMapEngine } from '@/maps/mapEngine';
 import { SettingsScreen } from '@/screens/SettingsScreen';
 import { AssistantScreen } from '@/screens/AssistantScreen';
 import { GuidanceScreen } from '@/screens/GuidanceScreen';
@@ -29,7 +35,7 @@ type Screen =
   | { name: 'map' }
   | { name: 'alerts' }
   | { name: 'alert-detail'; alertId: string }
-  | { name: 'guidance' }
+  | { name: 'guidance'; hazard?: HazardType }
   | { name: 'report' }
   | { name: 'subscriptions' }
   | { name: 'alert-preferences' }
@@ -96,6 +102,17 @@ export function App() {
     [push],
   );
 
+  // Push token, preferences and "near me" to the server; notification taps open the alert.
+  useBackendSync(navigateToAlert);
+
+  // Keep offline guidance fresh whenever we're online (cheap when nothing changed).
+  const isOnline = useOnlineStatus();
+  const [mapEngine] = useMapEngine();
+  useEffect(() => {
+    if (isOnline) syncGuidance();
+  }, [isOnline]);
+  const openGuidance = useCallback((hazard?: HazardType) => push({ name: 'guidance', hazard }), [push]);
+
   const handleTabChange = useCallback((tab: string) => {
     switch (tab) {
       case 'home':
@@ -158,17 +175,21 @@ export function App() {
             onAlertPress={navigateToAlert}
             onSeeAllPress={() => push({ name: 'alerts' })}
             onMapPress={() => push({ name: 'map' })}
+            onGuidancePress={() => openGuidance()}
           />
         )}
         {screen.name === 'alerts' && (
           <AlertsScreen onBack={goBack} onAlertPress={navigateToAlert} />
         )}
         {screen.name === 'alert-detail' && (
-          <AlertDetailScreen alertId={screen.alertId} onBack={goBack} />
+          <AlertDetailScreen alertId={screen.alertId} onBack={goBack} onGuidance={openGuidance} />
         )}
-        {screen.name === 'map' && (
-          <MapScreen onBack={goBack} onAlertDetail={navigateToAlert} />
-        )}
+        {screen.name === 'map' &&
+          (mapEngine === 'maplibre' ? (
+            <MapLibreMapScreen onBack={goBack} onAlertDetail={navigateToAlert} />
+          ) : (
+            <MapScreen onBack={goBack} onAlertDetail={navigateToAlert} />
+          ))}
         {screen.name === 'assistant' && showAssistant && <AssistantScreen />}
         {screen.name === 'settings' && (
           <SettingsScreen
@@ -178,7 +199,7 @@ export function App() {
             onTrustReview={() => push({ name: 'trust-review' })}
           />
         )}
-        {screen.name === 'guidance' && <GuidanceScreen onBack={goBack} />}
+        {screen.name === 'guidance' && <GuidanceScreen onBack={goBack} initialHazard={screen.hazard} />}
         {screen.name === 'report' && <ReportScreen onBack={goBack} />}
         {screen.name === 'subscriptions' && <SubscriptionsScreen onBack={goBack} />}
         {screen.name === 'alert-preferences' && <AlertPreferencesScreen onBack={goBack} />}

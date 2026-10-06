@@ -13,6 +13,8 @@ import type { ConfigContext, ExpoConfig } from 'expo/config';
  *
  * The public repository has no google-services.json: without it the app builds and
  * runs on mock data (no Google Sign-In / push), which is all contributors need.
+ * The native Firebase setup for App Check (@react-native-firebase/app) is added only
+ * when the file exists, so public builds compile but can never obtain a token.
  *
  * Release builds (CI): MOBY_VERSION_NAME / MOBY_VERSION_CODE set the version (Play
  * needs a higher versionCode for every upload); signing comes from
@@ -24,6 +26,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     console.warn('GOOGLE_MAPS_API_KEY is not set: maps will render blank on Android.');
   }
   const googleServicesFile = process.env.GOOGLE_SERVICES_JSON ?? './google-services.json';
+  const hasFirebase = existsSync(googleServicesFile);
   const versionCode = Number(process.env.MOBY_VERSION_CODE) || config.android?.versionCode;
 
   return {
@@ -31,10 +34,11 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: config.name ?? 'Moby',
     slug: config.slug ?? 'moby',
     version: process.env.MOBY_VERSION_NAME || config.version,
+    plugins: [...(config.plugins ?? []), ...(hasFirebase ? ['@react-native-firebase/app'] : [])],
     android: {
       ...config.android,
       versionCode,
-      ...(existsSync(googleServicesFile) ? { googleServicesFile } : {}),
+      ...(hasFirebase ? { googleServicesFile } : {}),
       config: {
         ...config.android?.config,
         googleMaps: { apiKey: mapsKey },

@@ -221,7 +221,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** The caller's alert preferences (defaults if never set) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AlertPreferences"];
+                    };
+                };
+            };
+        };
         /**
          * Replace the caller's alert preferences
          * @description Applies to GET /alerts and to push delivery alike, so what a user sees and what notifies them never disagree. An empty hazard_types list is treated as "all". Critical alerts bypass these preferences.
@@ -302,6 +322,104 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/devices/{device_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stop push to this device (called on sign-out) */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    device_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed (or was not registered) */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/near-me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the area around the phone, for push
+         * @description Kept by the app in step with the device position and the Home radius, so notifications match what Home lists. Stored at ~1 km precision (2 decimal places). Pushes for it start at medium severity; critical always gets through. Never appears in GET /subscriptions.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        center: components["schemas"]["GeoPoint"];
+                        radius_km: number;
+                    };
+                };
+            };
+            responses: {
+                /** @description Saved */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        /** Stop push for the area around the phone */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Removed */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -766,6 +884,63 @@ export interface paths {
                     content: {
                         "application/json": {
                             alerts?: components["schemas"]["Alert"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/alerts/areas": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Warning areas of the alerts near a point, for the map
+         * @description Same alerts and filters as GET /alerts, as a GeoJSON FeatureCollection of their areas (simplified ~500 m). Alerts without an area (e.g. most earthquakes) are not included. Feature properties: alert_id, severity, hazard_type.
+         */
+        get: {
+            parameters: {
+                query: {
+                    lat: number;
+                    lon: number;
+                    radius_km?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/geo+json": {
+                            /** @enum {string} */
+                            type: "FeatureCollection";
+                            features: {
+                                /** @enum {string} */
+                                type?: "Feature";
+                                id?: string;
+                                geometry?: Record<string, never>;
+                                properties?: {
+                                    alert_id?: string;
+                                    severity?: components["schemas"]["Severity"];
+                                    hazard_type?: components["schemas"]["HazardType"];
+                                };
+                            }[];
                         };
                     };
                 };
@@ -1301,6 +1476,18 @@ export interface components {
             product?: string;
             /** @description Offshore/boating product; absent means false. Hidden unless the user opts in. */
             marine?: boolean;
+            /** @description ISO 3166-1 alpha-2 of the issuing authority or event, when known (e.g. for emergency numbers). */
+            country?: string;
+            /** @description headline/body are Moby's machine translation into English (issue #11). Clients MUST label it ("Translated by Moby") and offer the original. Absent = the agency's own words. */
+            translated?: boolean;
+            /** @description Language the agency wrote in, e.g. "Spanish". Present when translated. */
+            original_language?: string;
+            /** @description The agency's own headline. Present when translated. */
+            original_headline?: string;
+            /** @description The agency's own text. Present when translated. */
+            original_body?: string;
+            /** @description GET /alerts only: distance from the query point to the alert, in km. Measured to the alert's area when it has one, so 0 means "you are inside it". */
+            distance_km?: number;
         };
         EventReports: {
             event_id: string;

@@ -3,13 +3,20 @@
 Public, read-only:
   GET  /healthz                     liveness + database + feed freshness
   GET  /v1/alerts                   active alerts near a point, filtered by preferences
-  GET  /v1/events/{event_id}        one event (contract `Alert` shape)
+  GET  /v1/alerts/areas             the same alerts' areas as GeoJSON, for the map
+  GET  /v1/events/{event_id}        one event (contract `Alert` shape); also /v1/alerts/{alert_id}
   GET  /v1/events/{event_id}/reports  community reports behind an event (coarse, no notes)
+  GET  /v1/events/{event_id}/brief  situational brief (200), or 202 while it is being written
   GET  /v1/config                   client feature flags
+  GET  /v1/guidance/manifest, /v1/guidance/cards  published offline guidance (see guidance.py)
 
 Signed-in users (Firebase ID token):
   POST /v1/reports                  submit a ground report (write-first, 202)
   GET  /v1/reports/{client_event_id} status of one of your own reports
+  POST /v1/me/devices               register this phone's push token (DELETE on sign-out)
+  GET|PUT /v1/me/alert-preferences  what may notify you (critical always does)
+  PUT|DELETE /v1/me/near-me         the area around the phone (~1 km precision)
+  GET|POST /v1/subscriptions, DELETE /v1/subscriptions/{id}  saved areas
 
 Reviewer console: /console/ (static page; Google sign-in via Firebase)
 
@@ -28,6 +35,7 @@ the network and jobs need no database credentials.
     uv run uvicorn moby.api.app:app --reload
 """
 import asyncio
+import json
 import hmac
 import os
 import shutil
@@ -37,7 +45,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
@@ -52,6 +60,9 @@ from moby.llm import EMBEDDING_DIM
 
 from .alerts import to_alert
 from .reports import router as reports_router
+from .appcheck import app_check_middleware
+from .guidance import router as guidance_router
+from .me import router as me_router
 from .review import router as review_router
 
 pool: AsyncConnectionPool | None = None
@@ -69,8 +80,12 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Moby early-warning API", version="0.5.0", lifespan=lifespan)
+# Only the official signed app (Play Integrity) may call /v1/* — see appcheck.py.
+app.middleware("http")(app_check_middleware)
 app.include_router(reports_router)
 app.include_router(review_router)
+app.include_router(me_router)
+app.include_router(guidance_router)
 
 # ── Reviewer console (static page; it signs in with Firebase and calls /v1/review) ──
 CONSOLE_DIR = Path(__file__).resolve().parent.parent / "console"
@@ -104,7 +119,7 @@ async def healthz():
             await conn.execute("SELECT 1")
     except Exception as e:  # noqa: BLE001
         raise HTTPException(503, f"database unavailable: {type(e).__name__}") from e
-    ok, lines = await feeds_health(list(FEEDS))
+    ok, lines = await feeds_health([*FEEDS, "cap", "centers"])  # CAP is reported but never makes feeds_fresh false
     # Stale feeds are reported but don't fail liveness: the API still serves the
     # last good data, which beats restarting the whole endpoint.
     # "ephemeral" means the endpoint fell back to local disk (see deploy/endpoint/start.sh).
@@ -132,12 +147,52 @@ async def get_alerts(
     return {"alerts": [to_alert(r) for r in rows]}
 
 
+@app.get("/v1/alerts/areas")
+async def alert_areas(
+    lat: Annotated[float, Query(ge=-90, le=90)],
+    lon: Annotated[float, Query(ge=-180, le=180)],
+    radius_km: Annotated[float, Query(gt=0, le=500)] = 50,
+    min_tier: Annotated[int, Query(ge=0, le=2)] = 2,
+    hazard_types: Annotated[str | None, Query(description="comma-separated HazardType values")] = None,
+    min_severity: Severity | None = None,
+    include_marine: bool | None = None,
+):
+    """Warning areas for the map (issue #21): the same alerts as GET /v1/alerts, as a
+    GeoJSON FeatureCollection of their areas, simplified (~500 m) to keep it small.
+    Alerts without an area (most earthquakes) aren't included; the map pins those."""
+    prefs = AlertPreferences.from_dict({
+        "hazard_types": hazard_types.split(",") if hazard_types else None,
+        "min_severity": min_severity,
+        "include_marine": include_marine,
+    })
+    async with _pool().connection() as conn:
+        rows = await alerts_near(conn, lat, lon, radius_km, prefs, min_tier=min_tier)
+        ids = [r["event_id"] for r in rows]
+        shapes = await (await conn.execute(
+            """SELECT event_id, ST_AsGeoJSON(ST_SimplifyPreserveTopology(area::geometry, 0.005), 4)
+               FROM events WHERE event_id = ANY(%s) AND area IS NOT NULL""", (ids,))).fetchall()
+    by_id = {r["event_id"]: r for r in rows}
+    features = []
+    for event_id, geometry in shapes:
+        r = by_id[event_id]
+        features.append({
+            "type": "Feature",
+            "id": str(event_id),
+            "geometry": json.loads(geometry),
+            "properties": {"alert_id": str(event_id), "severity": r["severity"], "hazard_type": r["hazard_type"]},
+        })
+    return {"type": "FeatureCollection", "features": features}
+
+
 @app.get("/v1/events/{event_id}")
+@app.get("/v1/alerts/{event_id}")  # contract /alerts/{alert_id}: alert_id is the event_id
 async def get_event(event_id: uuid.UUID):
     async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            """SELECT event_id, source_feed, external_id, hazard_type, product, marine, severity, tier,
-                      title, description, first_reported_at, last_updated_at, expires_at, raw_payload,
+            """SELECT event_id, source, source_feed, external_id, hazard_type, product, marine, severity, tier,
+                      title, description, alert_headline, alert_body, distinct_reporter_count,
+                      language, title_en, description_en, translation_status, country,
+                      first_reported_at, last_updated_at, expires_at, raw_payload,
                       ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon
                FROM events WHERE event_id = %s""",
             (event_id,),
@@ -191,6 +246,39 @@ async def event_reports(event_id: uuid.UUID):
     }
 
 
+@app.get("/v1/events/{event_id}/brief")
+async def event_brief(event_id: uuid.UUID):
+    """Contract 4. 200 with the brief, 202 while the situational_brief job is working on
+    it. A brief that was never requested or failed is a 404: the app shows the alert
+    on its own and never waits on this route."""
+    async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            """SELECT e.brief_status, b.generated_at, b.model, b.summary, b.likely_progression, b.exposed_areas,
+                      b.official_guidance, b.uncertainty, b.sources
+               FROM events e LEFT JOIN briefs b USING (event_id) WHERE e.event_id = %s""",
+            (event_id,),
+        )
+        row = await cur.fetchone()
+    if row is None:
+        raise HTTPException(404, "event not found")
+    if row["summary"] is not None:
+        brief = {
+            "event_id": str(event_id),
+            "generated_at": row["generated_at"].isoformat(),
+            "model": row["model"],
+            "summary": row["summary"],
+            "likely_progression": row["likely_progression"],
+            "exposed_areas": row["exposed_areas"],
+            "official_guidance": row["official_guidance"],
+            "uncertainty": row["uncertainty"],
+            "sources": row["sources"],
+        }
+        return {k: v for k, v in brief.items() if v is not None}
+    if row["brief_status"] == "pending":
+        return JSONResponse({"status": "pending", "retry_after_seconds": 15}, status_code=202)
+    raise HTTPException(404, "no brief for this event")
+
+
 @app.get("/v1/config")
 async def get_config():
     # Feature-flag discipline (plan v3 §1): everything past Week 4 ships off.
@@ -199,7 +287,7 @@ async def get_config():
         "flags": {
             "situational_brief": False,
             "cascade_analysis": False,
-            "offline_guidance_cards": False,
+            "offline_guidance_cards": True,   # Week 5: synced cards + built-in fallbacks
             "on_device_assistant": False,
             "mesh_relay": False,
             "proximity_confirmation": False,

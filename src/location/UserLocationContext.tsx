@@ -130,3 +130,10 @@ export function useRetryLocation(): () => void {
   if (!ctx) throw new Error('useRetryLocation must be used inside UserLocationProvider');
   return ctx.retry;
 }
+
+/** The current centre without triggering the permission prompt (for background sync). */
+export function useUserCenterPassive(): UserCenter {
+  const ctx = useContext(Ctx);
+  if (!ctx) throw new Error('useUserCenterPassive must be used inside UserLocationProvider');
+  return ctx.center;
+}

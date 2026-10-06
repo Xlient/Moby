@@ -4,6 +4,7 @@ Secrets (the Token Factory key, DATABASE_URL credentials, LangSmith key) only ev
 come from the environment; nothing here has a real default for them.
 """
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -36,6 +37,14 @@ class Settings(BaseSettings):
     moby_reporter_salt: SecretStr = SecretStr("dev-only-reporter-salt")
     # Local development and tests only: accept requests without a Firebase token.
     moby_auth_disabled: bool = False
+
+    # ── App Check: only the official signed app may call the API ─────────
+    # 'off' (local dev), 'monitor' (log calls without a valid token) or 'enforce'
+    # (reject them). Roll out monitor → enforce once the app sends tokens.
+    moby_app_check: Literal["off", "monitor", "enforce"] = "off"
+    # Firebase project *number* (google-services.json project_info.project_number):
+    # App Check tokens name the project by number, not id.
+    firebase_project_number: str = ""
 
     # ── Official feeds ───────────────────────────────────────────────────
     # api.weather.gov rejects requests without an identifying User-Agent.
