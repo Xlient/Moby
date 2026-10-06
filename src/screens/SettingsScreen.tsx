@@ -3,6 +3,7 @@ import { View, ScrollView, Pressable, Switch, TextInput, StyleSheet } from 'reac
 import { Button, Icon, Text } from 'react-native-paper';
 import Constants from 'expo-constants';
 import { useTheme } from '@/theme/ThemeContext';
+import { useMapEngine } from '@/maps/mapEngine';
 import { typography, spacing, radius } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useAuth } from '@/auth/AuthContext';
@@ -15,6 +16,8 @@ import { RadiusPicker } from '@/components/RadiusPicker';
 interface SettingsScreenProps {
   onSubscriptions: () => void;
   onAlertPreferences: () => void;
+  onAbout?: () => void;
+  onPrivacy: () => void;
   onCardReview?: () => void;
   onTrustReview?: () => void;
 }
@@ -168,7 +171,8 @@ function NameRow() {
   );
 }
 
-export function SettingsScreen({ onSubscriptions, onAlertPreferences, onCardReview, onTrustReview }: SettingsScreenProps) {
+export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy, onAbout, onCardReview, onTrustReview }: SettingsScreenProps) {
+  const [mapEngine, setMapEngine] = useMapEngine();
   const { theme, isDark, toggleTheme } = useTheme();
   const r = useResponsive();
   const { user, isConfigured, signOut } = useAuth();
@@ -229,7 +233,24 @@ export function SettingsScreen({ onSubscriptions, onAlertPreferences, onCardRevi
           <LinkRow label="Watched areas" value={areasValue} onPress={onSubscriptions} last />
         </Section>
 
+        <Section title="Privacy">
+          <LinkRow label="Privacy & data" onPress={onPrivacy} last />
+        </Section>
+
         <Section title="Appearance">
+          <Row>
+            <View style={{ flex: 1 }}>
+              <Text style={rowLabel}>Terrain map</Text>
+              <Text style={rowValue}>Terrain, warning areas and offline maps. Turn off for the classic Google map.</Text>
+            </View>
+            <Switch
+              value={mapEngine === 'maplibre'}
+              onValueChange={(on) => setMapEngine(on ? 'maplibre' : 'google')}
+              accessibilityLabel="Terrain map"
+              trackColor={{ false: theme.line.hairline, true: theme.accent.calm }}
+              thumbColor={theme.bg.raised}
+            />
+          </Row>
           <Row last>
             <Text style={rowLabel}>Dark mode</Text>
             <Switch
@@ -243,14 +264,11 @@ export function SettingsScreen({ onSubscriptions, onAlertPreferences, onCardRevi
         </Section>
 
         <Section title="About">
-          <Row>
+          <Row last={!onAbout}>
             <Text style={rowLabel}>Version</Text>
             <Text style={rowValue}>{APP_VERSION}</Text>
           </Row>
-          <Row last>
-            <Text style={rowLabel}>Region</Text>
-            <Text style={rowValue}>US</Text>
-          </Row>
+          {onAbout && <LinkRow label="About Moby" onPress={onAbout} last />}
         </Section>
 
         {__DEV__ && (onCardReview || onTrustReview) && (
@@ -263,7 +281,7 @@ export function SettingsScreen({ onSubscriptions, onAlertPreferences, onCardRevi
         )}
 
         <Text style={[typography.meta, { color: theme.text.secondary, marginBottom: r.sectionGap }]}>
-          Data from NOAA, USGS and community reports. Not a replacement for official warnings.
+          Data from official agencies worldwide and community reports. Not a replacement for official warnings.
         </Text>
       </ScrollView>
 

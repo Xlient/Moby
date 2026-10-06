@@ -2,7 +2,7 @@
 # Supervisor for the all-in-one endpoint container:
 #   1. Postgres (data in $PGDATA on the persistent volume; listens on 127.0.0.1 only)
 #   2. migrations (idempotent)
-#   3. feed poller (restarted if it ever exits)
+#   3. feed poller and push delivery worker (each restarted if it ever exits)
 #   4. API (uvicorn) — the container's main process; if it dies, the container exits
 #      and the platform restarts it.
 # SIGTERM stops the API and poller, then shuts Postgres down cleanly.
@@ -62,7 +62,7 @@ psql -U postgres -h 127.0.0.1 -d moby -c "CREATE EXTENSION IF NOT EXISTS postgis
 
 stop_all() {
   log "stopping"
-  kill "${API_PID:-}" "${POLLER_LOOP_PID:-}" 2>/dev/null || true
+  kill "${API_PID:-}" "${POLLER_LOOP_PID:-}" "${DELIVERY_LOOP_PID:-}" 2>/dev/null || true
   wait "${API_PID:-}" 2>/dev/null || true
   runuser -u postgres -- pg_ctl -D "$PGDATA" -m fast -w stop || true
   exit 0
@@ -71,6 +71,11 @@ trap stop_all TERM INT
 
 # ── 2. Migrations ────────────────────────────────────────────────────────────
 runuser -u moby -- python /app/scripts/migrate.py
+
+# Boundaries for CAP area codes (MeteoAlarm EMMA_IDs): a one-time ~33 MB download on the
+# first start; later starts see the table filled and skip it. Background, so the API
+# isn't held up; warnings skipped meanwhile are retried once it finishes.
+runuser -u moby -- python -m moby.feeds.geocodes --if-empty || log "geocode load failed; will retry on next start" &
 
 # ── 3. Poller (kept alive) ───────────────────────────────────────────────────
 (
@@ -81,10 +86,19 @@ runuser -u moby -- python /app/scripts/migrate.py
 ) &
 POLLER_LOOP_PID=$!
 
+# ── 3b. Push delivery (kept alive; runs dry without FIREBASE_SERVICE_ACCOUNT_JSON) ──
+(
+  while true; do
+    runuser -u moby -- python -m moby.delivery || log "delivery exited ($?); restarting in 10s"
+    sleep 10
+  done
+) &
+DELIVERY_LOOP_PID=$!
+
 # ── 4. API ───────────────────────────────────────────────────────────────────
 runuser -u moby -- uvicorn moby.api.app:app --host 0.0.0.0 --port "$PORT" --proxy-headers &
 API_PID=$!
-log "running: postgres + poller + api on :$PORT"
+log "running: postgres + poller + delivery + api on :$PORT"
 wait "$API_PID"
 log "api exited; shutting down so the platform restarts the container"
 stop_all

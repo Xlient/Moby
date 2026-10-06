@@ -6,6 +6,7 @@
 #   ./deploy/nebius/deploy.sh endpoint   # create the always-on Serverless Endpoint (API + poller + DB)
 #   ./deploy/nebius/deploy.sh redeploy   # push a new image and recreate the endpoint (data is kept)
 #   ./deploy/nebius/deploy.sh embed      # run the embedding Serverless Job once
+#   ./deploy/nebius/deploy.sh guidance   # build a draft guidance bundle (review + publish in /console)
 #   ./deploy/nebius/deploy.sh backup     # run the backup Serverless Job once
 #   ./deploy/nebius/deploy.sh status | logs | stop | start
 #
@@ -82,6 +83,21 @@ cmd_setup() {
     save SALT_SECRET "$NAME-reporter-salt"
     echo "created secret $NAME-reporter-salt" >&2
   fi
+  if [ -z "${FCM_SECRET:-}" ]; then
+    # Push delivery credentials: a Firebase service-account JSON key (FCM_KEY=path, or the
+    # *-firebase-adminsdk-*.json in the repo root). Optional — without it the endpoint
+    # runs the delivery worker dry. Stored only in MysteryBox, never printed.
+    local key_file="${FCM_KEY:-$(ls "$ROOT"/*-firebase-adminsdk-*.json 2>/dev/null | head -1)}"
+    if [ -n "$key_file" ] && [ -f "$key_file" ]; then
+      local payload; payload="$(python3 -c 'import json,sys; print(json.dumps([{"key":"FIREBASE_SERVICE_ACCOUNT_JSON","string_value":open(sys.argv[1]).read()}]))' "$key_file")"
+      "$NEBIUS" mysterybox secret create "${P[@]}" --name "$NAME-fcm-service-account" \
+        --secret-version-payload "$payload" >/dev/null
+      save FCM_SECRET "$NAME-fcm-service-account"
+      echo "created secret $NAME-fcm-service-account" >&2
+    else
+      echo "no Firebase service-account key found (set FCM_KEY=path): push delivery will run dry" >&2
+    fi
+  fi
   if [ -z "${BACKUP_BUCKET:-}" ]; then
     run "$NEBIUS" storage bucket create "${P[@]}" --name "$NAME-backups" >/dev/null
     save BACKUP_BUCKET "$NAME-backups"
@@ -117,7 +133,7 @@ env_from_dotenv() {  # public values only (Firebase web config); secrets come fr
 }
 
 cmd_endpoint() {
-  need IMAGE push; need DATA_FS_ID setup; need SERVICE_SECRET setup; need SALT_SECRET setup
+  need IMAGE push; need DATA_FS_ID setup; need SERVICE_SECRET setup; need SALT_SECRET setup; need TF_SECRET setup
   local fb_project fb_key fb_domain
   fb_project="$(env_from_dotenv FIREBASE_PROJECT_ID)"; fb_key="$(env_from_dotenv FIREBASE_WEB_API_KEY)"
   fb_domain="$(env_from_dotenv FIREBASE_AUTH_DOMAIN)"
@@ -130,7 +146,11 @@ cmd_endpoint() {
     --volume "$DATA_FS_ID:/data" \
     --env-secret "MOBY_SERVICE_TOKEN=$SERVICE_SECRET" \
     --env-secret "MOBY_REPORTER_SALT=$SALT_SECRET" \
+    ${FCM_SECRET:+--env-secret "FIREBASE_SERVICE_ACCOUNT_JSON=$FCM_SECRET"} \
+    --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET" \
     --env "FIREBASE_PROJECT_ID=$fb_project" \
+    --env "FIREBASE_PROJECT_NUMBER=$(python3 -c 'import json;print(json.load(open("'"$ROOT"'/google-services.json"))["project_info"]["project_number"])' 2>/dev/null)" \
+    --env "MOBY_APP_CHECK=${MOBY_APP_CHECK:-monitor}" \
     --env "FIREBASE_WEB_API_KEY=$fb_key" \
     --env "FIREBASE_AUTH_DOMAIN=$fb_domain" \
     --env "NWS_USER_AGENT=moby-early-warning/0.1 (github.com/Xlient/Moby)" \
@@ -159,6 +179,8 @@ job() {  # job <name> <command> [extra flags...]
 }
 
 cmd_embed()  { job embed "python -m moby.jobs.embed_events" --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET"; }
+# Draft guidance bundle from official pages (Ultra); review and publish it in the console.
+cmd_guidance() { job guidance "python -m moby.jobs.guidance" --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET"; }
 cmd_backup() {
   need BACKUP_BUCKET setup
   # The bucket is mounted into the job, so the dump lands in object storage directly.
@@ -185,6 +207,6 @@ cmd_stop()   { need ENDPOINT_ID endpoint; run "$NEBIUS" ai endpoint stop "$ENDPO
 cmd_start()  { need ENDPOINT_ID endpoint; run "$NEBIUS" ai endpoint start "$ENDPOINT_ID"; }
 
 case "${1:-}" in
-  setup|push|endpoint|redeploy|embed|backup|status|logs|stop|start) "cmd_$1" ;;
+  setup|push|endpoint|redeploy|embed|guidance|backup|status|logs|stop|start) "cmd_$1" ;;
   *) sed -n '2,15p' "$0"; exit 1 ;;
 esac

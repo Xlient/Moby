@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom" xmlns:geo="http://www.w3.org/2003/01/geo/wgs84_pos#" xmlns:georss="http://www.georss.org/georss">
+    <id>urn:uuid:0548261b-caf6-4e80-9471-43ffe1e22f14</id><title>        TSUNAMI INFORMATION STATEMENT NUMBER   1        </title>
+    <updated>2026-09-27T21:56:18Z</updated>
+    <author>
+      <name>NWS PACIFIC TSUNAMI WARNING CENTER HONOLULU HI</name>
+<uri>https://www.tsunami.gov/</uri>
+     <email>ntwc@noaa.gov</email>
+    </author>
+<icon>https://www.tsunami.gov/images/favicon.ico</icon>
+<link type="application/atom+xml" rel="self" title="self" href="https://www.tsunami.gov/events/xml/PAAQAtom.xml"/>
+ <link rel="related" title="Energy Map" href="https://www.tsunami.gov/events/PHEB/2026/09/27/26270050/1/WECA42/ " type="image/jpeg" /> 
+
+   <entry>
+
+    <title>ABOUT 83 MILES WEST OF ISLA MONA</title><updated>2026-09-27T21:56:18Z</updated>
+<geo:lat>18.483</geo:lat>
+<geo:long>-69.134</geo:long>
+<summary type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">
+     <strong>Category:</strong> Information<br/><strong>Bulletin Issue Time: </strong> 2026.09.27 21:56:18 UTC <br/><strong>Preliminary Magnitude: </strong>5.2(Mwp)<br/><strong>Lat/Lon: </strong>18.483 / -69.134<br/><strong>Affected Region: </strong>ABOUT 83 MILES WEST OF ISLA MONA<br/><b>Note:</b>  <br/><strong>Definition: </strong><a href="https://www.tsunami.gov/events/PHEB/2026/09/27/26270050/1/WECA42/WECA42.txt">View bulletin</a><img src="https://www.tsunami.gov/events/PHEB/2026/09/27/26270050/1/WECA42/ " alt="Energy Map" /> 
+ </div></summary>
+    <id>urn:uuid:27a05589-f6fd-4808-825c-74a8bb70d070</id><link rel="related" title="CapXML document" href="https://www.tsunami.gov/events/PHEB/2026/09/27/26270050/1/WECA42/PHEBCAP.xml" type="application/cap+xml" />
+<link rel="alternate" title="Bulletin" href="https://www.tsunami.gov/events/PHEB/2026/09/27/26270050/1/WECA42/WECA42.txt" type="application/xml" />
+</entry>
+</feed>

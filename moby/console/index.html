@@ -58,6 +58,23 @@
   .decide select { font: inherit; color: inherit; background: var(--recessed); border: 1px solid var(--line); border-radius: 8px; padding: 6px; }
   .approve { border-color: var(--accent); }
   .empty { padding: 40px 24px; color: var(--muted); }
+  .tabs { display: flex; gap: 4px; }
+  .tabs button[aria-pressed="true"] { background: var(--raised); border-color: var(--accent); }
+  .card { background: var(--raised); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; margin-top: 10px; }
+  .card h4 { margin: 0 0 4px; font-size: 15px; }
+  .card .body { margin: 6px 0; }
+  .card blockquote { margin: 6px 0 0; padding: 6px 10px; border-left: 3px solid var(--line); background: var(--recessed); border-radius: 4px; color: var(--muted); font-size: 13px; }
+  .pill { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; color: var(--muted); }
+  .pill.critical { border-color: var(--critical); color: var(--critical); }
+  .publish { border-color: var(--accent); font-weight: 600; }
+  .fact.warn b { color: var(--high); }
+  .journey { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+  .journey li { display: grid; grid-template-columns: 20px 1fr; gap: 10px; padding: 6px 0; }
+  .journey .dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 4px; border: 2px solid var(--line); background: var(--raised); }
+  .journey li.done .dot { background: var(--accent); border-color: var(--accent); }
+  .journey li.now .dot { border-color: var(--accent); }
+  .journey li.stop .dot { background: var(--critical); border-color: var(--critical); }
+  .journey li:not(.done):not(.now):not(.stop) { color: var(--faint); }
   #toast { position: fixed; bottom: 16px; right: 16px; background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
   #toast.show { opacity: 1; }
   #signin { max-width: 420px; margin: 15vh auto; text-align: left; }
@@ -67,9 +84,14 @@
 <body>
 <header>
   <h1>Moby review</h1>
+  <div class="tabs" role="group" aria-label="What to review">
+    <button data-mode="events" aria-pressed="true">Events</button>
+    <button data-mode="guidance" aria-pressed="false">Guidance</button>
+    <button data-mode="pipeline" aria-pressed="false">Pipeline</button>
+  </div>
   <span class="muted num" id="count" aria-live="polite"></span>
   <span class="spacer"></span>
-  <span class="faint">Move <kbd>j</kbd>/<kbd>k</kbd> · Approve <kbd>a</kbd> · Reject <kbd>r</kbd> · Hold <kbd>h</kbd> · Note <kbd>/</kbd></span>
+  <span class="faint" id="hint">Move <kbd>j</kbd>/<kbd>k</kbd> · Approve <kbd>a</kbd> · Reject <kbd>r</kbd> · Hold <kbd>h</kbd> · Note <kbd>/</kbd></span>
   <span class="who" id="who"></span>
   <button id="signout" hidden>Sign out</button>
 </header>
@@ -104,6 +126,15 @@ let getToken = async () => null;
 let signedIn = false;
 let items = [];
 let selected = 0;
+let mode = 'events';          // 'events' | 'guidance' | 'pipeline'
+let pipe = null;              // GET /v1/review/pipeline
+let bundles = [];
+let bundle = null;            // the selected bundle with its cards
+const HINTS = {
+  events: $('#hint').innerHTML,
+  guidance: 'Read every card against its source lines. Drop anything wrong, then publish.',
+  pipeline: 'Read-only: where community reports are in the fusion pipeline. Refreshes every 30 s.',
+};
 
 function toast(msg) {
   const t = $('#toast');
@@ -194,12 +225,145 @@ function renderDetail() {
 }
 
 function render() {
+  if (mode === 'guidance') return renderGuidance();
+  if (mode === 'pipeline') return renderPipeline();
   selected = Math.max(0, Math.min(selected, items.length - 1));
   renderList();
   renderDetail();
 }
 
+// ── Pipeline (read-only) ───────────────────────────────────────────
+const TIER = ['Tier 0 · unverified', 'Tier 1 · corroborated', 'Tier 2 · confirmed'];
+
+/** One event's path through the graph: fused → tier → review → alert drafted. */
+function journey(e) {
+  const reviewed = e.reviewer_decision;
+  const needsReview = e.review_status || reviewed;
+  const steps = [
+    { label: `Fused from ${plural(e.report_count, 'report')} · ${e.distinct_reporter_count ?? 0} ${e.distinct_reporter_count === 1 ? 'person' : 'people'}`, state: 'done' },
+    { label: `${TIER[e.tier]} · confidence ${Math.round((e.confidence ?? 0) * 100)}%${e.official_match ? ' · official match' : ''}`, state: 'done' },
+  ];
+  if (needsReview) {
+    steps.push(reviewed
+      ? { label: `Reviewer: ${reviewed}`, state: reviewed === 'reject' ? 'stop' : 'done' }
+      : { label: `Waiting for a reviewer (${REASONS[e.review_reason] || e.review_reason})`, state: 'now' });
+  } else if (e.tier < 2) {
+    steps.push({ label: 'Below the review threshold: logged only', state: 'now' });
+  }
+  if (reviewed !== 'reject') {
+    const resuming = reviewed === 'approve' && e.tier < 2;
+    steps.push(e.alert_drafted || e.tier === 2
+      ? { label: e.alert_drafted ? 'Alert drafted · tier 2 · delivery picks it up' : 'Tier 2 · delivery uses the official wording', state: 'done' }
+      : { label: resuming ? 'Approved: waiting for the pipeline to resume and draft the alert' : 'Alert drafted', state: resuming ? 'now' : '' });
+  }
+  return `<ol class="journey">${steps.map((s) => `<li class="${s.state}"><span class="dot"></span><span>${esc(s.label)}</span></li>`).join('')}</ol>`;
+}
+
+function renderPipeline() {
+  const events = pipe?.events ?? [];
+  selected = Math.max(0, Math.min(selected, events.length - 1));
+  $('#count').textContent = pipe ? `${pipe.reports.pending} pending` : '';
+  $('#list').innerHTML = events.map((e, i) => `<li role="option" tabindex="-1" data-i="${i}" aria-selected="${i === selected}">
+      <div class="row"><span class="grow"><b>${esc(e.hazard_type)}</b>${e.source === 'mesh' ? ' <span class="pill">mesh</span>' : ''}</span><span class="sev ${e.severity}">${esc(e.severity)}</span></div>
+      <div class="row muted num"><span class="pill">tier ${e.tier}</span><span class="grow">${plural(e.report_count, 'report')}</span><span>${ago(e.last_updated_at)}</span></div>
+    </li>`).join('');
+  if (!pipe) { $('#detail').innerHTML = `<div class="empty">Loading…</div>`; return; }
+  const r = pipe.reports;
+  const stale = r.oldest_pending_at && Date.now() - new Date(r.oldest_pending_at) > 10 * 60000;
+  const e = events[selected];
+  $('#detail').innerHTML = `
+    <h2>Fusion pipeline</h2>
+    <div class="muted">Reports come in as <code>pending</code>; the LangGraph worker fuses them into events, sets the tier and pauses for review.</div>
+    <section><h3>Now</h3>
+      <div class="facts num">
+        <div class="fact${stale ? ' warn' : ''}">Pending reports<b>${r.pending}</b>${r.oldest_pending_at ? `<span class="faint">oldest ${ago(r.oldest_pending_at)}</span>` : ''}</div>
+        <div class="fact">Fused (24 h)<b>${r.fused_24h}</b></div>
+        <div class="fact${r.failed_24h ? ' warn' : ''}">Failed (24 h)<b>${r.failed_24h}</b></div>
+        <div class="fact">Open reviews<b>${pipe.review.open}</b></div>
+        <div class="fact${pipe.review.awaiting_resume ? ' warn' : ''}">Approved, not resumed<b>${pipe.review.awaiting_resume}</b></div>
+      </div>
+      ${stale ? '<p class="muted">Reports have waited over 10 minutes: is the fusion worker running?</p>' : ''}
+    </section>
+    <section><h3>${e ? `Event ${esc(e.event_id.slice(0, 8))} · ${esc(e.hazard_type)}` : 'Community events (48 h)'}</h3>
+      ${e ? journey(e) : '<div class="empty">No community events in the last 48 hours.</div>'}
+    </section>`;
+}
+
+async function loadPipeline() {
+  try {
+    pipe = await api('/v1/review/pipeline');
+  } catch (err) {
+    if (err.status === 403) return showSignin('This account doesn’t have the reviewer role.');
+    toast(`Couldn’t load the pipeline: ${err.message}`);
+    return;
+  }
+  renderPipeline();
+}
+
+// ── Guidance bundles ───────────────────────────────────────────────
+function renderGuidance() {
+  selected = Math.max(0, Math.min(selected, bundles.length - 1));
+  const drafts = bundles.filter((b) => b.status === 'draft').length;
+  $('#count').textContent = `${plural(drafts, 'draft')} to review`;
+  $('#list').innerHTML = bundles.map((b, i) => `<li role="option" tabindex="-1" data-i="${i}" aria-selected="${i === selected}">
+      <div class="row"><span class="grow"><b>${esc(b.version)}</b></span><span class="pill">${esc(b.status)}</span></div>
+      <div class="row muted num"><span class="grow">${plural(b.card_count, 'card')} · ${esc(b.model || '')}</span><span>${ago(b.generated_at)}</span></div>
+    </li>`).join('') || '';
+  if (!bundle) {
+    $('#detail').innerHTML = `<div class="empty">No guidance bundles yet. Run the guidance job to create a draft.</div>`;
+    return;
+  }
+  const draft = bundle.status === 'draft';
+  const byHazard = {};
+  for (const c of bundle.cards) (byHazard[c.hazard_type] ||= []).push(c);
+  $('#detail').innerHTML = `
+    <div class="row"><h2 class="grow">Bundle ${esc(bundle.version)}</h2>
+      ${draft ? `<button class="publish" id="publish">Publish ${plural(bundle.cards.length, 'card')}</button>` : `<span class="pill">${esc(bundle.status)}</span>`}</div>
+    <div class="muted">Written by ${esc(bundle.model || 'a model')} from official pages. Each card shows the exact page lines it is based on.
+      ${draft ? 'Nothing reaches the app until you publish.' : 'Published bundles can’t be edited; run the job again for a new draft.'}</div>
+    ${Object.entries(byHazard).map(([hz, cards]) => `<section><h3>${esc(hz)} (${cards.length})</h3>
+      ${cards.map((c) => `<div class="card">
+        <div class="row"><h4 class="grow">${esc(c.title)}</h4>
+          ${c.is_critical_fallback ? '<span class="pill critical">critical</span>' : ''}<span class="pill num">priority ${c.priority}</span>
+          ${draft ? `<button data-drop="${esc(c.card_id)}">Drop</button>` : ''}</div>
+        <div class="muted">${esc(c.applies_when || '')}</div>
+        <div class="body">${esc(c.body)}</div>
+        <div class="faint">Source: <a href="${esc(c.source_url)}" target="_blank" rel="noopener">${esc(c.source_name)}</a> · <code>${esc(c.card_id)}</code></div>
+        ${(c.evidence || []).map((q) => `<blockquote>${esc(q)}</blockquote>`).join('')}
+      </div>`).join('')}</section>`).join('')}`;
+}
+
+async function loadGuidance() {
+  const keep = bundles[selected]?.bundle_id;
+  try {
+    bundles = await api('/v1/review/guidance');
+  } catch (err) {
+    if (err.status === 403) return showSignin('This account doesn’t have the reviewer role.');
+    toast(`Couldn’t load guidance: ${err.message}`);
+    return;
+  }
+  const idx = bundles.findIndex((b) => b.bundle_id === keep);
+  selected = idx >= 0 ? idx : 0;
+  await openBundle();
+}
+
+async function openBundle() {
+  const b = bundles[selected];
+  bundle = b ? await api(`/v1/review/guidance/${encodeURIComponent(b.bundle_id)}`).catch(() => null) : null;
+  renderGuidance();
+}
+
+function setMode(next) {
+  mode = next;
+  selected = 0;
+  document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
+  $('#hint').innerHTML = HINTS[mode];
+  $('#list').setAttribute('aria-label', { events: 'Review queue', guidance: 'Guidance bundles', pipeline: 'Community events' }[mode]);
+  ({ events: load, guidance: loadGuidance, pipeline: loadPipeline })[mode]();
+}
+
 async function load() {
+  if (mode !== 'events') return;
   const keep = items[selected]?.event_id;
   try {
     items = await api('/v1/review/queue');
@@ -229,9 +393,33 @@ async function decide(decision) {
   render();
 }
 
-document.addEventListener('click', (ev) => {
+document.addEventListener('click', async (ev) => {
+  const tab = ev.target.closest('.tabs button');
+  if (tab) { setMode(tab.dataset.mode); return; }
   const li = ev.target.closest('#list li');
-  if (li) { selected = Number(li.dataset.i); render(); return; }
+  if (li) {
+    selected = Number(li.dataset.i);
+    mode === 'guidance' ? openBundle() : render();
+    return;
+  }
+  const drop = ev.target.closest('button[data-drop]');
+  if (drop && bundle) {
+    try {
+      await api(`/v1/review/guidance/${encodeURIComponent(bundle.bundle_id)}/cards/${encodeURIComponent(drop.dataset.drop)}`, { method: 'DELETE' });
+      toast('Card dropped');
+    } catch (err) { toast(`Not dropped: ${err.message}`); }
+    await loadGuidance();
+    return;
+  }
+  if (ev.target.closest('#publish') && bundle) {
+    if (!confirm(`Publish ${plural(bundle.cards.length, 'card')} to every Moby user? This replaces the current guidance.`)) return;
+    try {
+      await api(`/v1/review/guidance/${encodeURIComponent(bundle.bundle_id)}/publish`, { method: 'POST' });
+      toast('Published. Phones pick it up on their next sync.');
+    } catch (err) { toast(`Not published: ${err.message}`); }
+    await loadGuidance();
+    return;
+  }
   const btn = ev.target.closest('button[data-d]');
   if (btn) decide(btn.dataset.d);
 });
@@ -241,6 +429,7 @@ document.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape') ev.target.blur();
     return;
   }
+  if (mode !== 'events') return;
   const keys = { j: () => { selected++; render(); }, k: () => { selected--; render(); },
                  a: () => decide('approve'), r: () => decide('reject'), h: () => decide('hold'),
                  '/': () => { ev.preventDefault(); $('#note')?.focus(); } };
@@ -278,7 +467,7 @@ async function start() {
     $('#app').hidden = false;
     load();
   }
-  setInterval(() => { if (signedIn) load(); }, 30000);
+  setInterval(() => { if (signedIn) (mode === 'pipeline' ? loadPipeline() : load()); }, 30000);
 }
 
 start();

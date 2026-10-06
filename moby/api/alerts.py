@@ -6,6 +6,11 @@ SOURCE_ATTRIBUTION = {
     "usgs": "U.S. Geological Survey",
     "gdacs": "GDACS",
     "eonet": "NASA EONET",
+    "emsc": "EMSC",
+    "ptwc": "Pacific Tsunami Warning Center",
+    "nhc": "National Hurricane Center",
+    "jtwc": "Joint Typhoon Warning Center",
+    "jma": "Japan Meteorological Agency",
 }
 
 
@@ -22,16 +27,26 @@ def _headline(row: dict[str, Any]) -> str:
         return _sentence_case(row["product"])                     # "Flood warning"
     if feed == "usgs" and props.get("mag") is not None:
         return f"Magnitude {props['mag']:.1f} earthquake"
+    if feed == "cap" and row.get("title"):
+        # Agencies often end the headline with the place ("… warning. Ampurdán");
+        # the place is shown separately (location_name), so don't repeat it.
+        place = (props.get("areaDesc") or "").split(";")[0].strip()
+        title = row["title"].strip()
+        if place and title.lower().endswith(place.lower()) and len(title) > len(place) + 3:
+            title = title[: -len(place)].rstrip(" .,:;-–—")
+        return title[:120]
     return (row.get("title") or row.get("product") or "Alert")[:120]
 
 
 def _location_name(row: dict[str, Any]) -> str | None:
     feed, payload = row["source_feed"], row.get("raw_payload") or {}
     props = payload.get("properties") or {}
-    if feed == "noaa":
+    if feed in ("noaa", "cap", "ptwc", "jma", "bipad"):
         name = (props.get("areaDesc") or "").split(";")[0].strip()
     elif feed == "usgs":
         name = props.get("place") or ""
+    elif feed == "emsc":
+        name = (props.get("flynn_region") or "").title()
     elif feed == "gdacs":
         name = props.get("country") or ""
     else:
@@ -40,28 +55,57 @@ def _location_name(row: dict[str, Any]) -> str | None:
 
 
 def _verification_label(row: dict[str, Any]) -> str:
-    # Derived, never stored (migration 0002): official + tier 2 is "official_confirmed".
-    if row["tier"] >= 2:
+    # Derived, never stored (migration 0002): only an agency's alert is "official_confirmed".
+    # A community event at tier 2 (confirmed by people nearby / a reviewer) stays a report.
+    official = row.get("source", "official") == "official"
+    if row["tier"] >= 2 and official:
         return "official_confirmed"
-    return "corroborated_report" if row["tier"] == 1 else "unverified_report"
+    return "corroborated_report" if row["tier"] >= 1 else "unverified_report"
+
+
+LANGUAGE_NAMES = {"es": "Spanish", "pt": "Portuguese", "it": "Italian", "el": "Greek", "is": "Icelandic",
+                  "id": "Indonesian", "ja": "Japanese", "fr": "French", "de": "German", "zh": "Chinese",
+                  "th": "Thai", "vi": "Vietnamese", "ne": "Nepali", "hi": "Hindi", "tl": "Filipino"}
+
+
+def _translated(row: dict[str, Any]) -> bool:
+    """Issue #11: show Moby's English translation only when it passed its checks."""
+    return row.get("translation_status") == "done" and bool(row.get("title_en"))
 
 
 def to_alert(row: dict[str, Any]) -> dict[str, Any]:
+    translated = _translated(row)
     alert = {
         "alert_id": str(row["event_id"]),
         "event_id": str(row["event_id"]),
-        "headline": _headline(row),
-        "body": (row.get("description") or "")[:600] or None,
+        # Contract 3: draft_alert's wording when present, so the app and the push agree.
+        "headline": row.get("alert_headline") or (row["title_en"][:120] if translated else _headline(row)),
+        "body": (row.get("alert_body") or (row.get("description_en") if translated else None)
+                 or row.get("description") or "")[:600] or None,
         "severity": row["severity"],
         "location": {"lat": row["lat"], "lon": row["lon"], "frame": "WGS84"},
         "issued_at": row["first_reported_at"].isoformat(),
         "expires_at": row["expires_at"].isoformat() if row.get("expires_at") else None,
         "verification_label": _verification_label(row),
-        "source_attribution": SOURCE_ATTRIBUTION.get(row["source_feed"]),
+        "source_attribution": SOURCE_ATTRIBUTION.get(row["source_feed"])
+        or ((row.get("raw_payload") or {}).get("properties") or {}).get("authority")
+        or ("Community reports" if row.get("source") in ("manual", "mesh") else None),
         "hazard_type": row["hazard_type"],
         "location_name": _location_name(row),
         "product": row.get("product"),
         "marine": bool(row.get("marine")),
+        "country": row.get("country"),
+        # "Confirmed by N nearby" on community alerts; omitted for official ones (contract).
+        "corroboration_count": row.get("distinct_reporter_count") or None
+        if row.get("source") in ("manual", "mesh") and row["tier"] >= 1 else None,
         "distance_km": round(row["distance_km"], 1) if row.get("distance_km") is not None else None,
     }
+    if translated:
+        lang = (row.get("language") or "").split("-")[0].lower()
+        alert.update({
+            "translated": True,
+            "original_language": LANGUAGE_NAMES.get(lang, row.get("language")),
+            "original_headline": (row.get("title") or "")[:300],
+            "original_body": (row.get("description") or "")[:600] or None,
+        })
     return {k: v for k, v in alert.items() if v is not None}

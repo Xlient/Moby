@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Linking, ScrollView, View, StyleSheet } from 'react-native';
+import { Linking, Pressable, ScrollView, View, StyleSheet } from 'react-native';
 import { Avatar, Button, FAB, Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import type { Theme } from '@/theme/tokens';
@@ -12,12 +12,15 @@ import { AlertCard } from '@/components/AlertCard';
 import { MapPreviewCard } from '@/components/MapPreviewCard';
 import { RadiusPicker } from '@/components/RadiusPicker';
 import { formatTimeAgo } from '@/lib/alerts';
+import { useReportQueue } from '@/hooks/useReportQueue';
 
 interface HomeScreenProps {
   onReportPress: () => void;
   onAlertPress: (alertId: string) => void;
   onSeeAllPress: () => void;
   onMapPress: () => void;
+  onGuidancePress: () => void;
+  onMyReportsPress: () => void;
 }
 
 const MAX_HOME_CARDS = 3;
@@ -115,13 +118,15 @@ function LoadingCards({ theme }: { theme: Theme }) {
   );
 }
 
-export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPress }: HomeScreenProps) {
+export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress, onMyReportsPress }: HomeScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
   const { firstName } = useAuth();
   const { nearby, hiddenCount, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt, center } = useNearbyAlerts();
   const [pickerVisible, setPickerVisible] = useState(false);
   const retryLocation = useRetryLocation();
+  const myReports = useReportQueue();
+  const waitingReports = myReports.filter((x) => x.state === 'queued' || x.state === 'sending').length;
 
   const greeting = firstName
     ? `${greetingFor(new Date().getHours())}, ${firstName}`
@@ -238,6 +243,40 @@ export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPr
             onRadiusPress={() => setPickerVisible(true)}
           />
         </View>
+
+        <View style={styles.section}>
+          <Pressable
+            onPress={onGuidancePress}
+            accessibilityRole="button"
+            accessibilityLabel="Safety guidance. Works without signal."
+            style={[styles.guidanceRow, { backgroundColor: theme.bg.raised }]}
+          >
+            <Avatar.Icon size={40} icon="book-open-variant" style={{ backgroundColor: theme.bg.recessed }} color={theme.text.primary} />
+            <View style={styles.guidanceText}>
+              <Text variant="titleMedium" style={{ color: theme.text.primary }}>Safety guidance</Text>
+              <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>What to do in a flood, fire, quake or storm. Works without signal.</Text>
+            </View>
+          </Pressable>
+          {myReports.length > 0 && (
+            // Only once there's something to show: where the person's reports are now.
+            <Pressable
+              onPress={onMyReportsPress}
+              accessibilityRole="button"
+              accessibilityLabel={`Your reports: ${myReports.length}${waitingReports ? `, ${waitingReports} waiting to send` : ''}`}
+              style={[styles.guidanceRow, styles.rowGap, { backgroundColor: theme.bg.raised }]}
+            >
+              <Avatar.Icon size={40} icon="clipboard-text-clock-outline" style={{ backgroundColor: theme.bg.recessed }} color={theme.text.primary} />
+              <View style={styles.guidanceText}>
+                <Text variant="titleMedium" style={{ color: theme.text.primary }}>Your reports</Text>
+                <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
+                  {waitingReports
+                    ? `${waitingReports} waiting to send. See what happened to the others.`
+                    : 'See what happened to the reports you sent.'}
+                </Text>
+              </View>
+            </Pressable>
+          )}
+        </View>
       </ScrollView>
 
       <FAB
@@ -285,6 +324,20 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  guidanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.scale[3],
+    padding: spacing.scale[4],
+    borderRadius: radius.card,
+  },
+  rowGap: {
+    marginTop: spacing.scale[2],
+  },
+  guidanceText: {
+    flex: 1,
+    gap: spacing.scale[1],
   },
   alignStart: {
     alignSelf: 'flex-start',
