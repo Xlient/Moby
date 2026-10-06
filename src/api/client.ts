@@ -177,6 +177,21 @@ export class ApiClient {
     return this.request<AlertPreferences>('PUT', '/me/alert-preferences', { body: prefs });
   }
 
+  /** Stop push for the area around the phone ("Alerts follow my location" off). */
+  async deleteNearMe(): Promise<void> {
+    return this.request<void>('DELETE', '/me/near-me', { noContent: true });
+  }
+
+  /** Everything the server holds about the caller (GDPR access / portability). */
+  async exportMyData(): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>('GET', '/me/export');
+  }
+
+  /** Erase the caller's data on the server (account deletion; the app removes the rest). */
+  async deleteMe(): Promise<void> {
+    return this.request<void>('DELETE', '/me', { noContent: true });
+  }
+
   /** The area around the phone, for push. The server keeps it at ~1 km precision. */
   async putNearMe(center: { lat: number; lon: number }, radiusKm: number): Promise<void> {
     return this.request<void>('PUT', '/me/near-me', {

@@ -21,6 +21,15 @@
       "android": {
         "buildType": "app-bundle"
       }
+    },
+    "ios-simulator": {
+      "extends": "preview",
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "MOBY_PREBUILD_PLATFORM": "ios"
+      }
     }
   },
   "submit": {

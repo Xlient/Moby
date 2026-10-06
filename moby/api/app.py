@@ -40,10 +40,10 @@ import shutil
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
@@ -61,6 +61,7 @@ from .reports import router as reports_router
 from .appcheck import app_check_middleware
 from .guidance import router as guidance_router
 from .me import router as me_router
+from .privacy import router as privacy_router
 from .review import router as review_router
 
 pool: AsyncConnectionPool | None = None
@@ -83,6 +84,7 @@ app.middleware("http")(app_check_middleware)
 app.include_router(reports_router)
 app.include_router(review_router)
 app.include_router(me_router)
+app.include_router(privacy_router)
 app.include_router(guidance_router)
 
 # ── Reviewer console (static page; it signs in with Firebase and calls /v1/review) ──
@@ -238,6 +240,25 @@ async def event_brief(event_id: uuid.UUID):
     if row["brief_status"] == "pending":
         return JSONResponse({"status": "pending", "retry_after_seconds": 15}, status_code=202)
     raise HTTPException(404, "no brief for this event")
+
+
+LEGAL_DIR = Path(__file__).resolve().parents[2] / "legal"
+LEGAL_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
+<style>body{{font:16px/1.6 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem;color:#1f2a2e}}
+table{{border-collapse:collapse;width:100%}}td,th{{border:1px solid #ddd;padding:.4rem;vertical-align:top;text-align:left}}
+@media (prefers-color-scheme:dark){{body{{background:#181d1f;color:#e9edeb}}td,th{{border-color:#2e3638}}a{{color:#7fa79e}}}}</style>
+</head><body>{body}</body></html>"""
+
+
+@app.get("/legal/{doc}", response_class=HTMLResponse, include_in_schema=False)
+async def legal(doc: Literal["privacy", "terms"]):
+    """Privacy policy and terms, linked from the app and the store listing."""
+    import markdown
+
+    text = (LEGAL_DIR / f"{doc}.md").read_text()
+    body = markdown.markdown(text, extensions=["tables"])
+    return LEGAL_PAGE.format(title="Moby privacy policy" if doc == "privacy" else "Moby terms of use", body=body)
 
 
 @app.get("/v1/config")

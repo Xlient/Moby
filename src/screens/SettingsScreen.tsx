@@ -15,6 +15,7 @@ import { RadiusPicker } from '@/components/RadiusPicker';
 interface SettingsScreenProps {
   onSubscriptions: () => void;
   onAlertPreferences: () => void;
+  onPrivacy: () => void;
   onCardReview?: () => void;
   onTrustReview?: () => void;
 }
@@ -168,7 +169,7 @@ function NameRow() {
   );
 }
 
-export function SettingsScreen({ onSubscriptions, onAlertPreferences, onCardReview, onTrustReview }: SettingsScreenProps) {
+export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy, onCardReview, onTrustReview }: SettingsScreenProps) {
   const { theme, isDark, toggleTheme } = useTheme();
   const r = useResponsive();
   const { user, isConfigured, signOut } = useAuth();
@@ -227,6 +228,10 @@ export function SettingsScreen({ onSubscriptions, onAlertPreferences, onCardRevi
           <LinkRow label="Alert types" value={summarizeAlertPreferences(alertPrefs)} onPress={onAlertPreferences} />
           <LinkRow label="Nearby radius" value={`${radiusKm} km`} onPress={() => setPickerVisible(true)} />
           <LinkRow label="Watched areas" value={areasValue} onPress={onSubscriptions} last />
+        </Section>
+
+        <Section title="Privacy">
+          <LinkRow label="Privacy & data" onPress={onPrivacy} last />
         </Section>
 
         <Section title="Appearance">
