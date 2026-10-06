@@ -1,5 +1,6 @@
-// Renders the Waypoint brand assets (issue: app logo). Run: node render.js
-const sharp = require('/private/tmp/claude-501/-Users-xilent-Documents-Moby/c2181c89-69ab-47ff-880f-6df4ab0971bc/scratchpad/logo/node_modules/sharp');
+// Renders the Waypoint brand assets (issue: app logo). Run: npm i --no-save sharp && node render.js
+/* global Buffer */
+const sharp = require('sharp');
 const fs = require('fs');
 const mark = fs.readFileSync('waypoint-mark.svg', 'utf8');
 const markInner = mark.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
