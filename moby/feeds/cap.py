@@ -23,7 +23,6 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any
 
 import httpx
 from psycopg_pool import AsyncConnectionPool
