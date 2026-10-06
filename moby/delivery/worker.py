@@ -38,12 +38,13 @@ CANDIDATES_SQL = """
 SELECT DISTINCT ON (e.event_id, d.device_id)
        e.event_id, e.source, e.source_feed, e.external_id, e.hazard_type, e.product, e.marine, e.severity, e.tier,
        e.title, e.description, e.alert_headline, e.alert_body,
+       e.language, e.title_en, e.description_en, e.translation_status,
        e.first_reported_at, e.last_updated_at, e.expires_at, e.raw_payload,
        ST_Y(e.location::geometry) AS lat, ST_X(e.location::geometry) AS lon,
        d.device_id, d.push_token
 FROM events e
 JOIN subscriptions s
-  ON ST_DWithin(s.center, e.location, s.radius_km * 1000)
+  ON ST_DWithin(s.center, COALESCE(e.area, e.location), s.radius_km * 1000)
  AND (e.severity = 'critical'
       OR array_position(ARRAY['low','medium','high','critical'], e.severity)
          >= array_position(ARRAY['low','medium','high','critical'], s.min_severity))
@@ -51,6 +52,7 @@ JOIN devices d ON d.owner = s.owner AND d.disabled_at IS NULL AND d.registered_a
 LEFT JOIN user_preferences p ON p.owner = d.owner
 WHERE e.tier = 2
   AND e.reviewer_decision IS DISTINCT FROM 'reject'
+  AND e.duplicate_of IS NULL
   AND (e.expires_at IS NULL OR e.expires_at > now())
   AND (e.severity = 'critical'
        OR ((coalesce(jsonb_array_length(p.alert_preferences->'hazard_types'), 0) = 0
@@ -65,6 +67,13 @@ WHERE e.tier = 2
         SELECT 1 FROM deliveries x
         WHERE x.event_id = e.event_id AND x.device_id = d.device_id AND x.severity = e.severity
           AND (x.status <> 'failed' OR x.attempts >= %(max_attempts)s))
+  -- ...nor about the same warning from the same agency in the last day (agencies such as
+  -- AEMET issue one message per time period of a warning: same wording, same area)...
+  AND NOT EXISTS (
+        SELECT 1 FROM deliveries z JOIN events ze ON ze.event_id = z.event_id
+        WHERE z.device_id = d.device_id AND z.status = 'sent' AND z.sent_at > now() - interval '1 day'
+          AND ze.event_id <> e.event_id AND ze.source_feed = e.source_feed AND ze.title = e.title
+          AND ze.severity = e.severity AND ST_DWithin(ze.location, e.location, 1000))
   -- ...and never told at a higher severity (a downgrade isn't news worth a buzz).
   AND NOT EXISTS (
         SELECT 1 FROM deliveries y
@@ -88,14 +97,21 @@ def build_push(row: dict[str, Any]) -> Push:
     """Contract 3: draft_alert's text when present, else the official wording."""
     alert = to_alert(row)
     title = row.get("alert_headline") or alert["headline"]
+    translated = bool(alert.get("translated"))
     if row.get("alert_body"):
         body = row["alert_body"]
+    elif translated:
+        body = " — ".join(p for p in (alert.get("location_name"), " ".join((alert.get("body") or "").split())) if p)
     else:
         place = alert.get("location_name")
         desc = " ".join((row.get("description") or "").split())
         body = " — ".join(p for p in (place, desc) if p)
-    if len(body) > 240:
-        body = body[:239].rstrip() + "…"
+    # Always keep the translation label: truncate the text, never the label.
+    suffix = f" (Translated by Moby from {alert['original_language']})" if translated else ""
+    limit = 240 - len(suffix)
+    if len(body) > limit:
+        body = body[: limit - 1].rstrip() + "…"
+    body += suffix
     critical = row["severity"] == "critical"
     return Push(
         token=row["push_token"],

@@ -133,7 +133,7 @@ env_from_dotenv() {  # public values only (Firebase web config); secrets come fr
 }
 
 cmd_endpoint() {
-  need IMAGE push; need DATA_FS_ID setup; need SERVICE_SECRET setup; need SALT_SECRET setup
+  need IMAGE push; need DATA_FS_ID setup; need SERVICE_SECRET setup; need SALT_SECRET setup; need TF_SECRET setup
   local fb_project fb_key fb_domain
   fb_project="$(env_from_dotenv FIREBASE_PROJECT_ID)"; fb_key="$(env_from_dotenv FIREBASE_WEB_API_KEY)"
   fb_domain="$(env_from_dotenv FIREBASE_AUTH_DOMAIN)"
@@ -147,6 +147,7 @@ cmd_endpoint() {
     --env-secret "MOBY_SERVICE_TOKEN=$SERVICE_SECRET" \
     --env-secret "MOBY_REPORTER_SALT=$SALT_SECRET" \
     ${FCM_SECRET:+--env-secret "FIREBASE_SERVICE_ACCOUNT_JSON=$FCM_SECRET"} \
+    --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET" \
     --env "FIREBASE_PROJECT_ID=$fb_project" \
     --env "FIREBASE_WEB_API_KEY=$fb_key" \
     --env "FIREBASE_AUTH_DOMAIN=$fb_domain" \

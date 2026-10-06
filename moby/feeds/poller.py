@@ -28,7 +28,7 @@ from psycopg_pool import AsyncConnectionPool
 from moby.config import get_settings
 from moby.escalation.official import official_verification
 
-from . import eonet, gdacs, noaa, usgs
+from . import bipad, dedupe, emsc, eonet, gdacs, noaa, usgs
 from .geo import centroid
 from .schema import FeedName, NormalizedEvent, NormalizeResult
 
@@ -49,7 +49,11 @@ FEEDS: dict[FeedName, FeedSpec] = {
     "usgs": FeedSpec("usgs", timedelta(seconds=60), usgs.normalize, usgs.url_for_gap),
     "eonet": FeedSpec("eonet", timedelta(minutes=10), eonet.normalize, lambda _gap: eonet.URL),
     "gdacs": FeedSpec("gdacs", timedelta(minutes=15), gdacs.normalize, lambda _gap: gdacs.URL),
+    "emsc": FeedSpec("emsc", timedelta(seconds=90), emsc.normalize, emsc.url_for_gap),
+    "bipad": FeedSpec("bipad", timedelta(minutes=5), bipad.normalize, lambda _gap: bipad.URL),
 }
+
+QUAKE_FEEDS = {"usgs", "emsc", "jma"}
 
 
 @dataclass
@@ -241,13 +245,19 @@ async def apply_cancels(conn: AsyncConnection, feed: FeedName, cancels: list[Nor
 # the graph and are never touched here.
 UPSERT_SQL = """
 INSERT INTO events (
-    source, source_feed, external_id, feed_item_ids, region, hazard_type, product, marine,
-    severity, title, description, location, location_accuracy_m,
+    source, source_feed, external_id, feed_item_ids, region, country, magnitude, language, translation_status,
+    hazard_type, product, marine,
+    severity, title, description, location, area, location_accuracy_m,
     first_reported_at, last_updated_at, expires_at, raw_payload, tier, confidence
 ) VALUES (
-    'official', %(source_feed)s, %(external_id)s, %(item_ids)s, %(region)s, %(hazard_type)s,
+    'official', %(source_feed)s, %(external_id)s, %(item_ids)s, %(region)s, %(country)s, %(magnitude)s,
+    %(language)s, %(translation_status)s, %(hazard_type)s,
     %(product)s, %(marine)s, %(severity)s, %(title)s, %(description)s,
-    ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, %(accuracy)s,
+    ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography,
+    -- Repair self-intersecting source polygons rather than reject the alert.
+    CASE WHEN %(area)s::text IS NULL THEN NULL
+         ELSE ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_GeomFromText(%(area)s::text, 4326)), 3))::geography END,
+    %(accuracy)s,
     %(first_reported_at)s, %(last_updated_at)s, %(expires_at)s, %(raw_payload)s,
     %(tier)s, %(confidence)s
 )
@@ -262,6 +272,15 @@ ON CONFLICT (source_feed, external_id) DO UPDATE SET
     title           = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at THEN EXCLUDED.title ELSE events.title END,
     description     = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at THEN EXCLUDED.description ELSE events.description END,
     location        = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at THEN EXCLUDED.location ELSE events.location END,
+    area            = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at THEN EXCLUDED.area ELSE events.area END,
+    country         = COALESCE(EXCLUDED.country, events.country),
+    magnitude       = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at THEN EXCLUDED.magnitude ELSE events.magnitude END,
+    language        = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at THEN EXCLUDED.language ELSE events.language END,
+    -- New wording needs a new translation; unchanged wording keeps the one we have.
+    translation_status = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at
+                               AND (EXCLUDED.title IS DISTINCT FROM events.title
+                                    OR EXCLUDED.description IS DISTINCT FROM events.description)
+                              THEN EXCLUDED.translation_status ELSE events.translation_status END,
     raw_payload     = CASE WHEN EXCLUDED.last_updated_at >= events.last_updated_at THEN EXCLUDED.raw_payload ELSE events.raw_payload END,
     -- Always take the feed's current expiry: restores an alert a partial snapshot
     -- wrongly expired (see reconcile), and applies extensions/shortenings.
@@ -285,6 +304,11 @@ def _params(row: ChainedEvent) -> dict:
         "external_id": e.external_id,
         "item_ids": row.item_ids,
         "region": e.region,
+        "country": e.country,
+        "magnitude": e.magnitude,
+        "language": None if not e.language or e.language.lower().startswith("en") else e.language,
+        "translation_status": "not_needed" if not e.language or e.language.lower().startswith("en") else "pending",
+        "area": e.area_wkt,
         "hazard_type": e.hazard_type,
         "product": e.product,
         "marine": e.marine,
@@ -389,6 +413,8 @@ async def poll_feed(
             outcome.cancelled = await apply_cancels(conn, spec.name, cancels)
             if spec.snapshot:
                 outcome.expired = await reconcile(conn, spec.name, active_item_ids)
+            if spec.name in QUAKE_FEEDS:
+                await dedupe.merge_duplicate_quakes(conn)
             await conn.execute(
                 """UPDATE feed_watermarks SET etag = %s, last_modified = %s, content_hash = %s,
                    last_polled_at = now(), last_success_at = now(), last_status = 200,
@@ -434,10 +460,27 @@ async def run_feed(spec: FeedSpec, pool: AsyncConnectionPool, http: httpx.AsyncC
 
 
 async def run(feeds: list[FeedName], once: bool, force: bool = False) -> list[PollOutcome]:
+    """feeds may include "cap" (national CAP sources, feeds/cap.py) and "centers" (PTWC,
+    NHC, JTWC, feeds/centers.py): multi-document sources with their own poll loops."""
     from moby.db import make_pool
 
+    from . import cap, centers, translate
+
     async with make_pool() as pool, _http_client() as http:
-        specs = [FEEDS[f] for f in feeds]
+        specs = [FEEDS[f] for f in feeds if f in FEEDS]
+        extra = []
+        if "cap" in feeds:
+            extra.append(cap.run_sources(pool, http, once=once))
+        if "centers" in feeds:
+            extra.append(centers.run_centers(pool, http, once=once))
+        if "translate" in feeds:
+            extra.append(translate.run_translator(pool, once=once))
+        if extra:
+            if once:
+                await asyncio.gather(*extra)
+            else:
+                await asyncio.gather(*extra, *(run_feed(s, pool, http) for s in specs))
+                return []
         if once:
             outcomes = await asyncio.gather(*(poll_feed(s, pool, http, force=force) for s in specs), return_exceptions=True)
             for s, o in zip(specs, outcomes):
@@ -468,7 +511,21 @@ async def health(feeds: list[FeedName]) -> tuple[bool, list[str]]:
             "SELECT feed, last_success_at, consecutive_failures, last_error FROM feed_watermarks"
         )).fetchall()
     by_feed = {r[0]: r[1:] for r in rows}
-    for name in feeds:
+    if "centers" in feeds:
+        for name in ("ptwc", "nhc", "jtwc", "jma"):
+            last_ok, failures, error = by_feed.get(name, (None, 0, None))
+            fresh = last_ok is not None and now - last_ok <= timedelta(minutes=30)
+            lines.append(f"{'ok ' if fresh else 'warn'} {name:<6} last success "
+                         f"{f'{int((now - last_ok).total_seconds())}s ago' if last_ok else 'never'}")
+    if "cap" in feeds:
+        # Reported, but not part of `ok`: an overseas service being down mustn't take
+        # the container (and the US feeds with it) out of rotation.
+        cap_rows = [(k, v) for k, v in by_feed.items() if k.startswith("cap:")]
+        stale = [k for k, (last_ok, *_rest) in cap_rows
+                 if last_ok is None or now - last_ok > timedelta(minutes=30)]
+        lines.append(f"{'ok ' if not stale else 'warn'} cap    {len(cap_rows) - len(stale)}/{len(cap_rows)} sources fresh"
+                     + (f" (stale: {', '.join(s[4:] for s in stale)})" if stale else ""))
+    for name in (f for f in feeds if f in FEEDS):
         last_ok, failures, error = by_feed.get(name, (None, 0, None))
         age = now - last_ok if last_ok else None
         fresh = age is not None and age <= stale_after(FEEDS[name])

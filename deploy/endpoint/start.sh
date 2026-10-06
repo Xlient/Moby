@@ -72,6 +72,11 @@ trap stop_all TERM INT
 # ── 2. Migrations ────────────────────────────────────────────────────────────
 runuser -u moby -- python /app/scripts/migrate.py
 
+# Boundaries for CAP area codes (MeteoAlarm EMMA_IDs): a one-time ~33 MB download on the
+# first start; later starts see the table filled and skip it. Background, so the API
+# isn't held up; warnings skipped meanwhile are retried once it finishes.
+runuser -u moby -- python -m moby.feeds.geocodes --if-empty || log "geocode load failed; will retry on next start" &
+
 # ── 3. Poller (kept alive) ───────────────────────────────────────────────────
 (
   while true; do

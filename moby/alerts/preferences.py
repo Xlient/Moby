@@ -13,7 +13,7 @@ Warning people early about what is coming is the point of the product, so no
 setting can hide a critical alert within the user's radius.
 """
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Iterable
 
 from psycopg import AsyncConnection
@@ -68,17 +68,21 @@ class AlertPreferences:
 ALERTS_NEAR_SQL = """
 SELECT event_id, source, source_feed, external_id, hazard_type, product, marine, severity, tier,
        title, description, alert_headline, alert_body, distinct_reporter_count,
+       language, title_en, description_en, translation_status,
        first_reported_at, last_updated_at, expires_at, raw_payload,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon,
-       ST_Distance(location, ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography) / 1000.0 AS distance_km
+       -- Inside an alert's area counts as distance 0 (migration 0009).
+       ST_Distance(COALESCE(area, location), ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography) / 1000.0
+           AS distance_km, country
 FROM events
 -- Official alerts, plus community events once corroborated (tier >= 1) — the same
 -- events delivery may push, so a notification always has a matching card on Home.
 WHERE (source = 'official' OR tier >= 1)
   AND reviewer_decision IS DISTINCT FROM 'reject'
+  AND duplicate_of IS NULL                   -- same quake from another network (migration 0010)
   AND tier >= %(min_tier)s
   AND (expires_at IS NULL OR expires_at > %(now)s)
-  AND ST_DWithin(location, ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, %(radius_m)s)
+  AND ST_DWithin(COALESCE(area, location), ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, %(radius_m)s)
   AND (severity = 'critical'                 -- critical alerts bypass every preference
        OR (hazard_type = ANY(%(hazards)s)
            AND severity = ANY(%(severities)s)
@@ -116,7 +120,30 @@ async def alerts_near(
                 "limit": limit,
             },
         )
-        return await cur.fetchall()
+        return collapse_repeats(await cur.fetchall())
+
+
+_NEVER = datetime(9999, 1, 1, tzinfo=timezone.utc)
+
+
+def collapse_repeats(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One card per warning. Some agencies (e.g. AEMET) issue a separate message for
+    each consecutive time period of the same warning: same wording, same area. Keep
+    the one that lasts longest; order is preserved."""
+    best: dict[tuple, dict[str, Any]] = {}
+    order: list[tuple] = []
+    for r in rows:
+        if r.get("source_feed") != "cap":
+            key = ("event", r["event_id"])
+        else:
+            key = ("cap", r.get("title"), r["severity"], round(r["lat"], 3), round(r["lon"], 3))
+        kept = best.get(key)
+        if kept is None:
+            best[key] = r
+            order.append(key)
+        elif (r.get("expires_at") or _NEVER) > (kept.get("expires_at") or _NEVER):
+            best[key] = r
+    return [best[k] for k in order]
 
 
 def filter_events(rows: Iterable[dict[str, Any]], prefs: AlertPreferences) -> list[dict[str, Any]]:

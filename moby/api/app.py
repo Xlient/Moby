@@ -114,7 +114,7 @@ async def healthz():
             await conn.execute("SELECT 1")
     except Exception as e:  # noqa: BLE001
         raise HTTPException(503, f"database unavailable: {type(e).__name__}") from e
-    ok, lines = await feeds_health(list(FEEDS))
+    ok, lines = await feeds_health([*FEEDS, "cap", "centers"])  # CAP is reported but never makes feeds_fresh false
     # Stale feeds are reported but don't fail liveness: the API still serves the
     # last good data, which beats restarting the whole endpoint.
     # "ephemeral" means the endpoint fell back to local disk (see deploy/endpoint/start.sh).
@@ -149,6 +149,7 @@ async def get_event(event_id: uuid.UUID):
         await cur.execute(
             """SELECT event_id, source, source_feed, external_id, hazard_type, product, marine, severity, tier,
                       title, description, alert_headline, alert_body, distinct_reporter_count,
+                      language, title_en, description_en, translation_status, country,
                       first_reported_at, last_updated_at, expires_at, raw_payload,
                       ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon
                FROM events WHERE event_id = %s""",
