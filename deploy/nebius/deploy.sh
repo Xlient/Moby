@@ -149,6 +149,8 @@ cmd_endpoint() {
     ${FCM_SECRET:+--env-secret "FIREBASE_SERVICE_ACCOUNT_JSON=$FCM_SECRET"} \
     --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET" \
     --env "FIREBASE_PROJECT_ID=$fb_project" \
+    --env "FIREBASE_PROJECT_NUMBER=$(python3 -c 'import json;print(json.load(open("'"$ROOT"'/google-services.json"))["project_info"]["project_number"])' 2>/dev/null)" \
+    --env "MOBY_APP_CHECK=${MOBY_APP_CHECK:-monitor}" \
     --env "FIREBASE_WEB_API_KEY=$fb_key" \
     --env "FIREBASE_AUTH_DOMAIN=$fb_domain" \
     --env "NWS_USER_AGENT=moby-early-warning/0.1 (github.com/Xlient/Moby)" \

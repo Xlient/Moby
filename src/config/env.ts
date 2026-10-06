@@ -12,6 +12,10 @@ export const env = {
   useMock: useMockRaw ? useMockRaw === 'true' : !apiUrl,
   /** OAuth web client ID used for Google Sign-In on Android/iOS (see .env.example). */
   googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '',
+  /** Official builds only: send Firebase App Check tokens (see src/lib/appCheck.ts). */
+  appCheck: process.env.EXPO_PUBLIC_APP_CHECK === 'true',
+  /** Development builds: a debug token registered in the Firebase console. */
+  appCheckDebugToken: process.env.EXPO_PUBLIC_APP_CHECK_DEBUG_TOKEN ?? '',
   firebase: {
     apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? '',
     authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ?? '',
