@@ -14,6 +14,10 @@ export const env = {
   googleWebClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '',
   /** Tianditu (天地图) key: basemap for phones in mainland China (MapLibre preview, #21). */
   tiandituKey: process.env.EXPO_PUBLIC_TIANDITU_KEY ?? '',
+  /** Official builds only: send Firebase App Check tokens (see src/lib/appCheck.ts). */
+  appCheck: process.env.EXPO_PUBLIC_APP_CHECK === 'true',
+  /** Development builds: a debug token registered in the Firebase console. */
+  appCheckDebugToken: process.env.EXPO_PUBLIC_APP_CHECK_DEBUG_TOKEN ?? '',
   firebase: {
     apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY ?? '',
     authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN ?? '',
