@@ -11,6 +11,7 @@ import { AlertCard } from '@/components/AlertCard';
 import { BriefPanel } from '@/components/BriefPanel';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { ContributingReports } from '@/components/ContributingReports';
+import { TierLadder } from '@/components/TierLadder';
 import { useBrief } from '@/hooks/useBrief';
 import { useEventReports } from '@/hooks/useEventReports';
 import { useAlerts } from '@/hooks/useAlerts';
@@ -88,6 +89,7 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
               body={alert.original_body}
             />
           )}
+          <TierLadder alert={alert} />
           <EmergencyNumbers country={alert.country ?? countryAt(center.lat, center.lon)} />
           {whatToDo.length > 0 && (
             // Saved on the phone: works even if this alert arrived just before the signal went.

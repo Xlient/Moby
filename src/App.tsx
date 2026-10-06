@@ -28,6 +28,9 @@ import { AlertPreferencesScreen } from '@/screens/AlertPreferencesScreen';
 import { PrivacyScreen } from '@/screens/PrivacyScreen';
 import { TrustReviewScreen } from '@/screens/TrustReviewScreen';
 import { AlertCardReviewScreen } from '@/screens/AlertCardReviewScreen';
+import { MyReportsScreen } from '@/screens/MyReportsScreen';
+import { AboutScreen } from '@/screens/AboutScreen';
+import { OnboardingScreen, hasSeenOnboarding, resetOnboarding } from '@/screens/OnboardingScreen';
 
 type Screen =
   | { name: 'home' }
@@ -38,6 +41,8 @@ type Screen =
   | { name: 'alert-detail'; alertId: string }
   | { name: 'guidance'; hazard?: HazardType }
   | { name: 'report' }
+  | { name: 'my-reports' }
+  | { name: 'about' }
   | { name: 'subscriptions' }
   | { name: 'alert-preferences' }
   | { name: 'privacy' }
@@ -51,6 +56,7 @@ function getActiveTab(screen: Screen): string {
     case 'alert-detail':
     case 'guidance':
     case 'report':
+    case 'my-reports':
     case 'map':
     case 'trust-review':
     case 'alert-card-review':
@@ -61,6 +67,7 @@ function getActiveTab(screen: Screen): string {
     case 'subscriptions':
     case 'alert-preferences':
     case 'privacy':
+    case 'about':
       return 'settings';
   }
 }
@@ -75,6 +82,7 @@ export function App() {
   // A small stack: tabs reset it, stacked screens push onto it, Back pops.
   const [stack, setStack] = useState<Screen[]>([{ name: 'home' }]);
   const screen = stack[stack.length - 1]!;
+  const [onboarded, setOnboarded] = useState(hasSeenOnboarding);
 
   const showAssistant = isEnabled('on_device_assistant');
 
@@ -167,6 +175,14 @@ export function App() {
     );
   }
 
+  if (!onboarded) {
+    return (
+      <View style={shellStyle}>
+        <OnboardingScreen onDone={() => setOnboarded(true)} />
+      </View>
+    );
+  }
+
   const showTabs = SHOW_TABS.has(screen.name);
 
   return (
@@ -179,6 +195,7 @@ export function App() {
             onSeeAllPress={() => push({ name: 'alerts' })}
             onMapPress={() => push({ name: 'map' })}
             onGuidancePress={() => openGuidance()}
+            onMyReportsPress={() => push({ name: 'my-reports' })}
           />
         )}
         {screen.name === 'alerts' && (
@@ -199,12 +216,26 @@ export function App() {
             onSubscriptions={() => push({ name: 'subscriptions' })}
             onAlertPreferences={() => push({ name: 'alert-preferences' })}
             onPrivacy={() => push({ name: 'privacy' })}
+            onAbout={() => push({ name: 'about' })}
             onCardReview={() => push({ name: 'alert-card-review' })}
             onTrustReview={() => push({ name: 'trust-review' })}
           />
         )}
         {screen.name === 'guidance' && <GuidanceScreen onBack={goBack} initialHazard={screen.hazard} />}
         {screen.name === 'report' && <ReportScreen onBack={goBack} />}
+        {screen.name === 'my-reports' && (
+          <MyReportsScreen onBack={goBack} onNewReport={() => push({ name: 'report' })} />
+        )}
+        {screen.name === 'about' && (
+          <AboutScreen
+            onBack={goBack}
+            onReplayIntro={() => {
+              resetOnboarding();
+              setStack([{ name: 'home' }]);
+              setOnboarded(false);
+            }}
+          />
+        )}
         {screen.name === 'subscriptions' && <SubscriptionsScreen onBack={goBack} />}
         {screen.name === 'alert-preferences' && <AlertPreferencesScreen onBack={goBack} />}
         {screen.name === 'privacy' && <PrivacyScreen onBack={goBack} />}

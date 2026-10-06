@@ -12,6 +12,7 @@ import { AlertCard } from '@/components/AlertCard';
 import { MapPreviewCard } from '@/components/MapPreviewCard';
 import { RadiusPicker } from '@/components/RadiusPicker';
 import { formatTimeAgo } from '@/lib/alerts';
+import { useReportQueue } from '@/hooks/useReportQueue';
 
 interface HomeScreenProps {
   onReportPress: () => void;
@@ -19,6 +20,7 @@ interface HomeScreenProps {
   onSeeAllPress: () => void;
   onMapPress: () => void;
   onGuidancePress: () => void;
+  onMyReportsPress: () => void;
 }
 
 const MAX_HOME_CARDS = 3;
@@ -116,13 +118,15 @@ function LoadingCards({ theme }: { theme: Theme }) {
   );
 }
 
-export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress }: HomeScreenProps) {
+export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress, onMyReportsPress }: HomeScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
   const { firstName } = useAuth();
   const { nearby, hiddenCount, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt, center } = useNearbyAlerts();
   const [pickerVisible, setPickerVisible] = useState(false);
   const retryLocation = useRetryLocation();
+  const myReports = useReportQueue();
+  const waitingReports = myReports.filter((x) => x.state === 'queued' || x.state === 'sending').length;
 
   const greeting = firstName
     ? `${greetingFor(new Date().getHours())}, ${firstName}`
@@ -253,6 +257,25 @@ export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPr
               <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>What to do in a flood, fire, quake or storm. Works without signal.</Text>
             </View>
           </Pressable>
+          {myReports.length > 0 && (
+            // Only once there's something to show: where the person's reports are now.
+            <Pressable
+              onPress={onMyReportsPress}
+              accessibilityRole="button"
+              accessibilityLabel={`Your reports: ${myReports.length}${waitingReports ? `, ${waitingReports} waiting to send` : ''}`}
+              style={[styles.guidanceRow, styles.rowGap, { backgroundColor: theme.bg.raised }]}
+            >
+              <Avatar.Icon size={40} icon="clipboard-text-clock-outline" style={{ backgroundColor: theme.bg.recessed }} color={theme.text.primary} />
+              <View style={styles.guidanceText}>
+                <Text variant="titleMedium" style={{ color: theme.text.primary }}>Your reports</Text>
+                <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
+                  {waitingReports
+                    ? `${waitingReports} waiting to send. See what happened to the others.`
+                    : 'See what happened to the reports you sent.'}
+                </Text>
+              </View>
+            </Pressable>
+          )}
         </View>
       </ScrollView>
 
@@ -308,6 +331,9 @@ const styles = StyleSheet.create({
     gap: spacing.scale[3],
     padding: spacing.scale[4],
     borderRadius: radius.card,
+  },
+  rowGap: {
+    marginTop: spacing.scale[2],
   },
   guidanceText: {
     flex: 1,

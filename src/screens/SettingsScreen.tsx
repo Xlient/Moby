@@ -16,6 +16,7 @@ import { RadiusPicker } from '@/components/RadiusPicker';
 interface SettingsScreenProps {
   onSubscriptions: () => void;
   onAlertPreferences: () => void;
+  onAbout?: () => void;
   onPrivacy: () => void;
   onCardReview?: () => void;
   onTrustReview?: () => void;
@@ -170,7 +171,7 @@ function NameRow() {
   );
 }
 
-export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy, onCardReview, onTrustReview }: SettingsScreenProps) {
+export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy, onAbout, onCardReview, onTrustReview }: SettingsScreenProps) {
   const [mapEngine, setMapEngine] = useMapEngine();
   const { theme, isDark, toggleTheme } = useTheme();
   const r = useResponsive();
@@ -263,14 +264,11 @@ export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy,
         </Section>
 
         <Section title="About">
-          <Row>
+          <Row last={!onAbout}>
             <Text style={rowLabel}>Version</Text>
             <Text style={rowValue}>{APP_VERSION}</Text>
           </Row>
-          <Row last>
-            <Text style={rowLabel}>Region</Text>
-            <Text style={rowValue}>US</Text>
-          </Row>
+          {onAbout && <LinkRow label="About Moby" onPress={onAbout} last />}
         </Section>
 
         {__DEV__ && (onCardReview || onTrustReview) && (
@@ -283,7 +281,7 @@ export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy,
         )}
 
         <Text style={[typography.meta, { color: theme.text.secondary, marginBottom: r.sectionGap }]}>
-          Data from NOAA, USGS and community reports. Not a replacement for official warnings.
+          Data from official agencies worldwide and community reports. Not a replacement for official warnings.
         </Text>
       </ScrollView>
 
