@@ -152,6 +152,15 @@ paths:
               schema: { $ref: '#/components/schemas/User' }
 
   /me/alert-preferences:
+    get:
+      tags: [auth]
+      summary: The caller's alert preferences (defaults if never set)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertPreferences' }
     put:
       tags: [auth]
       summary: Replace the caller's alert preferences
@@ -193,6 +202,45 @@ paths:
                 platform: { type: string, enum: [ios, android] }
       responses:
         '204': { description: Registered }
+
+  /me/devices/{device_id}:
+    delete:
+      tags: [auth]
+      summary: Stop push to this device (called on sign-out)
+      parameters:
+        - name: device_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Removed (or was not registered) }
+
+  /me/near-me:
+    put:
+      tags: [subscriptions]
+      summary: Set the area around the phone, for push
+      description: >
+        Kept by the app in step with the device position and the Home radius, so
+        notifications match what Home lists. Stored at ~1 km precision (2 decimal
+        places). Pushes for it start at medium severity; critical always gets through.
+        Never appears in GET /subscriptions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [center, radius_km]
+              properties:
+                center: { $ref: '#/components/schemas/GeoPoint' }
+                radius_km: { type: number, maximum: 500 }
+      responses:
+        '204': { description: Saved }
+    delete:
+      tags: [subscriptions]
+      summary: Stop push for the area around the phone
+      responses:
+        '204': { description: Removed }
 
   # ---------- reports ----------
 
@@ -469,6 +517,43 @@ paths:
                   alerts:
                     type: array
                     items: { $ref: '#/components/schemas/Alert' }
+
+  /alerts/areas:
+    get:
+      tags: [alerts]
+      summary: Warning areas of the alerts near a point, for the map
+      description: >
+        Same alerts and filters as GET /alerts, as a GeoJSON FeatureCollection of their
+        areas (simplified ~500 m). Alerts without an area (e.g. most earthquakes) are not
+        included. Feature properties: alert_id, severity, hazard_type.
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number } }
+        - { name: lon, in: query, required: true, schema: { type: number } }
+        - { name: radius_km, in: query, schema: { type: number, maximum: 500 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/geo+json:
+              schema:
+                type: object
+                required: [type, features]
+                properties:
+                  type: { type: string, enum: [FeatureCollection] }
+                  features:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type: { type: string, enum: [Feature] }
+                        id: { type: string }
+                        geometry: { type: object }
+                        properties:
+                          type: object
+                          properties:
+                            alert_id: { type: string }
+                            severity: { $ref: '#/components/schemas/Severity' }
+                            hazard_type: { $ref: '#/components/schemas/HazardType' }
 
   /alerts/{alert_id}:
     get:
@@ -934,6 +1019,24 @@ components:
         marine:
           type: boolean
           description: Offshore/boating product; absent means false. Hidden unless the user opts in.
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 of the issuing authority or event, when known (e.g. for emergency numbers).
+        translated:
+          type: boolean
+          description: >
+            headline/body are Moby's machine translation into English (issue #11). Clients
+            MUST label it ("Translated by Moby") and offer the original. Absent = the agency's own words.
+        original_language:
+          type: string
+          description: Language the agency wrote in, e.g. "Spanish". Present when translated.
+        original_headline: { type: string, description: The agency's own headline. Present when translated. }
+        original_body: { type: string, description: The agency's own text. Present when translated. }
+        distance_km:
+          type: number
+          description: >
+            GET /alerts only: distance from the query point to the alert, in km. Measured to
+            the alert's area when it has one, so 0 means "you are inside it".
 
     EventReports:
       type: object

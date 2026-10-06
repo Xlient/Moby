@@ -1,72 +1,95 @@
-import { View, ScrollView, StyleSheet } from 'react-native';
+import { useState } from 'react';
+import { View, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
-import { typography, spacing } from '@/theme/tokens';
+import { typography, spacing, radius } from '@/theme/tokens';
 import { GuidanceCard } from '@/components/GuidanceCard';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { useGuidanceCards } from '@/hooks/useGuidanceCards';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResponsive } from '@/hooks/useResponsive';
+import { cardsForHazard, useGuidance } from '@/guidance/guidanceStore';
+import { formatTimeAgo } from '@/lib/alerts';
+import { EmergencyNumbers } from '@/components/EmergencyNumbers';
+import { countryAt } from '@/data/emergencyNumbers';
+import { useUserCenter } from '@/location/UserLocationContext';
+import type { HazardType } from '@/api/types';
 
 interface GuidanceScreenProps {
   onBack: () => void;
+  /** Open on one hazard (e.g. from an alert). */
+  initialHazard?: HazardType;
 }
 
-export function GuidanceScreen({ onBack }: GuidanceScreenProps) {
-  const { theme } = useTheme();
-  const isOnline = useOnlineStatus();
-  const { cards, loading, error, isStale, cachedAt } = useGuidanceCards();
-  const r = useResponsive();
+const FILTERS: { value: HazardType | undefined; label: string }[] = [
+  { value: undefined, label: 'All' },
+  { value: 'flood', label: 'Flood' },
+  { value: 'fire', label: 'Wildfire' },
+  { value: 'earthquake', label: 'Earthquake' },
+  { value: 'storm', label: 'Storms' },
+  { value: 'landslide', label: 'Landslide' },
+  { value: 'other', label: 'Other' },
+];
 
-  const statusText = [
-    typography.body,
-    styles.center,
-    { color: theme.text.secondary, paddingVertical: r.sectionGap },
-  ];
+/**
+ * Safety guidance, readable with no signal: cards synced from official sources
+ * plus the built-in essentials. Most urgent first.
+ */
+export function GuidanceScreen({ onBack, initialHazard }: GuidanceScreenProps) {
+  const { theme } = useTheme();
+  const r = useResponsive();
+  const isOnline = useOnlineStatus();
+  const { cards, syncedAt } = useGuidance();
+  const center = useUserCenter();
+  // Only from a real fix: never show the demo city's numbers as "where you are".
+  const country = center.source === 'device' ? countryAt(center.lat, center.lon) : undefined;
+  const [hazard, setHazard] = useState<HazardType | undefined>(initialHazard);
+  const shown = cardsForHazard(cards, hazard);
 
   return (
     <View style={styles.container}>
       <ScreenHeader title="Safety guidance" onBack={onBack} />
+      <ScrollView style={styles.container} contentContainerStyle={{ padding: r.gutter, gap: spacing.scale[3] }}>
+        <Text style={[typography.body, { color: theme.text.secondary }]}>
+          {isOnline ? 'Saved on this phone, so it works without signal. ' : 'You’re offline. This guidance is saved on your phone. '}
+          {syncedAt ? `Updated ${formatTimeAgo(syncedAt)}.` : ''}
+        </Text>
+        <Text style={[typography.meta, { color: theme.text.secondary }]}>
+          Always follow instructions from local authorities and emergency services first.
+        </Text>
 
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={[styles.scrollContent, { padding: r.gutter }]}
-      >
-        {loading && <Text style={statusText}>Loading guidance cards</Text>}
+        <EmergencyNumbers country={country} />
 
-        {error && cards.length === 0 && <Text style={statusText}>{error}</Text>}
-
-        {!loading && !error && cards.length === 0 && (
-          <View style={[styles.emptyState, { padding: r.sectionGap }]}>
-            <Text
-              accessibilityRole="header"
-              style={[r.heading, styles.center, { color: theme.text.primary }]}
-            >
-              No guidance cards available
-            </Text>
-            <Text
-              style={[typography.body, styles.center, styles.emptyBody, { color: theme.text.secondary }]}
-            >
-              Guidance cards for your region will appear here when available.
-            </Text>
-          </View>
-        )}
-
-        {cards.length > 0 && (
-          <>
-            {!isOnline && cachedAt && (
-              <Text
-                style={[typography.meta, styles.center, styles.offlineNote, { color: theme.text.faint }]}
+        <View style={styles.chips} accessibilityRole="radiogroup">
+          {FILTERS.map((f) => {
+            const selected = hazard === f.value;
+            return (
+              <Pressable
+                key={f.label}
+                onPress={() => setHazard(f.value)}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected }}
+                style={[
+                  styles.chip,
+                  {
+                    backgroundColor: selected ? theme.bg.recessed : 'transparent',
+                    borderColor: selected ? theme.text.secondary : theme.line.hairline,
+                  },
+                ]}
               >
-                Showing saved guidance
-              </Text>
-            )}
-            <View style={styles.list}>
-              {cards.map((card) => (
-                <GuidanceCard key={card.card_id} card={card} isStale={isStale} />
-              ))}
-            </View>
-          </>
+                <Text variant="bodyMedium" style={{ color: theme.text.primary, fontWeight: selected ? '600' : '400' }}>
+                  {f.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {shown.length === 0 ? (
+          <Text style={[typography.body, styles.empty, { color: theme.text.secondary }]}>
+            No guidance for this hazard yet. Check “All” for general advice.
+          </Text>
+        ) : (
+          shown.map((card) => <GuidanceCard key={card.card_id} card={card} />)
         )}
       </ScrollView>
     </View>
@@ -77,25 +100,20 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scrollContent: {
-    flexGrow: 1,
+  chips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.scale[1],
   },
-  center: {
-    textAlign: 'center',
-  },
-  list: {
-    gap: spacing.scale[3],
-  },
-  offlineNote: {
-    marginBottom: spacing.scale[3],
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
+  chip: {
+    minHeight: spacing.minTapTarget,
     justifyContent: 'center',
+    paddingHorizontal: spacing.scale[3],
+    borderRadius: radius.pill,
+    borderWidth: 1,
   },
-  emptyBody: {
-    marginTop: spacing.scale[2],
-    maxWidth: 360,
+  empty: {
+    textAlign: 'center',
+    paddingVertical: spacing.scale[6],
   },
 });

@@ -22,6 +22,14 @@ export const kv = {
       /* ignore write failures */
     }
   },
+  /** Account deletion: remove everything this app stored on the phone. */
+  clear(): void {
+    try {
+      Storage.clearSync();
+    } catch {
+      /* ignore */
+    }
+  },
 };
 
 /** AsyncStorage-compatible store (used for Firebase auth persistence). */

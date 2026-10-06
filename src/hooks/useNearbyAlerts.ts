@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { Alert, AlertPreferences } from '@/api/types';
 import { compareAlerts } from '@/lib/alerts';
-import { distanceKm } from '@/lib/geo';
+import { alertDistanceKm } from '@/lib/geo';
 import { fetchCenter, useUserCenter, type UserCenter } from '@/location/UserLocationContext';
 import { RADIUS_OPTIONS, useNearbyRadius, type RadiusKm } from './useNearbyRadius';
 import { useAlerts } from './useAlerts';
@@ -48,8 +48,8 @@ export function useNearbyAlerts(): UseNearbyAlertsResult {
 
   const { nearby, hiddenCount } = useMemo(() => {
     const inRadius = alerts.flatMap((alert): NearbyAlert[] => {
-      if (!alert.location) return [];
-      const d = distanceKm(center.lat, center.lon, alert.location.lat, alert.location.lon);
+      const d = alertDistanceKm(alert, center, q);
+      if (d === undefined) return [];
       return d <= radiusKm ? [{ alert, distanceKm: Math.round(d * 10) / 10 }] : [];
     });
     const wanted = inRadius.filter(({ alert }) => matchesAlertPreferences(preferences, alert));
@@ -57,7 +57,7 @@ export function useNearbyAlerts(): UseNearbyAlertsResult {
       nearby: wanted.sort((a, b) => compareAlerts(a.alert, b.alert)),
       hiddenCount: inRadius.length - wanted.length,
     };
-  }, [alerts, center.lat, center.lon, radiusKm, preferences]);
+  }, [alerts, center.lat, center.lon, q.lat, q.lon, radiusKm, preferences]);
 
   return { nearby, hiddenCount, preferences, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt, center };
 }

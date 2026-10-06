@@ -11,10 +11,11 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#F7F8F6",
+      "imageWidth": 200,
+      "backgroundColor": "#0B1F33",
       "dark": {
         "image": "./assets/splash-icon.png",
-        "backgroundColor": "#181D1F"
+        "backgroundColor": "#0B1F33"
       }
     },
     "ios": {
@@ -25,7 +26,7 @@
       "package": "com.xlient.moby",
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#F7F8F6",
+        "backgroundColor": "#0B1F33",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -44,13 +45,15 @@
       "expo-font",
       "@react-native-google-signin/google-signin",
       "./plugins/withApkName",
-      "./plugins/withReleaseSigning"
+      "./plugins/withReleaseSigning",
       [
         "expo-location",
         {
           "locationWhenInUsePermission": "Moby uses your location to show alerts near you and to place the hazard reports you send."
         }
-      ]
+      ],
+      "@maplibre/maplibre-react-native",
+      "./plugins/withRNFirebasePods"
     ]
   }
 }

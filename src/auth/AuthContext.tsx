@@ -16,10 +16,15 @@ import {
   sendPasswordResetEmail,
   updateProfile,
   signOut as firebaseSignOut,
+  deleteUser,
 } from 'firebase/auth';
+import { api } from '@/api/client';
+import { env } from '@/config/env';
+import { kv } from '@/lib/storage';
 import { auth, isFirebaseConfigured } from '@/api/firebase';
 import { isGoogleSignInAvailable, signInWithGoogle, signOutOfGoogle } from './googleSignIn';
 import {
+  deleteUserData,
   ensureUserProfile,
   updateDisplayName as updateStoredDisplayName,
   updateUserSettings,
@@ -54,10 +59,31 @@ interface AuthContextValue {
   sendPasswordReset: (email: string) => Promise<void>;
   updateName: (name: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * Delete the account and its data: server data, Firestore profile and areas, the
+   * Firebase account, and everything stored on this phone. 'reauth' means everything
+   * but the sign-in itself was deleted: Firebase wants a recent sign-in for that step.
+   */
+  deleteAccount: () => Promise<'deleted' | 'reauth'>;
   getIdToken: () => Promise<string | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+// Work that needs the session one last time (e.g. telling the server this phone
+// should stop getting the person's push alerts). Best-effort and time-boxed: a
+// sign-out never waits on the network for long or fails because of it.
+const beforeSignOut = new Set<() => Promise<void>>();
+
+export function onBeforeSignOut(fn: () => Promise<void>): () => void {
+  beforeSignOut.add(fn);
+  return () => beforeSignOut.delete(fn);
+}
+
+async function runBeforeSignOut(): Promise<void> {
+  const all = Promise.allSettled([...beforeSignOut].map((fn) => fn()));
+  await Promise.race([all, new Promise((resolve) => setTimeout(resolve, 3000))]);
+}
 
 function friendlyError(code: string): string {
   switch (code) {
@@ -227,8 +253,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOutFn = useCallback(async () => {
     if (!auth) return;
+    await runBeforeSignOut();
     await firebaseSignOut(auth);
     await signOutOfGoogle();
+  }, []);
+
+  const deleteAccount = useCallback(async (): Promise<'deleted' | 'reauth'> => {
+    const current = auth?.currentUser;
+    if (!auth || !current) throw new Error('You’re not signed in.');
+    // Server first: if this fails nothing else is touched and the person can retry.
+    if (!env.useMock) await api.deleteMe();
+    await deleteUserData(current.uid);
+    let result: 'deleted' | 'reauth' = 'deleted';
+    try {
+      await deleteUser(current);
+    } catch (err) {
+      if ((err as { code?: string }).code !== 'auth/requires-recent-login') throw err;
+      result = 'reauth';
+    }
+    kv.clear();
+    await firebaseSignOut(auth).catch(() => {});
+    await signOutOfGoogle();
+    return result;
   }, []);
 
   const getIdToken = useCallback(async (): Promise<string | null> => {
@@ -252,9 +298,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sendPasswordReset,
       updateName,
       signOut: signOutFn,
+      deleteAccount,
       getIdToken,
     }),
-    [user, profile, firstName, loading, signIn, signUp, googleSignIn, sendPasswordReset, updateName, signOutFn, getIdToken],
+    [user, profile, firstName, loading, signIn, signUp, googleSignIn, sendPasswordReset, updateName, signOutFn, deleteAccount, getIdToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
