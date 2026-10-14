@@ -49,7 +49,9 @@ export function TierLadder({ alert }: { alert: Alert }) {
         STEPS.map((step, i) => {
           const reached = i <= current;
           const isNow = i === current;
-          const color = reached ? theme.accent.calm : theme.line.hairline;
+          // The trust colors: violet while it's only people's reports, blue once an agency confirms.
+          const trust = step.label === 'official_confirmed' ? theme.trust.official : theme.trust.unverified;
+          const color = reached ? trust.text : theme.line.hairline;
           return (
             <View key={step.label} style={styles.step}>
               <View style={styles.rail}>

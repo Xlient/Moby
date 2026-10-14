@@ -3,7 +3,11 @@
 //
 //  Soft, daylight-neutral base. All interface chrome is low-
 //  saturation. Saturated color appears ONLY in the severity
-//  ramp — saturation means urgency.
+//  ramp — saturation means urgency — and in the two trust
+//  colors, which answer "who says so?": blue for an official
+//  agency, violet for unverified reports from people nearby.
+//  Neither hue is used anywhere else, so they never read as
+//  a severity.
 // ─────────────────────────────────────────────────────────────
 
 // ── Colour interfaces ────────────────────────────────────────
@@ -36,6 +40,22 @@ export interface AccentColors {
   calm: string;
 }
 
+export interface TrustColor {
+  /** Label text and icon (WCAG AA on `bg` and on cards, both themes) */
+  text: string;
+  /** Pill fill */
+  bg: string;
+  /** Pill outline (dashed for unverified) */
+  border: string;
+}
+
+export interface TrustColors {
+  /** Issued by an official agency */
+  official: TrustColor;
+  /** Reports from people nearby: nobody has checked them */
+  unverified: TrustColor;
+}
+
 export interface SeverityColors {
   low: string;
   medium: string;
@@ -51,6 +71,7 @@ export interface Theme {
   text: TextColors;
   accent: AccentColors;
   severity: SeverityColors;
+  trust: TrustColors;
   shadow: string;
 }
 
@@ -79,6 +100,10 @@ export const lightTheme: Theme = {
     high: '#C55D23',
     critical: '#BC3B32',
   },
+  trust: {
+    official: { text: '#1E4FAE', bg: '#E4EDFC', border: '#1E4FAE' },     // 6.4:1 on bg, 7.5:1 on white
+    unverified: { text: '#7339A8', bg: '#F3EAFB', border: '#7339A8' },   // 6.2:1 on bg, 6.4:1 on recessed
+  },
   shadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
 };
 
@@ -106,6 +131,10 @@ export const darkTheme: Theme = {
     medium: '#E0A33C',
     high: '#DD7434',
     critical: '#CE4B41',
+  },
+  trust: {
+    official: { text: '#A3C2F7', bg: '#1C2A42', border: '#A3C2F7' },     // 8.0:1 on bg, 8.3:1 on raised
+    unverified: { text: '#D2B0F4', bg: '#2B2238', border: '#B88AE8' },   // 8.1:1 on bg, 9.6:1 on recessed
   },
   shadow: '0 1px 3px rgba(0, 0, 0, 0.32)',
 };
