@@ -98,7 +98,7 @@
 
 <div id="signin" hidden>
   <h2>Reviewer sign-in</h2>
-  <p class="muted">Only accounts with the reviewer role can open the queue.</p>
+  <p class="muted">For local partners (rangers, officials). Community reports reach people without waiting for review; here you can take a false one down.</p>
   <button id="signin-btn">Sign in with Google</button>
   <p class="muted" id="signin-error" role="alert"></p>
 </div>
@@ -176,7 +176,7 @@ function renderList() {
 function renderDetail() {
   const it = items[selected];
   if (!it) {
-    $('#detail').innerHTML = `<div class="empty">Nothing waiting for review. New items appear here automatically.</div>`;
+    $('#detail').innerHTML = `<div class="empty">Nothing flagged. Review is optional: community reports already reach people who chose them, marked unverified. Reject takes a false one down.</div>`;
     return;
   }
   const e = it.event;
@@ -243,18 +243,16 @@ function journey(e) {
     { label: `Fused from ${plural(e.report_count, 'report')} · ${e.distinct_reporter_count ?? 0} ${e.distinct_reporter_count === 1 ? 'person' : 'people'}`, state: 'done' },
     { label: `${TIER[e.tier]} · confidence ${Math.round((e.confidence ?? 0) * 100)}%${e.official_match ? ' · official match' : ''}`, state: 'done' },
   ];
-  if (needsReview) {
-    steps.push(reviewed
-      ? { label: `Reviewer: ${reviewed}`, state: reviewed === 'reject' ? 'stop' : 'done' }
-      : { label: `Waiting for a reviewer (${REASONS[e.review_reason] || e.review_reason})`, state: 'now' });
-  } else if (e.tier < 2) {
-    steps.push({ label: 'Below the review threshold: logged only', state: 'now' });
-  }
-  if (reviewed !== 'reject') {
-    const resuming = reviewed === 'approve' && e.tier < 2;
-    steps.push(e.alert_drafted || e.tier === 2
-      ? { label: e.alert_drafted ? 'Alert drafted · tier 2 · delivery picks it up' : 'Tier 2 · delivery uses the official wording', state: 'done' }
-      : { label: resuming ? 'Approved: waiting for the pipeline to resume and draft the alert' : 'Alert drafted', state: resuming ? 'now' : '' });
+  // No review gate: delivery sends community events to people who chose them (tier 0 = single
+  // reports opt-in, tier 1 = 2+ people by default). Review is optional; reject takes it down.
+  if (reviewed === 'reject') {
+    steps.push({ label: 'Taken down by a reviewer: no longer shown or pushed', state: 'stop' });
+  } else {
+    steps.push({ label: e.tier >= 1 ? 'Delivered (unverified) to people who chose reports from 2+ people'
+                                      : 'Delivered (unverified) to people who chose single reports', state: 'done' });
+    steps.push(e.alert_drafted ? { label: 'Alert text drafted', state: 'done' } : { label: 'Alert text drafted (else a generic one is used)', state: '' });
+    if (needsReview) steps.push(reviewed ? { label: `Optional review: ${reviewed}`, state: 'done' }
+                                         : { label: `Flagged for optional review (${REASONS[e.review_reason] || e.review_reason})`, state: 'now' });
   }
   return `<ol class="journey">${steps.map((s) => `<li class="${s.state}"><span class="dot"></span><span>${esc(s.label)}</span></li>`).join('')}</ol>`;
 }
@@ -273,14 +271,13 @@ function renderPipeline() {
   const e = events[selected];
   $('#detail').innerHTML = `
     <h2>Fusion pipeline</h2>
-    <div class="muted">Reports come in as <code>pending</code>; the LangGraph worker fuses them into events, sets the tier and pauses for review.</div>
+    <div class="muted">Reports come in as <code>pending</code>; the LangGraph worker fuses them into events and sets the tier. Delivery sends them, unverified, to people who chose them.</div>
     <section><h3>Now</h3>
       <div class="facts num">
         <div class="fact${stale ? ' warn' : ''}">Pending reports<b>${r.pending}</b>${r.oldest_pending_at ? `<span class="faint">oldest ${ago(r.oldest_pending_at)}</span>` : ''}</div>
         <div class="fact">Fused (24 h)<b>${r.fused_24h}</b></div>
         <div class="fact${r.failed_24h ? ' warn' : ''}">Failed (24 h)<b>${r.failed_24h}</b></div>
-        <div class="fact">Open reviews<b>${pipe.review.open}</b></div>
-        <div class="fact${pipe.review.awaiting_resume ? ' warn' : ''}">Approved, not resumed<b>${pipe.review.awaiting_resume}</b></div>
+        <div class="fact">Flagged for optional review<b>${pipe.review.open}</b></div>
       </div>
       ${stale ? '<p class="muted">Reports have waited over 10 minutes: is the fusion worker running?</p>' : ''}
     </section>

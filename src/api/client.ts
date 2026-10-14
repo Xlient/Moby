@@ -2,6 +2,9 @@ import type {
   Alert,
   AlertPreferences,
   BriefPending,
+  AlertExplanation,
+  AskAnswer,
+  AskRequest,
   CascadeAssessment,
   ClientConfig,
   GuidanceCard,
@@ -21,6 +24,8 @@ import {
   getMockAlert,
   getMockConfig,
   getMockBrief,
+  getMockExplanation,
+  getMockAnswer,
   getMockGuidanceCards,
   getMockSubscriptions,
   getMockEventReports,
@@ -237,6 +242,7 @@ export class ApiClient {
     lon?: number;
     radius_km?: number;
     min_tier?: 0 | 1 | 2;
+    community_reports?: 'off' | 'corroborated' | 'all';
     since?: string;
   }): Promise<{ alerts?: Alert[] }> {
     if (USE_MOCK) return { alerts: getMockAlerts() };
@@ -287,6 +293,28 @@ export class ApiClient {
       body: data,
       noContent: true,
     });
+  }
+
+  // ── "What this means for you" (Nemotron Super) ─────────────────────
+
+  /** 202 → { status: 'pending' } while it's being written; 404 throws (nothing to explain). */
+  async getExplanation(eventId: string): Promise<AlertExplanation | { status: 'pending'; retry_after_seconds?: number }> {
+    if (USE_MOCK) {
+      const e = getMockExplanation(eventId);
+      if (!e) throw new ApiRequestError(404, 'NOT_FOUND', 'No explanation');
+      return e;
+    }
+    return this.request('GET', `/events/${encodeURIComponent(eventId)}/explain`);
+  }
+
+  // ── Ask Moby (Nemotron Super, cited sources only) ───────────────────
+
+  async ask(body: AskRequest): Promise<AskAnswer> {
+    if (USE_MOCK) {
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      return getMockAnswer(body.question);
+    }
+    return this.request<AskAnswer>('POST', '/ask', { body });
   }
 
   // ── Situational brief ────────────────────────────────────────────

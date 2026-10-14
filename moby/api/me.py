@@ -77,6 +77,7 @@ class PreferencesIn(BaseModel):
     hazard_types: list[HazardType] = Field(default_factory=list, max_length=6)
     min_severity: Severity = "low"
     include_marine: bool = False
+    community_reports: Literal["off", "corroborated", "all"] = "corroborated"
 
 
 @router.get("/me/alert-preferences")

@@ -135,7 +135,7 @@ describe('users/{uid}', () => {
   test('owner can save alert preferences', async () => {
     await seedAliceProfile();
     await assertSucceeds(updateDoc(doc(alice(), 'users', ALICE.uid), {
-      'settings.alert_preferences': { hazard_types: ['flood', 'fire'], min_severity: 'high', include_marine: true },
+      'settings.alert_preferences': { hazard_types: ['flood', 'fire'], min_severity: 'high', include_marine: true, community_reports: 'all' },
     }));
   });
 
@@ -153,6 +153,7 @@ describe('users/{uid}', () => {
     await assertFails(updateDoc(ref, { 'settings.alert_preferences': { min_severity: 'extreme' } }));
     await assertFails(updateDoc(ref, { 'settings.alert_preferences': { include_marine: 'yes' } }));
     await assertFails(updateDoc(ref, { 'settings.alert_preferences': { notify_everyone: true } }));
+    await assertFails(updateDoc(ref, { 'settings.alert_preferences': { community_reports: 'everyone' } }));
   });
 
   test('cannot add unknown settings', async () => {

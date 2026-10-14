@@ -1,8 +1,9 @@
-"""Human review (contract `ReviewItem`; table review_queue, migration 0006).
+"""Optional human review (contract `ReviewItem`; table review_queue, migration 0006).
 
-The fusion pipeline inserts review_queue rows when it pauses an event for a human;
-this module lists them for the reviewer console and records decisions. It never
-resumes the pipeline itself — the pipeline picks up rows with status='decided'.
+Community reports are delivered without waiting for anyone (contract 0.6.0). The fusion
+pipeline may flag events here (conflicting reports, a critical single report) for local
+partners such as rangers or officials; they can reject a false report, which takes it
+down (no longer listed or pushed). Nothing waits on a decision.
 """
 import uuid
 from typing import Annotated, Literal
@@ -119,10 +120,7 @@ SELECT
   (SELECT min(received_at) FROM reports WHERE fusion_status = 'pending')                           AS oldest_pending_at,
   (SELECT count(*) FROM reports WHERE fusion_status = 'fused'  AND received_at > now() - interval '24 hours') AS fused_24h,
   (SELECT count(*) FROM reports WHERE fusion_status = 'failed' AND received_at > now() - interval '24 hours') AS failed_24h,
-  (SELECT count(*) FROM review_queue WHERE status = 'open')                                        AS review_open,
-  -- Approved but the event isn't tier 2 yet: the pipeline hasn't resumed the thread (or draft_alert failed).
-  (SELECT count(*) FROM review_queue q JOIN events e USING (event_id)
-     WHERE q.status = 'decided' AND q.decision = 'approve' AND e.tier < 2)                         AS awaiting_resume
+  (SELECT count(*) FROM review_queue WHERE status = 'open')                                        AS review_open
 """
 
 PIPELINE_EVENTS_SQL = """
@@ -155,7 +153,7 @@ async def pipeline(_: Reviewer):
             "fused_24h": counts["fused_24h"],
             "failed_24h": counts["failed_24h"],
         },
-        "review": {"open": counts["review_open"], "awaiting_resume": counts["awaiting_resume"]},
+        "review": {"open": counts["review_open"]},
         "events": [
             {
                 "event_id": str(e["event_id"]),

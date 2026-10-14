@@ -604,6 +604,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/events/{event_id}/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * "What this means for you": a plain-language explanation of an official warning
+         * @description Written by NVIDIA Nemotron Super from the agency's own text only, then checked: every number must appear in the original, and actions must come from the warning itself. 200 when ready; 202 while it's being written (the first viewer triggers it, then it's cached); 404 when there is nothing to explain or it failed the checks. Clients must label it as Moby's AI explanation and keep the official text visible.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    event_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ready */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AlertExplanation"];
+                    };
+                };
+                /** @description Being written */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {string} */
+                            status?: "pending";
+                            retry_after_seconds?: number;
+                        };
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Moby, a safety assistant that answers only from sources it can cite
+         * @description Sources: active official alerts near the given point, Moby's guidance cards (retrieved with Qwen3 embeddings), and, when those don't cover it, the country's official websites via Tavily (searched with a generic query that NVIDIA Nemotron Nano rewrites to drop personal details). NVIDIA Nemotron Super answers with citations; the answer is withheld (abstained = true) if it isn't grounded in the sources it cites. Questions are not stored. Signed-in only; 20 questions per hour.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AskRequest"];
+                };
+            };
+            responses: {
+                /** @description An answer, or abstained */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AskAnswer"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                /** @description Too many questions */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Ask Moby isn't available right now */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/{event_id}/confirm": {
         parameters: {
             query?: never;
@@ -861,7 +974,10 @@ export interface paths {
                     lat?: number;
                     lon?: number;
                     radius_km?: number;
+                    /** @description Minimum tier for official alerts. Community reports follow community_reports. */
                     min_tier?: 0 | 1 | 2;
+                    /** @description Which community reports to include: off (none), corroborated (reported by 2+ different people), all (single reports too). Defaults to the caller's saved preferences, else corroborated. */
+                    community_reports?: "off" | "corroborated" | "all";
                     since?: string;
                     /** @description Only these hazard types. Defaults to the caller's saved preferences, else all. */
                     hazard_types?: components["schemas"]["HazardType"][];
@@ -1313,6 +1429,11 @@ export interface components {
                 offline_guidance_cards: boolean;
                 /** @default false */
                 on_device_assistant: boolean;
+                /**
+                 * @description POST /ask is available (Token Factory configured)
+                 * @default false
+                 */
+                ask_moby: boolean;
                 /** @default false */
                 mesh_relay: boolean;
                 /** @default false */
@@ -1376,6 +1497,12 @@ export interface components {
             min_severity: components["schemas"]["Severity"];
             /** @default false */
             include_marine: boolean;
+            /**
+             * @description Which reports from people nearby (never confirmed by an agency) to see and be notified about: off, corroborated (2+ different people), or all (single reports too). Always shown labelled as unverified. Applies to critical ones too: this is a choice about trust, not severity.
+             * @default corroborated
+             * @enum {string}
+             */
+            community_reports: "off" | "corroborated" | "all";
         };
         ReportSubmission: {
             /** @description Client-generated UUID. Idempotency key — safe to retry. */
@@ -1470,8 +1597,10 @@ export interface components {
             hazard_type?: components["schemas"]["HazardType"];
             /** @description Human-readable place for the alert's location, e.g. "Russian River Basin". Shown beside distance and time; never repeated in the headline. */
             location_name?: string;
-            /** @description Distinct originating reporters behind a corroborated_report (relay hops and repeat reports from one device do not count — see escalation caution rules). Omitted for official_confirmed; 1 or omitted for unverified_report. */
+            /** @description Distinct originating reporters behind a community report (relay hops and repeat reports from one device do not count — see escalation caution rules). Omitted for official_confirmed; 1 for unverified_report. */
             corroboration_count?: number;
+            /** @description Community reports only: people nearby reported different severities. The alert uses the highest one (a missed danger is worse than an over-warning). */
+            reports_disagree?: boolean;
             /** @description The source's own product name, e.g. "Flood Warning", "Small Craft Advisory", "earthquake". Finer-grained than hazard_type. */
             product?: string;
             /** @description Offshore/boating product; absent means false. Hidden unless the user opts in. */
@@ -1507,6 +1636,41 @@ export interface components {
             captured_offline?: boolean;
             /** @description Arrived over the Bluetooth mesh. */
             via_mesh?: boolean;
+        };
+        AlertExplanation: {
+            event_id: string;
+            /** @description 2-3 plain sentences grounded in the agency's text */
+            summary: string;
+            /** @description Instructions taken from the warning itself (empty if it gives none) */
+            actions: string[];
+            /** @description e.g. nvidia/nemotron-3-super-120b-a12b */
+            model: string;
+            /** Format: date-time */
+            generated_at?: string;
+        };
+        AskRequest: {
+            question: string;
+            /** @description Optional; adds nearby official alerts as sources */
+            lat?: number;
+            lon?: number;
+            /** @description Picks the official websites to search */
+            country?: string;
+        };
+        AskAnswer: {
+            /** @description Plain-language answer with [n] markers matching sources; null when abstained */
+            answer?: string | null;
+            abstained: boolean;
+            sources: {
+                n: number;
+                /** @enum {string} */
+                kind: "alert" | "guidance" | "web";
+                title: string;
+                publisher: string;
+                url?: string | null;
+            }[];
+            model: string;
+            /** @description True when official websites were searched via Tavily */
+            searched_web: boolean;
         };
         SituationalBrief: {
             event_id: string;

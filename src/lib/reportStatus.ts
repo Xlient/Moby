@@ -9,9 +9,9 @@ export interface ReportStatus {
 }
 
 const TIER_TEXT = [
-  'Logged. It becomes an alert if others nearby report the same thing.',
-  'Others reported it too. A reviewer is checking it now.',
-  'Confirmed. It is a public alert for people nearby.',
+  'Shown, marked unverified, to people nearby who chose to see single reports.',
+  'Others reported it too. People nearby who chose to are alerted, marked unverified.',
+  'An official warning covers it too.',
 ] as const;
 
 /**
@@ -42,7 +42,7 @@ export function reportStatus(r: QueuedReport): ReportStatus {
   }
   const tier = a.tier ?? 0;
   return {
-    title: a.merged_into_existing ? 'Added to an existing report' : tier === 2 ? 'Now an alert' : 'Checked',
+    title: a.merged_into_existing ? 'Added to an existing report' : tier === 2 ? 'Matches an official warning' : 'Shared nearby',
     detail: TIER_TEXT[tier] ?? TIER_TEXT[0],
     tone: tier === 2 ? 'good' : 'waiting',
   };

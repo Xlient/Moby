@@ -21,13 +21,16 @@ Moby is operated by **[OPERATOR NAME]**, [ADDRESS, COUNTRY] ("we"). Contact: **[
 | Your phone's push token | To send you notifications | Contract | Until you sign out, delete your account, or after 180 days without use |
 | Which alerts were sent to your phone | To avoid sending the same alert twice | Legitimate interest | 30 days |
 | Hazard reports you choose to send: location (exact, or about 500 m if you choose "approximate"), time, what you saw, and your optional note | To check reports against each other and against official sources, and to warn people nearby | Your consent when you send a report, and our legitimate interest in public safety | 90 days with your account link; then anonymised (your note and link to you are deleted, the location is coarsened) |
+| Questions you ask Ask Moby, with your approximate location and country if location is on | To answer from official alerts near you and safety guidance | Contract (the service you asked for) | Not stored: used to answer, then discarded. Not sent to LangSmith |
 
 **What's never public:** your name, email, notes, exact report locations or which reports are yours.
 Others only ever see that "people nearby" reported something, roughly where, and when.
 
 **Automated processing:** Reports are processed by AI models to extract details, group reports about
-the same event, and translate official warnings. A person reviews community reports before they
-become public alerts. Nothing about you is decided automatically.
+the same event, translate official warnings, explain them in plain words, and answer questions in Ask
+Moby from cited official sources. Community reports are shown to other
+users nearby who chose to see them, always marked unverified, and never with your name or note.
+Nothing about you is decided automatically.
 
 ## Who else handles your data (processors)
 
@@ -36,6 +39,7 @@ become public alerts. Nothing about you is decided automatically.
 | Google (Firebase Authentication, Firestore, Cloud Messaging, App Check, Maps) | Accounts, settings, notifications, abuse prevention, maps | USA and other countries; EU Standard Contractual Clauses |
 | Nebius | Hosting our service and database; AI models | European Union |
 | LangChain (LangSmith) | Monitoring the AI pipeline's quality, if enabled | USA; EU Standard Contractual Clauses |
+| Tavily | Web search for context about hazards (e.g. official bulletins and news), using only the hazard type, place and time, never your notes or identity. For Ask Moby, a short search query rewritten by AI to remove personal details, searched on official government websites only | USA; EU Standard Contractual Clauses |
 
 Official warnings come from public agencies. We don't send them your data.
 
@@ -44,7 +48,7 @@ Official warnings come from public agencies. We don't send them your data.
 You can, at any time:
 - **download your data:** Settings → Privacy & data → Download my data;
 - **delete your account and data:** Settings → Privacy & data → Delete my account. Or ask us at
-  [CONTACT EMAIL], or via [WEB DELETION PAGE];
+  [CONTACT EMAIL], or via the [account deletion page](/legal/delete-account);
 - **correct** your name and settings in the app;
 - **turn off location for alerts**, or send reports with an approximate location;
 - **object** to processing, or **withdraw consent**, without affecting what was done before.

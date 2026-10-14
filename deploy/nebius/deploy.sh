@@ -98,6 +98,16 @@ cmd_setup() {
       echo "no Firebase service-account key found (set FCM_KEY=path): push delivery will run dry" >&2
     fi
   fi
+  if [ -z "${TAVILY_SECRET:-}" ]; then
+    # Tavily web search/extract (guidance job; the LangGraph brief). Optional, from .env.
+    local tkey; tkey="$(grep -E '^TAVILY_API_KEY=' "$ROOT/.env" 2>/dev/null | cut -d= -f2-)"
+    if [ -n "$tkey" ]; then
+      "$NEBIUS" mysterybox secret create "${P[@]}" --name "$NAME-tavily" \
+        --secret-version-payload "[{\"key\":\"TAVILY_API_KEY\",\"string_value\":\"$tkey\"}]" >/dev/null
+      save TAVILY_SECRET "$NAME-tavily"
+      echo "created secret $NAME-tavily" >&2
+    fi
+  fi
   if [ -z "${BACKUP_BUCKET:-}" ]; then
     run "$NEBIUS" storage bucket create "${P[@]}" --name "$NAME-backups" >/dev/null
     save BACKUP_BUCKET "$NAME-backups"
@@ -148,6 +158,7 @@ cmd_endpoint() {
     --env-secret "MOBY_REPORTER_SALT=$SALT_SECRET" \
     ${FCM_SECRET:+--env-secret "FIREBASE_SERVICE_ACCOUNT_JSON=$FCM_SECRET"} \
     --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET" \
+    ${TAVILY_SECRET:+--env-secret "TAVILY_API_KEY=$TAVILY_SECRET"} \
     --env "FIREBASE_PROJECT_ID=$fb_project" \
     --env "FIREBASE_PROJECT_NUMBER=$(python3 -c 'import json;print(json.load(open("'"$ROOT"'/google-services.json"))["project_info"]["project_number"])' 2>/dev/null)" \
     --env "MOBY_APP_CHECK=${MOBY_APP_CHECK:-monitor}" \
@@ -180,7 +191,14 @@ job() {  # job <name> <command> [extra flags...]
 
 cmd_embed()  { job embed "python -m moby.jobs.embed_events" --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET"; }
 # Draft guidance bundle from official pages (Ultra); review and publish it in the console.
-cmd_guidance() { job guidance "python -m moby.jobs.guidance" --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET"; }
+cmd_guidance() {
+  if [ -n "${TAVILY_SECRET:-}" ]; then
+    job guidance "python -m moby.jobs.guidance --fetcher tavily" --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET" \
+      --env-secret "TAVILY_API_KEY=$TAVILY_SECRET"
+  else
+    job guidance "python -m moby.jobs.guidance" --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET"
+  fi
+}
 cmd_backup() {
   need BACKUP_BUCKET setup
   # The bucket is mounted into the job, so the dump lands in object storage directly.

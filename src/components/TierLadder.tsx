@@ -7,24 +7,25 @@ import type { Alert, VerificationLabel } from '@/api/types';
 const STEPS: { label: VerificationLabel; title: string; body: string }[] = [
   {
     label: 'unverified_report',
-    title: 'Reported',
-    body: 'Someone nearby sent a report. Not checked yet.',
+    title: 'Reported by 1 person',
+    body: 'Unverified. One person nearby reported this; nobody has checked it.',
   },
   {
     label: 'corroborated_report',
-    title: 'Corroborated',
-    body: 'Separate people reported the same thing, so a reviewer is checking it.',
+    title: 'Reported by several people',
+    body: 'Unverified. Different people nearby reported the same thing. No official source has confirmed it.',
   },
   {
     label: 'official_confirmed',
-    title: 'Confirmed',
-    body: 'An official agency issued it, or a reviewer confirmed the reports.',
+    title: 'Confirmed by an agency',
+    body: 'An official warning service issued it.',
   },
 ];
 
 /**
- * How sure Moby is about this alert (plan §10 tiers 0 → 1 → 2), so a community report
- * is never read as an official warning. Official alerts start at the top step.
+ * How sure Moby is about this alert (tiers 0 → 1 → 2), so a community report is never
+ * read as an official warning. Nobody reviews community reports before people see them;
+ * only an agency's warning is "confirmed". Official alerts start at the top step.
  */
 export function TierLadder({ alert }: { alert: Alert }) {
   const { theme } = useTheme();
@@ -48,7 +49,9 @@ export function TierLadder({ alert }: { alert: Alert }) {
         STEPS.map((step, i) => {
           const reached = i <= current;
           const isNow = i === current;
-          const color = reached ? theme.accent.calm : theme.line.hairline;
+          // The trust colors: violet while it's only people's reports, blue once an agency confirms.
+          const trust = step.label === 'official_confirmed' ? theme.trust.official : theme.trust.unverified;
+          const color = reached ? trust.text : theme.line.hairline;
           return (
             <View key={step.label} style={styles.step}>
               <View style={styles.rail}>
@@ -66,6 +69,9 @@ export function TierLadder({ alert }: { alert: Alert }) {
                 {isNow && (
                   <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
                     {step.body}
+                    {alert.reports_disagree
+                      ? ' Their reports disagree about how serious it is, so this shows the most serious.'
+                      : ''}
                   </Text>
                 )}
               </View>

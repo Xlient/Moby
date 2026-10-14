@@ -1,7 +1,12 @@
-"""Delivery worker (handoff contract 5): push tier-2 events to the people they concern.
+"""Delivery worker (handoff contract 5): push alerts to the people they concern.
+
+Official alerts are pushed at tier 2. Community events (no agency behind them) are pushed,
+labelled "Unverified", to people whose community_reports preference includes them:
+corroborated (2+ different people, tier 1) by default, single reports (tier 0) on opt-in.
+Nothing waits for a reviewer; a reviewer's reject only stops further pushes.
 
 Each cycle:
-  1. Find (event, device) pairs where a live tier-2 event lies inside one of the
+  1. Find (event, device) pairs where a live event lies inside one of the
      device owner's areas (saved areas or "near me") at or above that area's
      severity floor — critical always qualifies.
   2. Drop pairs the owner's alert preferences filter out (critical never is) —
@@ -37,7 +42,7 @@ BATCH = 500
 CANDIDATES_SQL = """
 SELECT DISTINCT ON (e.event_id, d.device_id)
        e.event_id, e.source, e.source_feed, e.external_id, e.hazard_type, e.product, e.marine, e.severity, e.tier,
-       e.title, e.description, e.alert_headline, e.alert_body,
+       e.title, e.description, e.alert_headline, e.alert_body, e.distinct_reporter_count, e.reports_disagree,
        e.language, e.title_en, e.description_en, e.translation_status,
        e.first_reported_at, e.last_updated_at, e.expires_at, e.raw_payload,
        ST_Y(e.location::geometry) AS lat, ST_X(e.location::geometry) AS lon,
@@ -50,7 +55,10 @@ JOIN subscriptions s
          >= array_position(ARRAY['low','medium','high','critical'], s.min_severity))
 JOIN devices d ON d.owner = s.owner AND d.disabled_at IS NULL AND d.registered_at < e.last_updated_at
 LEFT JOIN user_preferences p ON p.owner = d.owner
-WHERE e.tier = 2
+WHERE ((e.source = 'official' AND e.tier = 2)
+       OR (e.source <> 'official'
+           AND e.tier >= CASE coalesce(p.alert_preferences->>'community_reports', 'corroborated')
+                          WHEN 'all' THEN 0 WHEN 'corroborated' THEN 1 ELSE 3 END))
   AND e.reviewer_decision IS DISTINCT FROM 'reject'
   AND e.duplicate_of IS NULL
   AND (e.expires_at IS NULL OR e.expires_at > now())
@@ -113,6 +121,13 @@ def build_push(row: dict[str, Any]) -> Push:
         body = body[: limit - 1].rstrip() + "…"
     body += suffix
     critical = row["severity"] == "critical"
+    if row.get("source") in ("manual", "mesh"):
+        # Never let a community report read like an agency warning: say so in the title.
+        people = max(row.get("distinct_reporter_count") or 0, 1)
+        who = "1 person nearby" if people == 1 else f"{people} people nearby"
+        disagree = " Their reports disagree; this uses the most serious." if row.get("reports_disagree") else ""
+        title = f"Unverified: {title}"
+        body = f"Reported by {who}, not confirmed by officials.{disagree} {body}".strip()[:240]
     return Push(
         token=row["push_token"],
         title=("Critical: " + title) if critical and not title.lower().startswith("critical") else title,

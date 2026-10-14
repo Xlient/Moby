@@ -1,4 +1,4 @@
-import { Avatar, Card, Text } from 'react-native-paper';
+import { Avatar, Card, Icon, Text } from 'react-native-paper';
 import { View, StyleSheet } from 'react-native';
 import { useTheme } from '@/theme/ThemeContext';
 import { spacing, radius } from '@/theme/tokens';
@@ -60,35 +60,30 @@ function treatmentFor(alert: Alert, theme: Theme): Treatment {
   }
 }
 
+/**
+ * Who says so, at a glance and in both themes: a filled blue pill with a check badge for an
+ * official agency; a dashed violet pill with a question mark for unverified reports from
+ * people nearby. Pills rather than Paper's Chip: Chip forces a single line, and the trust
+ * label must never truncate (design system §8) — at 200% font scale it wraps instead.
+ */
 function TrustLabel({ alert, theme }: { alert: Alert; theme: Theme }) {
   const text = trustText(alert);
-  // Pills rather than Paper's Chip: Chip forces a single line, and the trust label
-  // must never truncate (design system §8) — at 200% font scale it wraps instead.
-  switch (alert.verification_label) {
-    case 'official_confirmed':
-      // Filled, but tonal, so it never out-shouts the headline (spec 6.3).
-      return (
-        <View style={[styles.pill, { backgroundColor: theme.bg.recessed, borderColor: theme.bg.recessed }]}>
-          <Text variant="labelMedium" style={[styles.trustText, { color: theme.text.primary }]}>
-            {text}
-          </Text>
-        </View>
-      );
-    case 'corroborated_report':
-      return (
-        <View style={[styles.pill, { borderColor: theme.line.hairline }]}>
-          <Text variant="labelMedium" style={[styles.trustText, { color: theme.text.secondary }]}>
-            {text}
-          </Text>
-        </View>
-      );
-    case 'unverified_report':
-      return (
-        <Text variant="labelMedium" style={[styles.trustText, { color: theme.text.secondary }]}>
-          {text}
-        </Text>
-      );
-  }
+  const official = alert.verification_label === 'official_confirmed';
+  const c = official ? theme.trust.official : theme.trust.unverified;
+  return (
+    <View
+      style={[
+        styles.pill,
+        styles.trustPill,
+        { backgroundColor: c.bg, borderColor: c.border, borderStyle: official ? 'solid' : 'dashed' },
+      ]}
+    >
+      <Icon source={official ? 'check-decagram' : 'help-circle-outline'} size={16} color={c.text} />
+      <Text variant="labelMedium" style={[styles.trustText, styles.trustTextFlex, { color: c.text }]}>
+        {text}
+      </Text>
+    </View>
+  );
 }
 
 export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
@@ -127,7 +122,8 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
       style={[
         styles.card,
         { backgroundColor: t.cardColor, opacity: expired ? 0.7 : 1 },
-        t.mode === 'outlined' && { borderColor: theme.line.hairline },
+        // Single unverified reports: a dashed violet outline, matching their label.
+        t.mode === 'outlined' && { borderColor: theme.trust.unverified.border, borderStyle: 'dashed' as const },
       ]}
       contentStyle={styles.content}
     >
@@ -200,7 +196,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.scale[0],
     paddingHorizontal: spacing.scale[2],
   },
+  trustPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.scale[1],
+  },
   trustText: {
-    fontWeight: '500',
+    fontWeight: '600',
+  },
+  trustTextFlex: {
+    flexShrink: 1,
   },
 });

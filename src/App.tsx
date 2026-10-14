@@ -84,7 +84,7 @@ export function App() {
   const screen = stack[stack.length - 1]!;
   const [onboarded, setOnboarded] = useState(hasSeenOnboarding);
 
-  const showAssistant = isEnabled('on_device_assistant');
+  const showAssistant = isEnabled('ask_moby') || isEnabled('on_device_assistant');
 
   const push = useCallback((next: Screen) => setStack((s) => [...s, next]), []);
   const goBack = useCallback(

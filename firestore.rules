@@ -27,10 +27,11 @@ service cloud.firestore {
     // profiles don't have it; absent means defaults).
     function validAlertPreferences(p) {
       return p is map
-        && p.keys().hasOnly(['hazard_types', 'min_severity', 'include_marine'])
+        && p.keys().hasOnly(['hazard_types', 'min_severity', 'include_marine', 'community_reports'])
         && (!('hazard_types' in p) || validHazards(p.hazard_types))
         && (!('min_severity' in p) || validSeverity(p.min_severity))
-        && (!('include_marine' in p) || p.include_marine is bool);
+        && (!('include_marine' in p) || p.include_marine is bool)
+        && (!('community_reports' in p) || p.community_reports in ['off', 'corroborated', 'all']);
     }
 
     function validSettings(s) {

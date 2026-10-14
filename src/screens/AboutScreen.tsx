@@ -24,10 +24,20 @@ const SOURCES: { group: string; names: string }[] = [
   { group: 'Safety guidance', names: 'Ready.gov (FEMA) and the National Weather Service' },
 ];
 
+// What each model does, and the checks around it (models never decide how urgent anything is).
+const AI_ROLES: { model: string; role: string }[] = [
+  { model: 'NVIDIA Nemotron Nano', role: 'Translates warnings into English. Every number must survive the translation, or the original is shown instead.' },
+  { model: 'NVIDIA Nemotron Super', role: '“What this means for you” on official warnings, and Ask Moby’s answers. Both use only the official text and are checked against it before you see them.' },
+  { model: 'NVIDIA Nemotron Ultra', role: 'Writes the offline safety guidance from official pages. Each line must cite the page it came from.' },
+  { model: 'Qwen3 embeddings', role: 'Finds the guidance that answers your question in Ask Moby.' },
+  { model: 'Tavily', role: 'When Moby’s guidance doesn’t cover a question, searches only official government websites for that country.' },
+];
+
 const FEATURES: { flag: keyof ClientConfig['flags']; label: string }[] = [
   { flag: 'offline_guidance_cards', label: 'Offline safety guidance' },
   { flag: 'situational_brief', label: 'AI situation briefs' },
   { flag: 'mesh_relay', label: 'Bluetooth relay between phones' },
+  { flag: 'ask_moby', label: 'Ask Moby' },
   { flag: 'on_device_assistant', label: 'On-device assistant' },
   { flag: 'proximity_confirmation', label: '“Can you confirm?” prompts' },
 ];
@@ -56,13 +66,13 @@ export function AboutScreen({ onBack, onReplayIntro }: AboutScreenProps) {
         </View>
 
         <View style={{ gap: spacing.scale[2] }}>
-          <Text variant="titleMedium" accessibilityRole="header" style={{ color: theme.text.primary }}>How a report becomes an alert</Text>
+          <Text variant="titleMedium" accessibilityRole="header" style={{ color: theme.text.primary }}>What happens to a report</Text>
           <View style={card}>
             {[
               ['1', 'You report what you see. It’s saved on your phone first, so it works offline.'],
-              ['2', 'An AI pipeline matches it with other reports and official feeds. It never raises an alert by itself.'],
-              ['3', 'When several people agree, or it looks severe, a person reviews it.'],
-              ['4', 'Only then is it sent to people nearby, labelled with how it was confirmed.'],
+              ['2', 'Moby groups it with other reports of the same thing nearby, and checks for an official warning.'],
+              ['3', 'People nearby who chose to hear about reports from others get it, marked unverified, with how many people reported it.'],
+              ['4', 'Only an official agency’s warning is ever shown as confirmed. You choose what you hear about in Settings → Alert types.'],
             ].map(([n, text]) => (
               <View key={n} style={styles.stepRow}>
                 <Text variant="titleSmall" style={[styles.stepNum, { color: theme.accent.calm }]}>{n}</Text>
@@ -84,6 +94,23 @@ export function AboutScreen({ onBack, onReplayIntro }: AboutScreenProps) {
           </View>
           <Text style={[typography.meta, muted]}>
             Non-English warnings are translated by Moby and labelled; the agency’s original is one tap away.
+          </Text>
+        </View>
+
+        <View style={{ gap: spacing.scale[2] }}>
+          <Text variant="titleMedium" accessibilityRole="header" style={{ color: theme.text.primary }}>How Moby uses AI</Text>
+          <View style={card}>
+            {AI_ROLES.map((a) => (
+              <View key={a.model} style={styles.sourceRow}>
+                <Text variant="titleSmall" style={{ color: theme.text.primary }}>{a.model}</Text>
+                <Text variant="bodyMedium" style={muted}>{a.role}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={[typography.meta, muted]}>
+            AI never decides whether something is confirmed or how urgent it is; those are fixed rules. Anything
+            written by AI is labelled, and the official text is always shown with it. Models run on Nebius Token
+            Factory.
           </Text>
         </View>
 
