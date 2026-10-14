@@ -160,9 +160,10 @@ describe('users/{uid}', () => {
     await assertFails(updateDoc(doc(alice(), 'users', ALICE.uid), { 'settings.debug': true }));
   });
 
-  test('profile cannot be deleted from the client', async () => {
+  test('owners can delete their profile (account deletion), others cannot', async () => {
     await seedAliceProfile();
-    await assertFails(deleteDoc(doc(alice(), 'users', ALICE.uid)));
+    await assertFails(deleteDoc(doc(bob(), 'users', ALICE.uid)));
+    await assertSucceeds(deleteDoc(doc(alice(), 'users', ALICE.uid)));
   });
 });
 

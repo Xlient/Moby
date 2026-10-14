@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/api/client';
+import { api, ApiRequestError } from '@/api/client';
 import type { SituationalBrief, BriefPending } from '@/api/types';
 
 type BriefState =
@@ -18,6 +18,8 @@ export function useBrief(eventId: string | undefined): {
       return api.getEventBrief(eventId!);
     },
     enabled: !!eventId,
+    // 404 = no brief was requested for this event (most alerts): nothing to retry.
+    retry: (count, err) => !(err instanceof ApiRequestError && err.status === 404) && count < 2,
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
     refetchInterval: (query) => {
@@ -35,6 +37,10 @@ export function useBrief(eventId: string | undefined): {
 
   if (query.isLoading) {
     return { state: { status: 'pending', retryAfterSeconds: 0 }, refetch: query.refetch };
+  }
+
+  if (query.error instanceof ApiRequestError && query.error.status === 404) {
+    return { state: { status: 'idle' }, refetch: query.refetch };
   }
 
   if (query.error) {

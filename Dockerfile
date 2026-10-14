@@ -23,6 +23,7 @@ RUN uv sync --frozen --no-install-project
 COPY moby ./moby
 COPY scripts ./scripts
 COPY db ./db
+COPY legal ./legal
 
 # Never run as root.
 RUN useradd --system --uid 10001 moby

@@ -4,6 +4,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -128,6 +129,13 @@ export async function addSubscription(uid: string, subscription: NewSubscription
     created_at: serverTimestamp(),
   });
   return ref.id;
+}
+
+/** Account deletion: the profile and every saved area (owner-only, see firestore.rules). */
+export async function deleteUserData(uid: string): Promise<void> {
+  const areas = await getDocs(subscriptionsCol(uid));
+  await Promise.all(areas.docs.map((d) => deleteDoc(d.ref)));
+  await deleteDoc(userDoc(uid));
 }
 
 export async function removeSubscription(uid: string, subscriptionId: string): Promise<void> {

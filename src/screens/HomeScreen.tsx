@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Linking, ScrollView, View, StyleSheet } from 'react-native';
+import { Linking, Pressable, ScrollView, View, StyleSheet } from 'react-native';
 import { Avatar, Button, FAB, Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import type { Theme } from '@/theme/tokens';
@@ -18,6 +18,7 @@ interface HomeScreenProps {
   onAlertPress: (alertId: string) => void;
   onSeeAllPress: () => void;
   onMapPress: () => void;
+  onGuidancePress: () => void;
 }
 
 const MAX_HOME_CARDS = 3;
@@ -115,7 +116,7 @@ function LoadingCards({ theme }: { theme: Theme }) {
   );
 }
 
-export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPress }: HomeScreenProps) {
+export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress }: HomeScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
   const { firstName } = useAuth();
@@ -238,6 +239,21 @@ export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPr
             onRadiusPress={() => setPickerVisible(true)}
           />
         </View>
+
+        <View style={styles.section}>
+          <Pressable
+            onPress={onGuidancePress}
+            accessibilityRole="button"
+            accessibilityLabel="Safety guidance. Works without signal."
+            style={[styles.guidanceRow, { backgroundColor: theme.bg.raised }]}
+          >
+            <Avatar.Icon size={40} icon="book-open-variant" style={{ backgroundColor: theme.bg.recessed }} color={theme.text.primary} />
+            <View style={styles.guidanceText}>
+              <Text variant="titleMedium" style={{ color: theme.text.primary }}>Safety guidance</Text>
+              <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>What to do in a flood, fire, quake or storm. Works without signal.</Text>
+            </View>
+          </Pressable>
+        </View>
       </ScrollView>
 
       <FAB
@@ -285,6 +301,17 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  guidanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.scale[3],
+    padding: spacing.scale[4],
+    borderRadius: radius.card,
+  },
+  guidanceText: {
+    flex: 1,
+    gap: spacing.scale[1],
   },
   alignStart: {
     alignSelf: 'flex-start',

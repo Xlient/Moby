@@ -11,6 +11,7 @@ import { useQueuedReport } from '@/hooks/useReportQueue';
 import { SeverityIndicator } from '@/components/SeverityIndicator';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { enqueueReport, flushReportQueue, newClientEventId } from '@/lib/reportQueue';
+import { getPrivacySettings } from '@/lib/privacySettings';
 import { formatTimeAgo, hazardIcon } from '@/lib/alerts';
 import type { HazardType, ObservedEffect, Severity } from '@/api/types';
 
@@ -328,6 +329,9 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
               maxLength={NOTE_MAX}
               multiline
             />
+            <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
+              Describe what you see. Please don’t include names, phone numbers or other personal details.
+            </Text>
             {note.length > NOTE_MAX - 100 && (
               <Text variant="bodyMedium" style={{ color: theme.text.secondary, fontVariant: ['tabular-nums'] }}>
                 {NOTE_MAX - note.length} characters left
@@ -335,7 +339,7 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
             )}
 
             <Text variant="bodyMedium" style={[styles.reviewNote, { color: theme.text.secondary }]}>
-              Reviewers check reports before anyone else sees them. {isOnline ? '' : 'You’re offline — it will be saved and sent when you have signal.'}
+              Reviewers check reports before anyone else sees them{getPrivacySettings().approximateReports ? '; your location is sent approximately (about 500 m)' : ''}. {isOnline ? '' : 'You’re offline — it will be saved and sent when you have signal.'}
             </Text>
             <Button
               mode="contained"

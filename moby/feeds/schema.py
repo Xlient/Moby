@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
 
-FeedName = Literal["noaa", "usgs", "eonet", "gdacs"]
+FeedName = Literal["noaa", "usgs", "eonet", "gdacs", "cap", "emsc", "ptwc", "jtwc", "nhc", "jma", "bipad"]
 HazardType = Literal["flood", "fire", "earthquake", "storm", "landslide", "other"]
 Severity = Literal["low", "medium", "high", "critical"]
 
@@ -29,7 +29,19 @@ class NormalizedEvent:
     lon: float | None = None
     location_accuracy_m: float | None = None
     expires_at: datetime | None = None
-    region: str = "US"
+    region: str = "US"              # 'US' | 'CN' | 'INTL' (migration 0009)
+    # ISO 3166-1 alpha-2 of the issuing authority / event, when known.
+    country: str | None = None
+    # The alert's area as WKT MULTIPOLYGON (lon lat order), when the source gives one.
+    # Proximity uses it instead of the centre point (migration 0009).
+    area_wkt: str | None = None
+    # Language of title/description (BCP 47) when not English; drives translation (0012).
+    language: str | None = None
+    # CAP: (scheme, code) area codes, resolved to `area_wkt` from cap_geocodes when the
+    # message has no polygon (migration 0011).
+    geocodes: list[tuple[str, str]] = field(default_factory=list)
+    # Earthquakes: lets the same quake from several networks be matched (migration 0010).
+    magnitude: float | None = None
     # The source's own name for the product ("Flood Warning", "Small Craft Advisory",
     # "earthquake", "TC", "wildfires"), for finer per-user filtering than hazard_type.
     product: str | None = None
@@ -37,10 +49,10 @@ class NormalizedEvent:
     marine: bool = False
     # NOAA only: zone URLs to resolve when the alert carries no geometry.
     zone_urls: list[str] = field(default_factory=list)
-    # NOAA only: identifiers of earlier messages this one updates or cancels. The
-    # poller folds the chain into one event row (see poller.link_chains).
+    # NOAA and CAP: identifiers of earlier messages this one updates or cancels. The
+    # poller folds the chain into one event row (see poller.group_chains).
     references: list[str] = field(default_factory=list)
-    # NOAA only: a Cancel message — ends the referenced alert instead of adding one.
+    # NOAA and CAP: a Cancel message — ends the referenced alert instead of adding one.
     cancels: bool = False
 
     @property

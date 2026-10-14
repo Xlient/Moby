@@ -100,8 +100,15 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
   const meta = [
     expired ? 'Ended' : null,
     alert.location_name,
-    distanceKm === undefined ? null : distanceKm < 0.1 ? '<0.1 km' : `${distanceKm.toFixed(1)} km`,
+    distanceKm === undefined
+      ? null
+      : distanceKm === 0
+        ? 'In the warning area'
+        : distanceKm < 0.1
+          ? '<0.1 km'
+          : `${distanceKm.toFixed(1)} km`,
     formatTimeAgo(alert.issued_at),
+    alert.translated ? 'Translated' : null,
   ]
     .filter(Boolean)
     .join(' · ');

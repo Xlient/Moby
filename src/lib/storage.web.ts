@@ -14,6 +14,14 @@ export const kv = {
       /* private mode / quota */
     }
   },
+  /** Account deletion: remove everything this app stored in the browser. */
+  clear(): void {
+    try {
+      window.localStorage.clear();
+    } catch {
+      /* ignore */
+    }
+  },
 };
 
 export const asyncStorage = {

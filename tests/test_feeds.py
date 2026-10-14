@@ -27,7 +27,7 @@ def assert_valid(events) -> None:
         assert e.severity in {"low", "medium", "high", "critical"}
         assert e.external_id
         assert e.first_reported_at.tzinfo is not None, "timestamps must be timezone-aware"
-        assert e.region == "US"
+        assert e.region in {"US", "CN", "INTL"}
         assert e.has_location or e.zone_urls
 
 
@@ -91,12 +91,13 @@ def test_noaa_cancellation_without_reference_is_skipped():
 
 # ── USGS ─────────────────────────────────────────────────────────────────────
 
-def test_usgs_filters_small_and_non_us_quakes():
+def test_usgs_filters_small_quakes_and_keeps_worldwide_ones():
     r = usgs.normalize(load("usgs_quakes"))
-    assert len(r.events) == 1
-    assert r.skipped == {"below_min_magnitude": 1, "outside_region": 1}
+    assert len(r.events) == 2
+    assert r.skipped == {"below_min_magnitude": 1}
     assert_valid(r.events)
-    assert r.events[0].hazard_type == "earthquake"
+    assert {e.region for e in r.events} == {"US", "INTL"}   # travellers: worldwide since migration 0009
+    assert all(e.hazard_type == "earthquake" for e in r.events)
 
 
 @pytest.mark.parametrize(
@@ -161,11 +162,12 @@ def test_eonet_severity(hazard, mag, unit, expected):
 
 # ── GDACS ────────────────────────────────────────────────────────────────────
 
-def test_gdacs_keeps_us_events_and_keys_on_event_not_episode():
+def test_gdacs_keeps_worldwide_events_and_keys_on_event_not_episode():
     r = gdacs.normalize(load("gdacs_events"))
-    assert len(r.events) == 1
-    assert r.skipped == {"outside_region": 1}
+    assert len(r.events) == 2
+    assert not r.skipped
     assert_valid(r.events)
+    assert {e.region for e in r.events} == {"US", "INTL"}
     p = load("gdacs_events")["features"][0]["properties"]
     assert r.events[0].external_id == f"{p['eventtype']}-{p['eventid']}"
 

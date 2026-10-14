@@ -53,8 +53,7 @@ def normalize(payload: dict[str, Any]) -> NormalizeResult:
         # often have none, so fall back to our region boxes.
         region = "US" if _is_us(p) else region_for(*point)
         if region is None:
-            result.skipped["outside_region"] += 1
-            continue
+            region = "INTL"  # worldwide since migration 0009 (travellers)
         first = _ts(p.get("fromdate"))
         if first is None:
             result.skipped["no_timestamp"] += 1
