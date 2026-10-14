@@ -7,6 +7,7 @@ const DEFAULT_FLAGS: ClientConfig['flags'] = {
   cascade_analysis: false,
   offline_guidance_cards: false,
   on_device_assistant: false,
+  ask_moby: false,
   mesh_relay: false,
   proximity_confirmation: false,
   early_tier_opt_in: false,

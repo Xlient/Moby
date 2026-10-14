@@ -2,7 +2,7 @@
 
     uv run --env-file .env python scripts/discover_guidance_sources.py JP [--hazard flood ...]
 
-Searches ONLY the country's official government and agency domains (OFFICIAL below) with
+Searches ONLY the country's official government and agency domains (moby/search/official.py) with
 Tavily, and prints candidates for a person to check. Nothing is added automatically: a
 page joins moby/jobs/guidance.py SOURCES only after someone has read it and confirmed
 it's official, current, and allows automated reading.
@@ -12,25 +12,8 @@ Cost: one Tavily search (1 credit) per hazard.
 import argparse
 import sys
 
+from moby.search.official import OFFICIAL
 from moby.search.tavily import Tavily, TavilyNotConfigured
-
-# Official domains only: national disaster agencies, met services, civil protection and
-# official tourism boards' safety pages. Extend with care.
-OFFICIAL: dict[str, list[str]] = {
-    "JP": ["bousai.go.jp", "jma.go.jp", "fdma.go.jp", "japan.travel"],
-    "ID": ["bnpb.go.id", "bmkg.go.id"],
-    "PH": ["ndrrmc.gov.ph", "pagasa.dost.gov.ph", "phivolcs.dost.gov.ph"],
-    "MX": ["gob.mx"],
-    "IT": ["protezionecivile.gov.it"],
-    "GR": ["civilprotection.gov.gr"],
-    "IS": ["almannavarnir.is", "safetravel.is"],
-    "NZ": ["civildefence.govt.nz", "getready.govt.nz"],
-    "NP": ["bipad.gov.np", "drrportal.gov.np", "neoc.gov.np"],
-    "ES": ["proteccioncivil.es", "aemet.es"],
-    "PT": ["prociv.gov.pt"],
-    "IN": ["ndma.gov.in"],
-    "TH": ["disaster.go.th", "tmd.go.th"],
-}
 
 QUERIES = {
     "earthquake": "what to do during an earthquake safety advice",

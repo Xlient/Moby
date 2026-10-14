@@ -3,6 +3,8 @@ import type {
   AlertPreferences,
   BriefPending,
   AlertExplanation,
+  AskAnswer,
+  AskRequest,
   CascadeAssessment,
   ClientConfig,
   GuidanceCard,
@@ -23,6 +25,7 @@ import {
   getMockConfig,
   getMockBrief,
   getMockExplanation,
+  getMockAnswer,
   getMockGuidanceCards,
   getMockSubscriptions,
   getMockEventReports,
@@ -302,6 +305,16 @@ export class ApiClient {
       return e;
     }
     return this.request('GET', `/events/${encodeURIComponent(eventId)}/explain`);
+  }
+
+  // ── Ask Moby (Nemotron Super, cited sources only) ───────────────────
+
+  async ask(body: AskRequest): Promise<AskAnswer> {
+    if (USE_MOCK) {
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      return getMockAnswer(body.question);
+    }
+    return this.request<AskAnswer>('POST', '/ask', { body });
   }
 
   // ── Situational brief ────────────────────────────────────────────

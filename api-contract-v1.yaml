@@ -365,6 +365,32 @@ paths:
                   retry_after_seconds: { type: integer }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /ask:
+    post:
+      tags: [analysis]
+      summary: Ask Moby, a safety assistant that answers only from sources it can cite
+      description: >
+        Sources: active official alerts near the given point, Moby's guidance cards (retrieved
+        with Qwen3 embeddings), and, when those don't cover it, the country's official websites
+        via Tavily (searched with a generic query that NVIDIA Nemotron Nano rewrites to drop
+        personal details). NVIDIA Nemotron Super answers with citations; the answer is withheld
+        (abstained = true) if it isn't grounded in the sources it cites. Questions are not
+        stored. Signed-in only; 20 questions per hour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AskRequest' }
+      responses:
+        '200':
+          description: An answer, or abstained
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AskAnswer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { description: Too many questions }
+        '503': { description: Ask Moby isn't available right now }
+
   /events/{event_id}/confirm:
     post:
       tags: [reports]
@@ -855,6 +881,7 @@ components:
             cascade_analysis: { type: boolean, default: false }
             offline_guidance_cards: { type: boolean, default: false }
             on_device_assistant: { type: boolean, default: false }
+            ask_moby: { type: boolean, default: false, description: 'POST /ask is available (Token Factory configured)' }
             mesh_relay: { type: boolean, default: false }
             proximity_confirmation: { type: boolean, default: false }
             early_tier_opt_in: { type: boolean, default: false }
@@ -1138,6 +1165,38 @@ components:
           description: Instructions taken from the warning itself (empty if it gives none)
         model: { type: string, description: e.g. nvidia/nemotron-3-super-120b-a12b }
         generated_at: { type: string, format: date-time }
+
+    AskRequest:
+      type: object
+      required: [question]
+      properties:
+        question: { type: string, minLength: 3, maxLength: 500 }
+        lat: { type: number, minimum: -90, maximum: 90, description: Optional; adds nearby official alerts as sources }
+        lon: { type: number, minimum: -180, maximum: 180 }
+        country: { type: string, pattern: '^[A-Z]{2}$', description: Picks the official websites to search }
+
+    AskAnswer:
+      type: object
+      required: [abstained, sources, model, searched_web]
+      properties:
+        answer:
+          type: string
+          nullable: true
+          description: Plain-language answer with [n] markers matching sources; null when abstained
+        abstained: { type: boolean }
+        sources:
+          type: array
+          items:
+            type: object
+            required: [n, kind, title, publisher]
+            properties:
+              n: { type: integer }
+              kind: { type: string, enum: [alert, guidance, web] }
+              title: { type: string }
+              publisher: { type: string }
+              url: { type: string, nullable: true }
+        model: { type: string }
+        searched_web: { type: boolean, description: True when official websites were searched via Tavily }
 
     SituationalBrief:
       type: object

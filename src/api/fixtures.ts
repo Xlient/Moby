@@ -6,6 +6,7 @@ import type {
   Subscription,
   BriefPending,
   AlertExplanation,
+  AskAnswer,
   EventReports,
   ReportSummary,
 } from './types';
@@ -31,6 +32,7 @@ export const mockConfig: ClientConfig = {
     cascade_analysis: false,
     offline_guidance_cards: true,
     on_device_assistant: false,
+    ask_moby: true,
     mesh_relay: false,
     proximity_confirmation: false,
     early_tier_opt_in: false,
@@ -351,10 +353,26 @@ export function getMockExplanation(eventId: string): AlertExplanation | undefine
   return {
     event_id: eventId,
     summary:
-      'Rivers in the area are rising after heavy rain, and flooding is expected along low-lying roads. '
-      + 'The warning says this is dangerous for anyone driving or walking near the water.',
-    actions: ['Move to higher ground if water rises around you.', 'Do not drive through flooded roads.'],
+      'Flash flooding is expected in low-lying areas along the Russian River. '
+      + 'The warning tells anyone there to move to higher ground immediately.',
+    actions: ['Move to higher ground immediately.'],
     model: 'nvidia/nemotron-3-super-120b-a12b',
     generated_at: new Date().toISOString(),
+  };
+}
+
+// Ask Moby sample: answers about floods, abstains on anything else (like the real one off-topic).
+export function getMockAnswer(question: string): AskAnswer {
+  if (!/flood|water|road/i.test(question)) {
+    return { answer: null, abstained: true, sources: [], model: 'nvidia/nemotron-3-super-120b-a12b', searched_web: false };
+  }
+  return {
+    answer: 'Turn around and find another route: never drive through a flooded road [1]. '
+      + 'Just 12 inches of moving water can carry away most cars [1].',
+    abstained: false,
+    sources: [{ n: 1, kind: 'guidance', title: 'Flooded road: turn around', publisher: 'National Weather Service',
+      url: 'https://www.weather.gov/safety/flood-turn-around-dont-drown' }],
+    model: 'nvidia/nemotron-3-super-120b-a12b',
+    searched_web: false,
   };
 }

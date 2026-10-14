@@ -659,6 +659,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Moby, a safety assistant that answers only from sources it can cite
+         * @description Sources: active official alerts near the given point, Moby's guidance cards (retrieved with Qwen3 embeddings), and, when those don't cover it, the country's official websites via Tavily (searched with a generic query that NVIDIA Nemotron Nano rewrites to drop personal details). NVIDIA Nemotron Super answers with citations; the answer is withheld (abstained = true) if it isn't grounded in the sources it cites. Questions are not stored. Signed-in only; 20 questions per hour.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AskRequest"];
+                };
+            };
+            responses: {
+                /** @description An answer, or abstained */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AskAnswer"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                /** @description Too many questions */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Ask Moby isn't available right now */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/{event_id}/confirm": {
         parameters: {
             query?: never;
@@ -1371,6 +1429,11 @@ export interface components {
                 offline_guidance_cards: boolean;
                 /** @default false */
                 on_device_assistant: boolean;
+                /**
+                 * @description POST /ask is available (Token Factory configured)
+                 * @default false
+                 */
+                ask_moby: boolean;
                 /** @default false */
                 mesh_relay: boolean;
                 /** @default false */
@@ -1584,6 +1647,30 @@ export interface components {
             model: string;
             /** Format: date-time */
             generated_at?: string;
+        };
+        AskRequest: {
+            question: string;
+            /** @description Optional; adds nearby official alerts as sources */
+            lat?: number;
+            lon?: number;
+            /** @description Picks the official websites to search */
+            country?: string;
+        };
+        AskAnswer: {
+            /** @description Plain-language answer with [n] markers matching sources; null when abstained */
+            answer?: string | null;
+            abstained: boolean;
+            sources: {
+                n: number;
+                /** @enum {string} */
+                kind: "alert" | "guidance" | "web";
+                title: string;
+                publisher: string;
+                url?: string | null;
+            }[];
+            model: string;
+            /** @description True when official websites were searched via Tavily */
+            searched_web: boolean;
         };
         SituationalBrief: {
             event_id: string;
