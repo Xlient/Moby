@@ -1288,14 +1288,19 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description OK */
+                /** @description OK (official alerts only, most severe first, at most 20) */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
                         "application/json": {
-                            records?: components["schemas"]["MeshRecord"][];
+                            records?: (components["schemas"]["MeshRecord"] & {
+                                /** @description For the gateway phone only; not sent over the air */
+                                headline?: string;
+                                /** Format: date-time */
+                                expires_at?: string;
+                            })[];
                         };
                     };
                 };
@@ -1750,13 +1755,15 @@ export interface components {
         };
         /** @description JSON mirror of the ~28-byte binary record relayed over BLE. The wire format is CBOR/packed-binary; this shape is only used at the gateway sync boundary. */
         MeshRecord: {
-            /** @description 8-byte truncated hash */
+            /** @description 8 bytes, hex. Reports: sha256(client_event_id)[:8] */
             event_id: string;
+            /** @description Index into HazardType: 0 flood, 1 fire, 2 earthquake, 3 storm, 4 landslide, 5 other */
             hazard_type: number;
-            /** @description Degrees times 1e6 */
+            /** @description Degrees times 1e6 (sent over the air rounded to 1e-4) */
             lat_e6: number;
-            /** @description Degrees times 1e6 */
+            /** @description Degrees times 1e6 (sent over the air rounded to 1e-4) */
             lon_e6: number;
+            /** @description Index into Severity: 0 low, 1 medium, 2 high, 3 critical */
             severity: number;
             confidence?: number;
             hop_count: number;

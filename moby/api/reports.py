@@ -5,6 +5,7 @@ and returns 202 — a 202 means durably received. The fusion pipeline (LangGraph
 owned separately) consumes pending rows and sets fusion_status, event_id and
 structured. Retries with the same client_event_id are idempotent.
 """
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Literal
 
@@ -68,6 +69,12 @@ class ReportIn(BaseModel):
         return v or None
 
 
+def mesh_key(client_event_id: str) -> str:
+    """The 8-byte id a report has on the Bluetooth mesh: sha256(client_event_id)[:8], hex.
+    Must match `meshKey` in src/mesh/codec.ts."""
+    return hashlib.sha256(client_event_id.encode()).digest()[:8].hex()
+
+
 def _accepted(row: dict) -> dict:
     out = {
         "client_event_id": row["client_event_id"],
@@ -105,20 +112,36 @@ async def submit_report(report: ReportIn, caller: Annotated[Caller, Depends(requ
             if (await cur.fetchone())["n"] >= MAX_REPORTS_PER_HOUR:
                 return JSONResponse({"detail": "too many reports; try again later"}, status_code=429,
                                     headers={"Retry-After": "600"})
+            params = {
+                "cid": report.client_event_id, "key": mesh_key(report.client_event_id),
+                "reporter": caller.reporter_hash,
+                "hazard": report.hazard_type, "effect": report.observed_effect, "severity": report.severity,
+                "lat": report.location.lat, "lon": report.location.lon, "acc": report.location.accuracy_m,
+                "observed_at": report.observed_at, "offline": report.captured_offline, "note": report.note,
+            }
+            # This report may already be here: it hopped over the Bluetooth mesh while the
+            # reporter had no signal. Upgrade that copy (it has no note and a short-lived
+            # mesh id) rather than storing the same report twice.
             await cur.execute(
-                """INSERT INTO reports (client_event_id, reporter_hash, hazard_type, observed_effect, severity,
-                                        location, location_accuracy_m, observed_at, captured_offline, note)
-                   VALUES (%(cid)s, %(reporter)s, %(hazard)s, %(effect)s, %(severity)s,
-                           ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, %(acc)s,
-                           %(observed_at)s, %(offline)s, %(note)s)
-                   ON CONFLICT (client_event_id) DO NOTHING""",
-                {
-                    "cid": report.client_event_id, "reporter": caller.reporter_hash,
-                    "hazard": report.hazard_type, "effect": report.observed_effect, "severity": report.severity,
-                    "lat": report.location.lat, "lon": report.location.lon, "acc": report.location.accuracy_m,
-                    "observed_at": report.observed_at, "offline": report.captured_offline, "note": report.note,
-                },
+                """UPDATE reports
+                   SET client_event_id = %(cid)s, reporter_hash = %(reporter)s, hazard_type = %(hazard)s,
+                       observed_effect = %(effect)s, severity = %(severity)s,
+                       location = ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography,
+                       location_accuracy_m = %(acc)s, observed_at = %(observed_at)s, note = %(note)s
+                   WHERE mesh_key = %(key)s AND source = 'mesh' AND client_event_id = 'mesh:' || %(key)s""",
+                params,
             )
+            if cur.rowcount == 0:
+                await cur.execute(
+                    """INSERT INTO reports (client_event_id, mesh_key, reporter_hash, hazard_type, observed_effect,
+                                            severity, location, location_accuracy_m, observed_at,
+                                            captured_offline, note)
+                       VALUES (%(cid)s, %(key)s, %(reporter)s, %(hazard)s, %(effect)s, %(severity)s,
+                               ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, %(acc)s,
+                               %(observed_at)s, %(offline)s, %(note)s)
+                       ON CONFLICT DO NOTHING""",
+                    params,
+                )
             await cur.execute(STATUS_SQL, (report.client_event_id,))
             row = await cur.fetchone()
     if row["reporter_hash"] != caller.reporter_hash:

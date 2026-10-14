@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["MobyMeshModule"] },
+  "android": { "modules": ["expo.modules.mobymesh.MobyMeshModule"] }
+}

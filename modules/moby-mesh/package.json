@@ -1,0 +1,8 @@
+{
+  "name": "moby-mesh",
+  "version": "0.1.0",
+  "description": "Moby's Bluetooth LE mesh radio: advertise and hear 24-byte packets",
+  "main": "index.ts",
+  "license": "MIT",
+  "private": true
+}

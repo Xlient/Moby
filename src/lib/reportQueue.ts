@@ -5,6 +5,7 @@ import { api, ApiRequestError } from '@/api/client';
 import type { ReportAccepted, ReportSubmission } from '@/api/types';
 import { kv } from './storage';
 import { approximate, getPrivacySettings } from './privacySettings';
+import { originateReport } from '@/mesh/meshService';
 
 // Offline-first report queue (design system: "Must complete fully offline and show
 // 'Queued — will send when you have signal.'").
@@ -91,6 +92,9 @@ export function enqueueReport(
   };
   save([...items, entry]);
   void flushReportQueue();
+  // No signal: also hand it to nearby phones over Bluetooth (if the mesh is on). The
+  // queue still sends the full report itself once this phone reconnects; the API merges them.
+  if (capturedOffline) void originateReport(entry.submission).catch(() => {});
   return entry;
 }
 

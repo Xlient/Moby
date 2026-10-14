@@ -1,11 +1,20 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.6.0
+  version: 0.7.0
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.7.0 — Bluetooth mesh relay is implemented (additive):
+      + POST /mesh/sync: rejected[].reason codes (unknown_hazard_type, unknown_severity,
+        bad_location, too_many_hops, in_the_future, too_old, rate_limited,
+        gateway_rate_limited); a mesh copy of a report is merged with the full report
+        when the reporter's own phone sends it (same client_event_id → same event_id)
+      + GET /mesh/alerts: official alerts only; radius_km max 300; records carry
+        headline and expires_at for the gateway phone (they don't travel over the air)
+      ~ MeshRecord: hazard_type and severity are indexes into HazardType and Severity;
+        event_id for a report is sha256(client_event_id)[:8], hex
     0.6.0 — Community reports without a review gate (additive, no breaking changes):
       + AlertPreferences.community_reports (off | corroborated | all; default corroborated):
         which unverified community reports a user sees and gets pushed. Always labelled.
@@ -755,10 +764,10 @@ paths:
           schema: { type: number, format: double }
         - name: radius_km
           in: query
-          schema: { type: number, default: 100 }
+          schema: { type: number, default: 100, maximum: 300 }
       responses:
         '200':
-          description: OK
+          description: OK (official alerts only, most severe first, at most 20)
           content:
             application/json:
               schema:
@@ -766,7 +775,13 @@ paths:
                 properties:
                   records:
                     type: array
-                    items: { $ref: '#/components/schemas/MeshRecord' }
+                    items:
+                      allOf:
+                        - { $ref: '#/components/schemas/MeshRecord' }
+                        - type: object
+                          properties:
+                            headline: { type: string, description: For the gateway phone only; not sent over the air }
+                            expires_at: { type: string, format: date-time }
 
   # ---------- review ----------
 
@@ -1311,11 +1326,11 @@ components:
         is CBOR/packed-binary; this shape is only used at the gateway sync boundary.
       required: [event_id, hazard_type, lat_e6, lon_e6, severity, hop_count, timestamp, reporter_hash]
       properties:
-        event_id: { type: string, description: 8-byte truncated hash, hex-encoded }
-        hazard_type: { type: integer, minimum: 0, maximum: 255 }
-        lat_e6: { type: integer, description: Degrees times 1e6 }
-        lon_e6: { type: integer, description: Degrees times 1e6 }
-        severity: { type: integer, minimum: 0, maximum: 255 }
+        event_id: { type: string, description: '8 bytes, hex. Reports: sha256(client_event_id)[:8]' }
+        hazard_type: { type: integer, minimum: 0, maximum: 255, description: 'Index into HazardType: 0 flood, 1 fire, 2 earthquake, 3 storm, 4 landslide, 5 other' }
+        lat_e6: { type: integer, description: Degrees times 1e6 (sent over the air rounded to 1e-4) }
+        lon_e6: { type: integer, description: Degrees times 1e6 (sent over the air rounded to 1e-4) }
+        severity: { type: integer, minimum: 0, maximum: 255, description: 'Index into Severity: 0 low, 1 medium, 2 high, 3 critical' }
         confidence: { type: integer, minimum: 0, maximum: 255 }
         hop_count: { type: integer, minimum: 0, maximum: 255 }
         timestamp: { type: integer, description: Unix epoch seconds }
