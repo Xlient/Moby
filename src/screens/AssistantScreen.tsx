@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Chip, Text, TextInput } from 'react-native-paper';
 import { useMutation } from '@tanstack/react-query';
@@ -12,6 +12,13 @@ import { useUserCenter } from '@/location/UserLocationContext';
 import { useTheme } from '@/theme/ThemeContext';
 import { radius, spacing, typography } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useGuidance } from '@/guidance/guidanceStore';
+import type { LocalAnswer } from '@/ondevice/answer';
+import { NANO_MODEL } from '@/ondevice/model';
+import type { LocalSource } from '@/ondevice/retrieve';
+import { askOnDevice, warmUp } from '@/ondevice/runtime';
+import { useModelState } from '@/ondevice/useModel';
 
 const SUGGESTIONS = [
   'What should I do if the road ahead is flooded?',
@@ -19,7 +26,13 @@ const SUGGESTIONS = [
   'What do I do when a tornado warning is issued?',
 ];
 
-type Turn = { question: string; answer?: AskAnswer; error?: string };
+type Turn = {
+  question: string;
+  answer?: AskAnswer;
+  error?: string;
+  /** Answered on the phone (no signal): the saved cards it used, then the checked answer. */
+  local?: { sources: LocalSource[]; answer?: LocalAnswer };
+};
 
 /**
  * Ask Moby (POST /v1/ask): answers only from official alerts, Moby's safety guidance and
@@ -35,6 +48,21 @@ export function AssistantScreen() {
   const [draft, setDraft] = useState('');
   const [turns, setTurns] = useState<Turn[]>([]);
   const scroll = useRef<ScrollView>(null);
+  const isOnline = useOnlineStatus();
+  const { cards } = useGuidance();
+  const model = useModelState();
+  const canAnswerOffline = model.kind === 'ready';
+
+  // Offline with the model downloaded: load it now, so the first answer is quicker.
+  useEffect(() => {
+    if (!isOnline && canAnswerOffline) warmUp().catch(() => {});
+  }, [isOnline, canAnswerOffline]);
+
+  function askLocally(question: string) {
+    const run = askOnDevice(question, cards);
+    update(question, { local: { sources: run.sources }, error: undefined });
+    void run.result.then((answer) => update(question, { local: { sources: run.sources, answer } }));
+  }
 
   const ask = useMutation({
     mutationFn: (question: string) =>
@@ -45,13 +73,16 @@ export function AssistantScreen() {
         ...(country ? { country } : {}),
       }),
     onSuccess: (answer, question) => update(question, { answer }),
-    onError: (err, question) =>
+    onError: (err, question) => {
+      // Couldn't reach Moby (not a "too many questions"): answer on the phone if we can.
+      if (canAnswerOffline && !(err instanceof ApiRequestError && err.status === 429)) return askLocally(question);
       update(question, {
         error:
           err instanceof ApiRequestError && err.status === 429
             ? 'You’ve asked a lot of questions this hour. Please try again later.'
             : 'Couldn’t reach Moby. Check your connection and try again.',
-      }),
+      });
+    },
   });
 
   function update(question: string, patch: Partial<Turn>) {
@@ -64,10 +95,23 @@ export function AssistantScreen() {
     if (question.length < 3 || ask.isPending) return;
     setTurns((ts) => [...ts, { question }]);
     setDraft('');
-    ask.mutate(question);
+    if (isOnline) {
+      ask.mutate(question);
+    } else if (canAnswerOffline) {
+      askLocally(question);
+    } else {
+      setTimeout(
+        () =>
+          update(question, {
+            error:
+              'You’re offline. Saved safety guidance still works (Home → Safety guidance). To get answers with no signal, download offline answers in Settings while you have Wi-Fi.',
+          }),
+        0,
+      );
+    }
   }
 
-  if (!user && !env.useMock) {
+  if (!user && !env.useMock && !(canAnswerOffline && !isOnline)) {
     return (
       <View style={[styles.center, { padding: r.gutter }]}>
         <Text accessibilityRole="header" style={[r.heading, { color: theme.text.primary }]}>Ask Moby</Text>
@@ -86,6 +130,13 @@ export function AssistantScreen() {
           Answers come only from official alerts, Moby’s safety guidance and official websites, and always show their
           sources. If Moby can’t find an answer there, it says so instead of guessing.
         </Text>
+        {!isOnline && (
+          <Text style={[typography.meta, { color: theme.text.secondary }]}>
+            {canAnswerOffline
+              ? `You’re offline: answering on your phone with ${NANO_MODEL.name}, from saved safety guidance only.`
+              : 'You’re offline.'}
+          </Text>
+        )}
         <EmergencyNumbers country={country} />
 
         {turns.length === 0 && (
@@ -103,7 +154,9 @@ export function AssistantScreen() {
             <View style={[styles.question, { backgroundColor: theme.bg.recessed }]}>
               <Text style={[typography.body, { color: theme.text.primary }]}>{t.question}</Text>
             </View>
-            {t.answer ? (
+            {t.local ? (
+              <LocalAnswerCard sources={t.local.sources} answer={t.local.answer} />
+            ) : t.answer ? (
               <AnswerCard answer={t.answer} />
             ) : t.error ? (
               <Text style={[typography.body, { color: theme.text.secondary }]}>{t.error}</Text>
@@ -169,6 +222,53 @@ function AnswerCard({ answer }: { answer: AskAnswer }) {
         {answer.searched_web ? ' · official websites searched with Tavily' : ''}. Follow official instructions if
         they differ.
       </Text>
+    </View>
+  );
+}
+
+/** An answer made on the phone: the saved guidance first (it's vetted and shows at once),
+ *  then the model's short, checked answer — or, if it didn't pass, just the guidance. */
+function LocalAnswerCard({ sources, answer }: { sources: LocalSource[]; answer?: LocalAnswer }) {
+  const { theme } = useTheme();
+  const meta = [typography.meta, { color: theme.text.secondary }];
+  if (sources.length === 0) {
+    return (
+      <View style={[styles.answer, { backgroundColor: theme.bg.raised }]}>
+        <Text style={[typography.body, { color: theme.text.primary }]}>
+          There’s no saved safety guidance about that on your phone, so I won’t guess. Try asking about what to do in a
+          flood, fire, earthquake, storm or landslide.
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View style={[styles.answer, { backgroundColor: theme.bg.raised }]} accessibilityLabel="Moby's offline answer">
+      {!answer ? (
+        <Text style={meta}>Writing a short answer on your phone (about 10–20 seconds). The saved guidance:</Text>
+      ) : answer.answer ? (
+        <>
+          <Text style={[typography.body, { color: theme.text.primary }]}>{answer.answer}</Text>
+          <Text style={[...meta, styles.gap]}>Sources</Text>
+          {answer.sources.map((s) => (
+            <Text key={s.n} style={meta}>
+              [{s.n}] {s.title} · {s.publisher}
+            </Text>
+          ))}
+          <Text style={[typography.meta, styles.gap, { color: theme.text.faint }]}>
+            Answered on your phone · {NANO_MODEL.name} · from saved guidance. Follow official instructions if they differ.
+          </Text>
+        </>
+      ) : (
+        <Text style={meta}>No short answer this time. Here’s the saved guidance that matches:</Text>
+      )}
+      {(!answer || !answer.answer) &&
+        sources.map((s) => (
+          <View key={s.id} style={styles.gap}>
+            <Text style={[typography.body, { color: theme.text.primary, fontWeight: '600' }]}>{s.title}</Text>
+            <Text style={[typography.body, { color: theme.text.primary }]}>{s.text}</Text>
+            <Text style={meta}>{s.publisher}</Text>
+          </View>
+        ))}
     </View>
   );
 }
