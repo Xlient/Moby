@@ -237,6 +237,7 @@ export class ApiClient {
     lon?: number;
     radius_km?: number;
     min_tier?: 0 | 1 | 2;
+    community_reports?: 'off' | 'corroborated' | 'all';
     since?: string;
   }): Promise<{ alerts?: Alert[] }> {
     if (USE_MOCK) return { alerts: getMockAlerts() };

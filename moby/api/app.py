@@ -138,11 +138,13 @@ async def get_alerts(
     hazard_types: Annotated[str | None, Query(description="comma-separated HazardType values")] = None,
     min_severity: Severity | None = None,
     include_marine: bool | None = None,
+    community_reports: Literal["off", "corroborated", "all"] | None = None,
 ):
     prefs = AlertPreferences.from_dict({
         "hazard_types": hazard_types.split(",") if hazard_types else None,
         "min_severity": min_severity,
         "include_marine": include_marine,
+        "community_reports": community_reports,
     })
     async with _pool().connection() as conn:
         rows = await alerts_near(conn, lat, lon, radius_km, prefs, min_tier=min_tier)
@@ -158,6 +160,7 @@ async def alert_areas(
     hazard_types: Annotated[str | None, Query(description="comma-separated HazardType values")] = None,
     min_severity: Severity | None = None,
     include_marine: bool | None = None,
+    community_reports: Literal["off", "corroborated", "all"] | None = None,
 ):
     """Warning areas for the map (issue #21): the same alerts as GET /v1/alerts, as a
     GeoJSON FeatureCollection of their areas, simplified (~500 m) to keep it small.
@@ -166,6 +169,7 @@ async def alert_areas(
         "hazard_types": hazard_types.split(",") if hazard_types else None,
         "min_severity": min_severity,
         "include_marine": include_marine,
+        "community_reports": community_reports,
     })
     async with _pool().connection() as conn:
         rows = await alerts_near(conn, lat, lon, radius_km, prefs, min_tier=min_tier)
@@ -192,7 +196,7 @@ async def get_event(event_id: uuid.UUID):
     async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             """SELECT event_id, source, source_feed, external_id, hazard_type, product, marine, severity, tier,
-                      title, description, alert_headline, alert_body, distinct_reporter_count,
+                      title, description, alert_headline, alert_body, distinct_reporter_count, reports_disagree,
                       language, title_en, description_en, translation_status, country,
                       first_reported_at, last_updated_at, expires_at, raw_payload,
                       ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon

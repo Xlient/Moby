@@ -861,7 +861,10 @@ export interface paths {
                     lat?: number;
                     lon?: number;
                     radius_km?: number;
+                    /** @description Minimum tier for official alerts. Community reports follow community_reports. */
                     min_tier?: 0 | 1 | 2;
+                    /** @description Which community reports to include: off (none), corroborated (reported by 2+ different people), all (single reports too). Defaults to the caller's saved preferences, else corroborated. */
+                    community_reports?: "off" | "corroborated" | "all";
                     since?: string;
                     /** @description Only these hazard types. Defaults to the caller's saved preferences, else all. */
                     hazard_types?: components["schemas"]["HazardType"][];
@@ -1376,6 +1379,12 @@ export interface components {
             min_severity: components["schemas"]["Severity"];
             /** @default false */
             include_marine: boolean;
+            /**
+             * @description Which reports from people nearby (never confirmed by an agency) to see and be notified about: off, corroborated (2+ different people), or all (single reports too). Always shown labelled as unverified. Applies to critical ones too: this is a choice about trust, not severity.
+             * @default corroborated
+             * @enum {string}
+             */
+            community_reports: "off" | "corroborated" | "all";
         };
         ReportSubmission: {
             /** @description Client-generated UUID. Idempotency key — safe to retry. */
@@ -1470,8 +1479,10 @@ export interface components {
             hazard_type?: components["schemas"]["HazardType"];
             /** @description Human-readable place for the alert's location, e.g. "Russian River Basin". Shown beside distance and time; never repeated in the headline. */
             location_name?: string;
-            /** @description Distinct originating reporters behind a corroborated_report (relay hops and repeat reports from one device do not count — see escalation caution rules). Omitted for official_confirmed; 1 or omitted for unverified_report. */
+            /** @description Distinct originating reporters behind a community report (relay hops and repeat reports from one device do not count — see escalation caution rules). Omitted for official_confirmed; 1 for unverified_report. */
             corroboration_count?: number;
+            /** @description Community reports only: people nearby reported different severities. The alert uses the highest one (a missed danger is worse than an over-warning). */
+            reports_disagree?: boolean;
             /** @description The source's own product name, e.g. "Flood Warning", "Small Craft Advisory", "earthquake". Finer-grained than hazard_type. */
             product?: string;
             /** @description Offshore/boating product; absent means false. Hidden unless the user opts in. */

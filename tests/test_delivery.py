@@ -108,7 +108,7 @@ def test_near_me_is_coarse_and_single(client, db_url):
 def test_preferences_round_trip_normalized(client):
     r = client.put("/v1/me/alert-preferences", json={"hazard_types": [], "min_severity": "high"})
     assert r.json() == {"hazard_types": ["earthquake", "fire", "flood", "landslide", "other", "storm"],
-                        "min_severity": "high", "include_marine": False}
+                        "min_severity": "high", "include_marine": False, "community_reports": "corroborated"}
     assert client.get("/v1/me/alert-preferences").json()["min_severity"] == "high"
 
 
@@ -230,18 +230,63 @@ def test_community_alert_shape(client, db_url):
     assert a["source_attribution"] == "Community reports"
 
 
-def test_home_lists_what_delivery_may_push(client, db_url):
-    """Community events are listed like official ones at their tier; rejected and tier-0 never are."""
+def add_community(db_url, *, tier, people=None, severity="high", decision=None, disagree=False) -> str:
     with psycopg.connect(db_url, autocommit=True) as c:
-        def add(tier, decision=None):
-            (eid,) = c.execute(
-                "INSERT INTO events (source, hazard_type, severity, tier, reviewer_decision, location) VALUES "
-                "('manual', 'flood', 'high', %s, %s, ST_SetSRID(ST_MakePoint(-122.26, 37.80), 4326)::geography) "
-                "RETURNING event_id", (tier, decision)).fetchone()
-            return str(eid)
-        listed, confirmed = add(1), add(2)
-        add(0), add(2, "reject")
+        (eid,) = c.execute(
+            "INSERT INTO events (source, hazard_type, severity, tier, reviewer_decision, distinct_reporter_count, "
+            "reports_disagree, location) VALUES ('manual', 'flood', %s, %s, %s, %s, %s, "
+            "ST_SetSRID(ST_MakePoint(-122.26, 37.80), 4326)::geography) RETURNING event_id",
+            (severity, tier, decision, people if people is not None else (1 if tier == 0 else 3), disagree)).fetchone()
+    return str(eid)
+
+
+def test_home_lists_what_delivery_may_push(client, db_url):
+    """No review gate: community events are listed by the user's community_reports choice,
+    always labelled; a reviewer's reject takes one down. Official alerts from min_tier up."""
+    official = add_event(db_url, lat=37.80, lon=-122.26)
+    corroborated, single = add_community(db_url, tier=1), add_community(db_url, tier=0)
+    add_community(db_url, tier=1, decision="reject")
     def ids(q=""):
         return {a["alert_id"] for a in client.get(f"/v1/alerts?lat=37.80&lon=-122.27&radius_km=10{q}").json()["alerts"]}
-    assert ids() == {confirmed}                        # default min_tier=2: exactly what may be pushed
-    assert ids("&min_tier=1") == {listed, confirmed}
+    assert ids() == {official, corroborated}                    # default: corroborated
+    assert ids("&community_reports=all") == {official, corroborated, single}
+    assert ids("&community_reports=off") == {official}
+    labels = {a["alert_id"]: a for a in client.get(
+        "/v1/alerts?lat=37.80&lon=-122.27&radius_km=10&community_reports=all").json()["alerts"]}
+    assert labels[single]["verification_label"] == "unverified_report" and labels[single]["corroboration_count"] == 1
+    assert labels[corroborated]["verification_label"] == "corroborated_report"
+    assert labels[official]["verification_label"] == "official_confirmed"
+
+
+def test_community_pushes_follow_the_users_choice(client, db_url):
+    setup_device(client, db_url)
+    add_community(db_url, tier=0)                                  # one person: opt-in only
+    corroborated = add_community(db_url, tier=1, people=3)
+    sender = FakeSender()
+    assert deliver(db_url, sender)["sent"] == 1                    # default: corroborated
+    push = sender.pushes[0]
+    assert push.data["event_id"] == corroborated
+    assert push.title.startswith("Unverified:") and "Reported by 3 people nearby, not confirmed by officials" in push.body
+
+    client.put("/v1/me/alert-preferences", json={"community_reports": "all"})
+    assert deliver(db_url, sender)["sent"] == 1                    # now the single report too
+    assert "Reported by 1 person nearby" in sender.pushes[-1].body
+
+
+def test_community_reports_off_means_off_even_when_critical(client, db_url):
+    setup_device(client, db_url)
+    client.put("/v1/me/alert-preferences", json={"community_reports": "off"})
+    add_community(db_url, tier=1, severity="critical")
+    sender = FakeSender()
+    assert deliver(db_url, sender)["sent"] == 0                    # a choice about trust, not severity
+    add_event(db_url, severity="critical")                        # official critical still gets through
+    assert deliver(db_url, sender)["sent"] == 1
+
+
+def test_disagreeing_reports_say_so(client, db_url):
+    setup_device(client, db_url)
+    eid = add_community(db_url, tier=1, severity="critical", disagree=True)
+    sender = FakeSender()
+    deliver(db_url, sender)
+    assert sender.pushes[0].critical and "reports disagree" in sender.pushes[0].body.lower()
+    assert client.get(f"/v1/alerts/{eid}").json()["reports_disagree"] is True

@@ -56,13 +56,13 @@ export function AboutScreen({ onBack, onReplayIntro }: AboutScreenProps) {
         </View>
 
         <View style={{ gap: spacing.scale[2] }}>
-          <Text variant="titleMedium" accessibilityRole="header" style={{ color: theme.text.primary }}>How a report becomes an alert</Text>
+          <Text variant="titleMedium" accessibilityRole="header" style={{ color: theme.text.primary }}>What happens to a report</Text>
           <View style={card}>
             {[
               ['1', 'You report what you see. It’s saved on your phone first, so it works offline.'],
-              ['2', 'An AI pipeline matches it with other reports and official feeds. It never raises an alert by itself.'],
-              ['3', 'When several people agree, or it looks severe, a person reviews it.'],
-              ['4', 'Only then is it sent to people nearby, labelled with how it was confirmed.'],
+              ['2', 'Moby groups it with other reports of the same thing nearby, and checks for an official warning.'],
+              ['3', 'People nearby who chose to hear about reports from others get it, marked unverified, with how many people reported it.'],
+              ['4', 'Only an official agency’s warning is ever shown as confirmed. You choose what you hear about in Settings → Alert types.'],
             ].map(([n, text]) => (
               <View key={n} style={styles.stepRow}>
                 <Text variant="titleSmall" style={[styles.stepNum, { color: theme.accent.calm }]}>{n}</Text>

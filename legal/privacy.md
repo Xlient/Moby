@@ -26,8 +26,9 @@ Moby is operated by **[OPERATOR NAME]**, [ADDRESS, COUNTRY] ("we"). Contact: **[
 Others only ever see that "people nearby" reported something, roughly where, and when.
 
 **Automated processing:** Reports are processed by AI models to extract details, group reports about
-the same event, and translate official warnings. A person reviews community reports before they
-become public alerts. Nothing about you is decided automatically.
+the same event, and translate official warnings. Community reports are shown to other
+users nearby who chose to see them, always marked unverified, and never with your name or note.
+Nothing about you is decided automatically.
 
 ## Who else handles your data (processors)
 

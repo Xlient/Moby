@@ -27,18 +27,20 @@ export function hazardIcon(hazard: HazardType | undefined): string {
 
 /**
  * The trust text for a card. Always present, never truncated (design system §8).
- * Official: the agency. Corroborated: how many people. Unverified: says so plainly.
+ * Official: the agency. Community reports are never reviewed before people see them,
+ * so they always say "Unverified" and how many different people reported it.
  */
 export function trustText(alert: Alert): string {
+  const disagree = alert.reports_disagree ? ' · reports disagree' : '';
   switch (alert.verification_label) {
     case 'official_confirmed':
       return alert.source_attribution ?? 'Official source';
     case 'corroborated_report':
       return alert.corroboration_count
-        ? `Confirmed by ${alert.corroboration_count} nearby`
-        : 'Confirmed by people nearby';
+        ? `Unverified · ${alert.corroboration_count} people reported${disagree}`
+        : `Unverified · several people reported${disagree}`;
     case 'unverified_report':
-      return 'Unverified · single report';
+      return `Unverified · 1 report${disagree}`;
   }
 }
 

@@ -122,8 +122,8 @@ export function PrivacyScreen({ onBack }: PrivacyScreenProps) {
         </View>
 
         <Text style={muted}>
-          Your name, email, notes and exact report locations are never shown to anyone. Reports are checked by AI
-          and a person before they become public alerts.
+          Your name, email, notes and exact report locations are never shown to anyone. Others nearby only see
+          what was reported, roughly where, and how many people reported it, marked unverified.
         </Text>
 
         {user ? (

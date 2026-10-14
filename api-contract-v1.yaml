@@ -1,11 +1,19 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.5.0
+  version: 0.6.0
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.6.0 — Community reports without a review gate (additive, no breaking changes):
+      + AlertPreferences.community_reports (off | corroborated | all; default corroborated):
+        which unverified community reports a user sees and gets pushed. Always labelled.
+      + GET /alerts, /alerts/areas: community_reports (same default as the preference);
+        min_tier now applies to official alerts only
+      + Alert.reports_disagree (people nearby reported different severities; the alert
+        uses the highest)
+      ~ Alert.corroboration_count is also set on unverified community reports (1)
     0.5.0 — Reports are write-first (fusion runs after the 202):
       ~ ReportAccepted: event_id and tier are now optional (set once fusion has run);
         + report_id, + status (pending | fused | failed)
@@ -486,7 +494,15 @@ paths:
           schema: { type: number, default: 50, maximum: 500 }
         - name: min_tier
           in: query
+          description: Minimum tier for official alerts. Community reports follow community_reports.
           schema: { type: integer, enum: [0, 1, 2], default: 2 }
+        - name: community_reports
+          in: query
+          description: >
+            Which community reports to include: off (none), corroborated (reported by 2+
+            different people), all (single reports too). Defaults to the caller's saved
+            preferences, else corroborated.
+          schema: { type: string, enum: [off, corroborated, all] }
         - name: since
           in: query
           schema: { type: string, format: date-time }
@@ -898,6 +914,15 @@ components:
         include_marine:
           type: boolean
           default: false
+        community_reports:
+          type: string
+          enum: [off, corroborated, all]
+          default: corroborated
+          description: >
+            Which reports from people nearby (never confirmed by an agency) to see and be
+            notified about: off, corroborated (2+ different people), or all (single reports
+            too). Always shown labelled as unverified. Applies to critical ones too: this is
+            a choice about trust, not severity.
 
     ReportSubmission:
       type: object
@@ -1008,9 +1033,14 @@ components:
           type: integer
           minimum: 0
           description: >
-            Distinct originating reporters behind a corroborated_report (relay hops and
+            Distinct originating reporters behind a community report (relay hops and
             repeat reports from one device do not count — see escalation caution rules).
-            Omitted for official_confirmed; 1 or omitted for unverified_report.
+            Omitted for official_confirmed; 1 for unverified_report.
+        reports_disagree:
+          type: boolean
+          description: >
+            Community reports only: people nearby reported different severities. The alert
+            uses the highest one (a missed danger is worse than an over-warning).
         product:
           type: string
           description: >

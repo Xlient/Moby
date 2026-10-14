@@ -7,6 +7,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { ALL_HAZARDS, useAlertPreferences } from '@/hooks/useAlertPreferences';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SeverityIndicator } from '@/components/SeverityIndicator';
+import { CommunityReportsChoice } from '@/components/CommunityReportsChoice';
 import { hazardIcon } from '@/lib/alerts';
 import type { HazardType, Severity } from '@/api/types';
 
@@ -124,8 +125,18 @@ export function AlertPreferencesScreen({ onBack }: AlertPreferencesScreenProps) 
       <ScrollView contentContainerStyle={{ padding: r.gutter, paddingBottom: r.sectionGap }}>
         <Text variant="bodyLarge" style={[styles.intro, { color: theme.text.secondary }]}>
           Choose what you want to hear about. Your home screen, the map and notifications all follow
-          these settings. Critical alerts near you always come through, whatever you pick here.
+          these settings. Critical official alerts near you always come through, whatever you pick here.
         </Text>
+
+        <Section
+          title="Reports from people nearby"
+          hint="People using Moby can report what they see. Nobody checks these before they reach you, so they're always marked unverified."
+        >
+          <CommunityReportsChoice
+            value={prefs.community_reports ?? 'corroborated'}
+            onChange={(v) => setPrefs({ ...prefs, community_reports: v })}
+          />
+        </Section>
 
         <Section title="Hazards" hint="Keep at least one on. Critical alerts show for every type.">
           {ALL_HAZARDS.map((h, i) => {

@@ -107,7 +107,7 @@ export function MyReportsScreen({ onBack, onNewReport }: MyReportsScreenProps) {
           <Text variant="bodyMedium" style={[styles.intro, { color: theme.text.secondary }]}>
             {!isOnline && waiting > 0
               ? `Offline. ${waiting} report${waiting === 1 ? '' : 's'} will send when you have signal.`
-              : 'Reports are checked against others nearby and official sources, then by a person, before anyone is alerted.'}
+              : 'Moby matches your reports with others nearby and with official warnings. People who chose to see reports from others get them, marked unverified.'}
           </Text>
         }
         ListEmptyComponent={

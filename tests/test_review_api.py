@@ -145,7 +145,7 @@ def test_pipeline_counts_and_recent_events(client, db_url):
     body = client.get("/v1/review/pipeline").json()
     assert body["reports"]["pending"] == 1 and body["reports"]["oldest_pending_at"]
     assert body["reports"]["fused_24h"] == 3
-    assert body["review"] == {"open": 1, "awaiting_resume": 1}
+    assert body["review"] == {"open": 1}
     by_id = {e["event_id"]: e for e in body["events"]}
     assert by_id[queued]["review_status"] == "open" and by_id[queued]["report_count"] == 2
     assert by_id[approved]["reviewer_decision"] == "approve" and by_id[approved]["alert_drafted"] is False

@@ -5,6 +5,8 @@ import { useTheme } from '@/theme/ThemeContext';
 import { spacing, typography } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
 import { kv } from '@/lib/storage';
+import { useAlertPreferences } from '@/hooks/useAlertPreferences';
+import { CommunityReportsChoice } from '@/components/CommunityReportsChoice';
 
 const DONE_KEY = 'onboarding-v1-done';
 
@@ -21,6 +23,8 @@ interface Page {
   title: string;
   body: string;
   points?: { icon: string; label: string; detail: string }[];
+  /** Ask which community reports the person wants (AlertPreferences.community_reports). */
+  communityChoice?: boolean;
 }
 
 const PAGES: Page[] = [
@@ -32,12 +36,8 @@ const PAGES: Page[] = [
   {
     icon: 'account-group-outline',
     title: 'Reports from people nearby',
-    body: 'People can report what they see. Moby always says how sure it is:',
-    points: [
-      { icon: 'help-circle-outline', label: 'Unverified', detail: 'One report, not checked yet.' },
-      { icon: 'account-multiple-check-outline', label: 'Corroborated', detail: 'Several people saw it. A reviewer is checking.' },
-      { icon: 'check-decagram-outline', label: 'Confirmed', detail: 'From an agency, or confirmed by a reviewer.' },
-    ],
+    body: 'People can report what they see. Nobody checks these before they reach you, so Moby always marks them unverified and says how many people sent them. What would you like to hear about?',
+    communityChoice: true,
   },
   {
     icon: 'signal-off',
@@ -47,13 +47,15 @@ const PAGES: Page[] = [
 ];
 
 /**
- * First-run introduction (sprint 6, for new users and judges): what Moby does, how much to
- * trust each kind of alert, and what works offline. Shown once; replay from Settings → About.
+ * First-run introduction (sprint 6, for new users and judges): what Moby does, which
+ * unverified community reports the person wants (their choice, Settings → Alert types
+ * later), and what works offline. Shown once; replay from Settings → About.
  */
 export function OnboardingScreen({ onDone }: { onDone: () => void }) {
   const { theme } = useTheme();
   const r = useResponsive();
   const [i, setI] = useState(0);
+  const [prefs, setPrefs] = useAlertPreferences();
   const page = PAGES[i]!;
   const last = i === PAGES.length - 1;
 
@@ -79,6 +81,14 @@ export function OnboardingScreen({ onDone }: { onDone: () => void }) {
         <Text variant="bodyLarge" style={[styles.center, { color: theme.text.secondary }]}>
           {page.body}
         </Text>
+        {page.communityChoice && (
+          <View style={[styles.choice, { backgroundColor: theme.bg.raised }]}>
+            <CommunityReportsChoice
+              value={prefs.community_reports ?? 'corroborated'}
+              onChange={(v) => setPrefs({ ...prefs, community_reports: v })}
+            />
+          </View>
+        )}
         {page.points && (
           <View style={[styles.points, { backgroundColor: theme.bg.raised }]}>
             {page.points.map((p) => (
@@ -122,6 +132,7 @@ const styles = StyleSheet.create({
   top: { minHeight: 56, alignItems: 'flex-end', justifyContent: 'center' },
   body: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.scale[4], paddingBottom: spacing.scale[4] },
   center: { textAlign: 'center' },
+  choice: { alignSelf: 'stretch', borderRadius: 16, paddingHorizontal: spacing.cardPadding },
   points: { alignSelf: 'stretch', borderRadius: 16, padding: spacing.cardPadding, gap: spacing.scale[3] },
   point: { flexDirection: 'row', alignItems: 'center', gap: spacing.scale[3] },
   pointText: { flex: 1, gap: 2 },

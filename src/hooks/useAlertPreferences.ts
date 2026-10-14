@@ -1,6 +1,6 @@
 import { useSyncExternalStore, useCallback } from 'react';
 import { kv } from '@/lib/storage';
-import type { AlertPreferences, HazardType, Severity } from '@/api/types';
+import type { AlertPreferences, HazardType, Severity, VerificationLabel } from '@/api/types';
 
 // What kinds of alert the user wants (contract `AlertPreferences`). The same filter
 // runs on the server for GET /alerts and push delivery; on the device it drives the
@@ -12,11 +12,18 @@ import type { AlertPreferences, HazardType, Severity } from '@/api/types';
 export const ALL_HAZARDS: readonly HazardType[] = ['flood', 'fire', 'earthquake', 'storm', 'landslide', 'other'];
 export const SEVERITY_ORDER: readonly Severity[] = ['low', 'medium', 'high', 'critical'];
 
-/** Every hazard, every severity, marine off (marine is ~70% of NWS alerts; opt-in). */
+export type CommunityReports = NonNullable<AlertPreferences['community_reports']>;
+export const COMMUNITY_OPTIONS: readonly CommunityReports[] = ['off', 'corroborated', 'all'];
+
+/**
+ * Every hazard, every severity, marine off (marine is ~70% of NWS alerts; opt-in), and
+ * community reports once 2+ different people agree (single reports are opt-in).
+ */
 export const DEFAULT_ALERT_PREFERENCES: AlertPreferences = {
   hazard_types: [...ALL_HAZARDS],
   min_severity: 'low',
   include_marine: false,
+  community_reports: 'corroborated',
 };
 
 const STORAGE_KEY = 'alert-preferences';
@@ -37,18 +44,31 @@ export function normalizeAlertPreferences(raw: unknown): AlertPreferences {
     hazard_types: hazards.length > 0 ? ALL_HAZARDS.filter((h) => hazards.includes(h)) : [...ALL_HAZARDS],
     min_severity: minSeverity,
     include_marine: data.include_marine === true,
+    community_reports: (COMMUNITY_OPTIONS as readonly string[]).includes(data.community_reports as string)
+      ? (data.community_reports as CommunityReports)
+      : 'corroborated',
   };
 }
 
+/** Whether the user chose to see this kind of community report (official alerts always pass). */
+export function wantsVerification(prefs: AlertPreferences, label: VerificationLabel | undefined): boolean {
+  const choice = prefs.community_reports ?? 'corroborated';
+  if (!label || label === 'official_confirmed') return true;
+  if (label === 'corroborated_report') return choice !== 'off';
+  return choice === 'all';
+}
+
 /**
- * Critical alerts always match: preferences only quiet lesser alerts. Warning people
- * early is the point of the app, so no setting can hide a critical alert nearby.
- * (Same rule as the server's alerts_near, so the app and notifications agree.)
+ * Critical alerts always match the hazard, severity and marine filters: warning people
+ * early is the point of the app, so those can't hide a critical alert nearby. The
+ * community_reports choice is about trust, not severity, so it applies to critical
+ * reports too. (Same rules as the server's alerts_near, so the app and notifications agree.)
  */
 export function matchesAlertPreferences(
   prefs: AlertPreferences,
-  alert: { hazard_type?: HazardType; severity: Severity; marine?: boolean },
+  alert: { hazard_type?: HazardType; severity: Severity; marine?: boolean; verification_label?: VerificationLabel },
 ): boolean {
+  if (!wantsVerification(prefs, alert.verification_label)) return false;
   if (alert.severity === 'critical') return true;
   const hazards = prefs.hazard_types ?? ALL_HAZARDS;
   return (

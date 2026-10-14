@@ -95,9 +95,10 @@ def to_alert(row: dict[str, Any]) -> dict[str, Any]:
         "product": row.get("product"),
         "marine": bool(row.get("marine")),
         "country": row.get("country"),
-        # "Confirmed by N nearby" on community alerts; omitted for official ones (contract).
-        "corroboration_count": row.get("distinct_reporter_count") or None
-        if row.get("source") in ("manual", "mesh") and row["tier"] >= 1 else None,
+        # How many different people reported it, on community alerts; omitted for official ones.
+        "corroboration_count": max(row.get("distinct_reporter_count") or 0, 1)
+        if row.get("source") in ("manual", "mesh") else None,
+        "reports_disagree": True if row.get("source") in ("manual", "mesh") and row.get("reports_disagree") else None,
         "distance_km": round(row["distance_km"], 1) if row.get("distance_km") is not None else None,
     }
     if translated:

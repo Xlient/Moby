@@ -42,7 +42,9 @@ export function useAlerts(lat?: number, lon?: number, radiusKm?: number): UseAle
   const query = useQuery({
     queryKey: ['alerts', lat, lon, radiusKm],
     queryFn: async () => {
-      const data = await api.getAlerts({ lat, lon, radius_km: radiusKm });
+      // Every community report, labelled: the user's community_reports choice is applied
+      // on the phone (useNearbyAlerts), so changing it is instant and works offline.
+      const data = await api.getAlerts({ lat, lon, radius_km: radiusKm, community_reports: 'all' });
       const list = data.alerts ?? [];
       persistAlerts(list);
       return list;

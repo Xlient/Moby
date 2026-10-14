@@ -11,10 +11,15 @@ of NWS alerts and matter only on the water, so they are opt-in.
 Critical alerts always get through: preferences only ever quiet the lesser ones.
 Warning people early about what is coming is the point of the product, so no
 setting can hide a critical alert within the user's radius.
+
+Community reports (people nearby; no agency behind them) are a separate choice about
+trust: `community_reports` is off, corroborated (2+ different people; the default) or
+all (single reports too). They're never reviewed before delivery and are always
+labelled unverified, so the user decides, and that choice applies to critical ones too.
 """
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
@@ -23,6 +28,9 @@ from moby.feeds.schema import HazardType, Severity
 
 ALL_HAZARDS: frozenset[HazardType] = frozenset({"flood", "fire", "earthquake", "storm", "landslide", "other"})
 SEVERITY_ORDER: tuple[Severity, ...] = ("low", "medium", "high", "critical")
+CommunityReports = Literal["off", "corroborated", "all"]
+# Lowest community tier each choice includes (tier 0 = one person, 1 = 2+ people).
+COMMUNITY_MIN_TIER: dict[str, int] = {"all": 0, "corroborated": 1, "off": 3}
 
 
 @dataclass(frozen=True)
@@ -30,6 +38,7 @@ class AlertPreferences:
     hazard_types: frozenset[HazardType] = field(default_factory=lambda: ALL_HAZARDS)
     min_severity: Severity = "low"
     include_marine: bool = False
+    community_reports: CommunityReports = "corroborated"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "AlertPreferences":
@@ -43,6 +52,8 @@ class AlertPreferences:
             hazard_types=hazards,
             min_severity=sev if sev in SEVERITY_ORDER else "low",
             include_marine=bool(data.get("include_marine", False)),
+            community_reports=(data.get("community_reports") if data.get("community_reports") in COMMUNITY_MIN_TIER
+                               else "corroborated"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -50,10 +61,18 @@ class AlertPreferences:
             "hazard_types": sorted(self.hazard_types),
             "min_severity": self.min_severity,
             "include_marine": self.include_marine,
+            "community_reports": self.community_reports,
         }
 
     def allowed_severities(self) -> list[Severity]:
         return list(SEVERITY_ORDER[SEVERITY_ORDER.index(self.min_severity):])
+
+    def community_min_tier(self) -> int:
+        return COMMUNITY_MIN_TIER[self.community_reports]
+
+    def wants_source(self, source: str, tier: int) -> bool:
+        """Official alerts always; community events per community_reports (even critical ones)."""
+        return source == "official" or tier >= self.community_min_tier()
 
     def matches(self, hazard_type: str, severity: str, marine: bool) -> bool:
         if severity == "critical":
@@ -67,7 +86,7 @@ class AlertPreferences:
 
 ALERTS_NEAR_SQL = """
 SELECT event_id, source, source_feed, external_id, hazard_type, product, marine, severity, tier,
-       title, description, alert_headline, alert_body, distinct_reporter_count,
+       title, description, alert_headline, alert_body, distinct_reporter_count, reports_disagree,
        language, title_en, description_en, translation_status,
        first_reported_at, last_updated_at, expires_at, raw_payload,
        ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon,
@@ -75,12 +94,13 @@ SELECT event_id, source, source_feed, external_id, hazard_type, product, marine,
        ST_Distance(COALESCE(area, location), ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography) / 1000.0
            AS distance_km, country
 FROM events
--- Official alerts, plus community events once corroborated (tier >= 1) — the same
--- events delivery may push, so a notification always has a matching card on Home.
-WHERE (source = 'official' OR tier >= 1)
+-- Official alerts from min_tier up, plus the community events the user chose
+-- (community_reports) — the same events delivery may push, so a notification always
+-- has a matching card on Home. A reviewer's reject takes a community report down.
+WHERE ((source = 'official' AND tier >= %(min_tier)s)
+       OR (source <> 'official' AND tier >= %(community_min_tier)s))
   AND reviewer_decision IS DISTINCT FROM 'reject'
   AND duplicate_of IS NULL                   -- same quake from another network (migration 0010)
-  AND tier >= %(min_tier)s
   AND (expires_at IS NULL OR expires_at > %(now)s)
   AND ST_DWithin(COALESCE(area, location), ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, %(radius_m)s)
   AND (severity = 'critical'                 -- critical alerts bypass every preference
@@ -104,7 +124,7 @@ async def alerts_near(
     limit: int = 200,
 ) -> list[dict[str, Any]]:
     """Active events within radius_km of (lat, lon) that the user wants — official ones
-    and corroborated community ones — most severe first. Uses the GiST index on events.location."""
+    (min_tier and up) and the community ones they chose — most severe first. Uses the GiST index on events.location."""
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             ALERTS_NEAR_SQL,
@@ -117,6 +137,7 @@ async def alerts_near(
                 "include_marine": prefs.include_marine,
                 "now": now or datetime.now().astimezone(),
                 "min_tier": min_tier,
+                "community_min_tier": prefs.community_min_tier(),
                 "limit": limit,
             },
         )
@@ -148,4 +169,5 @@ def collapse_repeats(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def filter_events(rows: Iterable[dict[str, Any]], prefs: AlertPreferences) -> list[dict[str, Any]]:
     """In-memory equivalent of the SQL filter, for delivery fan-out over a batch."""
-    return [r for r in rows if prefs.matches(r["hazard_type"], r["severity"], r.get("marine", False))]
+    return [r for r in rows if prefs.matches(r["hazard_type"], r["severity"], r.get("marine", False))
+            and prefs.wants_source(r.get("source", "official"), r.get("tier", 2))]

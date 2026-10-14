@@ -132,7 +132,7 @@ function SentState({ theme, clientEventId, onDone }: { theme: Theme; clientEvent
     received: {
       icon: 'check-circle-outline',
       title: 'Report received',
-      body: 'Thank you. We’re checking it against other reports and official sources. Reviewers see it before anyone else does.',
+      body: 'Thank you. Moby matches it with other reports and official warnings nearby. People who chose to see reports from others nearby get it, marked unverified.',
     },
     rejected: {
       icon: 'alert-circle-outline',
@@ -339,7 +339,7 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
             )}
 
             <Text variant="bodyMedium" style={[styles.reviewNote, { color: theme.text.secondary }]}>
-              Reviewers check reports before anyone else sees them{getPrivacySettings().approximateReports ? '; your location is sent approximately (about 500 m)' : ''}. {isOnline ? '' : 'You’re offline — it will be saved and sent when you have signal.'}
+              Others nearby may see what you report, marked unverified; never your name or note{getPrivacySettings().approximateReports ? '; your location is sent approximately (about 500 m)' : ''}. {isOnline ? '' : 'You’re offline — it will be saved and sent when you have signal.'}
             </Text>
             <Button
               mode="contained"
