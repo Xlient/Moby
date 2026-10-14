@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { View, ScrollView, Pressable, Switch, TextInput, StyleSheet } from 'react-native';
+import { View, ScrollView, Pressable, Platform, Switch, TextInput, StyleSheet } from 'react-native';
 import { Button, Icon, Text } from 'react-native-paper';
 import Constants from 'expo-constants';
 import { useTheme } from '@/theme/ThemeContext';
@@ -12,12 +12,14 @@ import { ALL_HAZARDS, useAlertPreferences } from '@/hooks/useAlertPreferences';
 import type { AlertPreferences } from '@/api/types';
 import { useSubscriptions } from '@/hooks/useSubscriptions';
 import { RadiusPicker } from '@/components/RadiusPicker';
+import { isMeshEnabled } from '@/mesh/meshService';
 
 interface SettingsScreenProps {
   onSubscriptions: () => void;
   onAlertPreferences: () => void;
   onAbout?: () => void;
   onPrivacy: () => void;
+  onNearbyMesh?: () => void;
   onCardReview?: () => void;
   onTrustReview?: () => void;
 }
@@ -171,7 +173,7 @@ function NameRow() {
   );
 }
 
-export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy, onAbout, onCardReview, onTrustReview }: SettingsScreenProps) {
+export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy, onNearbyMesh, onAbout, onCardReview, onTrustReview }: SettingsScreenProps) {
   const [mapEngine, setMapEngine] = useMapEngine();
   const { theme, isDark, toggleTheme } = useTheme();
   const r = useResponsive();
@@ -232,6 +234,12 @@ export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy,
           <LinkRow label="Nearby radius" value={`${radiusKm} km`} onPress={() => setPickerVisible(true)} />
           <LinkRow label="Watched areas" value={areasValue} onPress={onSubscriptions} last />
         </Section>
+
+        {onNearbyMesh && Platform.OS === 'android' && (
+          <Section title="No signal">
+            <LinkRow label="Share through nearby phones" value={isMeshEnabled() ? 'On' : 'Off'} onPress={onNearbyMesh} last />
+          </Section>
+        )}
 
         <Section title="Privacy">
           <LinkRow label="Privacy & data" onPress={onPrivacy} last />

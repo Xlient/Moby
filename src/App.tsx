@@ -26,6 +26,8 @@ import { ReportScreen } from '@/screens/ReportScreen';
 import { SubscriptionsScreen } from '@/screens/SubscriptionsScreen';
 import { AlertPreferencesScreen } from '@/screens/AlertPreferencesScreen';
 import { PrivacyScreen } from '@/screens/PrivacyScreen';
+import { NearbyMeshScreen } from '@/screens/NearbyMeshScreen';
+import { useMeshLifecycle } from '@/mesh/useMeshLifecycle';
 import { TrustReviewScreen } from '@/screens/TrustReviewScreen';
 import { AlertCardReviewScreen } from '@/screens/AlertCardReviewScreen';
 import { MyReportsScreen } from '@/screens/MyReportsScreen';
@@ -46,6 +48,7 @@ type Screen =
   | { name: 'subscriptions' }
   | { name: 'alert-preferences' }
   | { name: 'privacy' }
+  | { name: 'nearby-mesh' }
   | { name: 'trust-review' }
   | { name: 'alert-card-review' };
 
@@ -67,6 +70,7 @@ function getActiveTab(screen: Screen): string {
     case 'subscriptions':
     case 'alert-preferences':
     case 'privacy':
+    case 'nearby-mesh':
     case 'about':
       return 'settings';
   }
@@ -85,6 +89,7 @@ export function App() {
   const [onboarded, setOnboarded] = useState(hasSeenOnboarding);
 
   const showAssistant = isEnabled('on_device_assistant');
+  useMeshLifecycle();
 
   const push = useCallback((next: Screen) => setStack((s) => [...s, next]), []);
   const goBack = useCallback(
@@ -216,6 +221,7 @@ export function App() {
             onSubscriptions={() => push({ name: 'subscriptions' })}
             onAlertPreferences={() => push({ name: 'alert-preferences' })}
             onPrivacy={() => push({ name: 'privacy' })}
+            onNearbyMesh={() => push({ name: 'nearby-mesh' })}
             onAbout={() => push({ name: 'about' })}
             onCardReview={() => push({ name: 'alert-card-review' })}
             onTrustReview={() => push({ name: 'trust-review' })}
@@ -239,6 +245,7 @@ export function App() {
         {screen.name === 'subscriptions' && <SubscriptionsScreen onBack={goBack} />}
         {screen.name === 'alert-preferences' && <AlertPreferencesScreen onBack={goBack} />}
         {screen.name === 'privacy' && <PrivacyScreen onBack={goBack} />}
+        {screen.name === 'nearby-mesh' && <NearbyMeshScreen onBack={goBack} />}
         {screen.name === 'trust-review' && <TrustReviewScreen onBack={goBack} />}
         {screen.name === 'alert-card-review' && <AlertCardReviewScreen onBack={goBack} />}
       </View>
