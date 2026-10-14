@@ -9,6 +9,16 @@
        which the app already asks for to show nearby alerts). -->
   <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
   <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+  <!-- Background mode: a foreground service (with its notification) keeps the mesh
+       running while Moby is in the background. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
   <!-- Optional: the rest of Moby works on phones without Bluetooth LE. -->
   <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+  <application>
+    <service
+        android:name="expo.modules.mobymesh.MeshForegroundService"
+        android:exported="false"
+        android:foregroundServiceType="connectedDevice" />
+  </application>
 </manifest>

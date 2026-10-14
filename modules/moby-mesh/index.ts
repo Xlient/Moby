@@ -37,8 +37,12 @@ declare class MobyMeshNative extends NativeModule<Events> {
   getState(): RadioState;
   startScanning(): Promise<void>;
   stopScanning(): void;
-  advertise(bytes: number[]): Promise<void>;
-  stopAdvertising(): void;
+  /** The packets to keep broadcasting, each for intervalMs in turn (empty = stop).
+   *  The rotation runs natively, so it continues while the app is in the background. */
+  setBroadcast(packets: number[][], intervalMs: number): void;
+  /** Starts/stops the foreground service that keeps Moby running in the background.
+   *  Call while the app is in the foreground. Returns false if Android refused. */
+  setKeepRunning(on: boolean): boolean;
 }
 
 export const MobyMesh = requireOptionalNativeModule<MobyMeshNative>('MobyMesh');

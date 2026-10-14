@@ -14,6 +14,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
@@ -21,8 +24,10 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
 // Moby's Bluetooth mesh radio, Android side. Deliberately small: it only
-//   - advertises one 24-byte packet at a time (JS rotates through what to send), and
-//   - listens for other phones' packets and hands the raw bytes to JS.
+//   - rotates through the 24-byte packets JS gives it, advertising each for a moment,
+//   - listens for other phones' packets and hands the raw bytes to JS, and
+//   - keeps Moby running in the background with a foreground service (MeshForegroundService).
+// The rotation is here, not in JS, because Android pauses JS timers in the background.
 // Everything else (format, duplicates, hop limits, uploads) is plain TypeScript in
 // src/mesh/, where it's unit-tested. See docs/mesh-guide.md.
 //
@@ -31,7 +36,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 //
 // Bluetooth can be switched off and on (by the user, or by Android restarting its
 // Bluetooth stack), which silently ends our scan and advertisement. So we remember what
-// JS asked for (`wantScan`, `lastPacket`) and resume it when Bluetooth comes back on.
+// JS asked for (`wantScan`, `queue`) and resume it when Bluetooth comes back on.
 
 private const val TAG = "MobyMesh"
 
@@ -49,8 +54,21 @@ class MobyMeshModule : Module() {
   private var scanning = false
   private var advertising = false
   private var wantScan = false
-  private var lastPacket: ByteArray? = null
   private var receiverRegistered = false
+
+  // Broadcast rotation: each packet is on the air for `intervalMs`, then the next.
+  private val handler = Handler(Looper.getMainLooper())
+  private var queue: List<ByteArray> = emptyList()
+  private var queueIndex = 0
+  private var intervalMs = 1_500L
+  private val rotate = object : Runnable {
+    override fun run() {
+      if (queue.isEmpty()) return
+      startAdvertising(queue[queueIndex % queue.size])
+      queueIndex += 1
+      handler.postDelayed(this, intervalMs)
+    }
+  }
 
   private val context: Context
     get() = appContext.reactContext ?: throw MeshException("React context is gone")
@@ -98,14 +116,16 @@ class MobyMeshModule : Module() {
       when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
         BluetoothAdapter.STATE_TURNING_OFF, BluetoothAdapter.STATE_OFF -> {
           // The stack has dropped our scan and advertisement; don't call stop on them.
+          handler.removeCallbacks(rotate)
           scanning = false
           advertising = false
           sendEvent("onStateChange", mapOf("enabled" to false))
         }
         BluetoothAdapter.STATE_ON -> {
-          Log.i(TAG, "Bluetooth back on: resuming (scan=$wantScan, advertise=${lastPacket != null})")
+          Log.i(TAG, "Bluetooth back on: resuming (scan=$wantScan, packets=${queue.size})")
           if (wantScan) startScan()
-          lastPacket?.let { startAdvertising(it) }
+          handler.removeCallbacks(rotate)
+          if (queue.isNotEmpty()) handler.post(rotate)
           sendEvent("onStateChange", mapOf("enabled" to true))
         }
       }
@@ -161,7 +181,19 @@ class MobyMeshModule : Module() {
     }
   }
 
+  private fun stopAdvertisingNow() {
+    try {
+      if (advertising) adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
+    } catch (e: SecurityException) {
+      Log.w(TAG, "stopAdvertising: ${e.message}")
+    } catch (e: IllegalStateException) {
+      Log.w(TAG, "stopAdvertising: ${e.message}")
+    }
+    advertising = false
+  }
+
   private fun stopAll() {
+    handler.removeCallbacks(rotate)
     try {
       if (scanning) adapter?.bluetoothLeScanner?.stopScan(scanCallback)
       if (advertising) adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
@@ -225,32 +257,43 @@ class MobyMeshModule : Module() {
       scanning = false
     }
 
-    // Replaces whatever we were advertising with this packet.
-    AsyncFunction("advertise") { bytes: List<Int>, promise: Promise ->
-      if (bytes.size != PACKET_BYTES) {
-        return@AsyncFunction promise.reject(MeshException("packet must be $PACKET_BYTES bytes"))
-      }
-      val packet = ByteArray(PACKET_BYTES) { bytes[it].toByte() }
-      lastPacket = packet
-      val problem = startAdvertising(packet)
-      if (problem == null) promise.resolve(null) else promise.reject(MeshException(problem))
+    // The packets to keep broadcasting, in order (replaces the previous set). An empty
+    // list stops advertising. Each packet is on the air for intervalMs.
+    Function("setBroadcast") { packets: List<List<Int>>, interval: Int ->
+      val next = packets.filter { it.size == PACKET_BYTES }.map { p -> ByteArray(PACKET_BYTES) { p[it].toByte() } }
+      intervalMs = interval.coerceIn(500, 10_000).toLong()
+      val unchanged = next.size == queue.size && next.zip(queue).all { (a, b) -> a.contentEquals(b) }
+      if (unchanged) return@Function
+      queue = next
+      queueIndex = 0
+      handler.removeCallbacks(rotate)
+      if (queue.isEmpty()) stopAdvertisingNow() else handler.post(rotate)
     }
 
-    Function("stopAdvertising") {
-      lastPacket = null
+    // Keeps Moby alive in the background (Android shows a notification while it does).
+    // Must be called while the app is in the foreground: Android 12+ refuses to start a
+    // foreground service from the background.
+    Function("setKeepRunning") { on: Boolean ->
+      val ctx = appContext.reactContext ?: return@Function false
+      val intent = Intent(ctx, MeshForegroundService::class.java)
       try {
-        if (advertising) adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
-      } catch (e: SecurityException) {
-        Log.w(TAG, "stopAdvertising: ${e.message}")
-      } catch (e: IllegalStateException) {
-        Log.w(TAG, "stopAdvertising: ${e.message}")
+        if (on) {
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(intent) else ctx.startService(intent)
+        } else {
+          ctx.stopService(intent)
+        }
+        true
+      } catch (e: Exception) {
+        // ForegroundServiceStartNotAllowedException (app in background) or a missing permission:
+        // the mesh still works while Moby is open.
+        Log.w(TAG, "keep running ($on): ${e.message}")
+        false
       }
-      advertising = false
     }
 
     OnDestroy {
       wantScan = false
-      lastPacket = null
+      queue = emptyList()
       stopAll()
       if (receiverRegistered) {
         try {

@@ -14,7 +14,7 @@ public class MobyMeshModule: Module {
     }
     AsyncFunction("startScanning") { () in }
     Function("stopScanning") { () in }
-    AsyncFunction("advertise") { (_: [Int]) in }
-    Function("stopAdvertising") { () in }
+    Function("setBroadcast") { (_: [[Int]], _: Int) in }
+    Function("setKeepRunning") { (_: Bool) -> Bool in false }
   }
 }

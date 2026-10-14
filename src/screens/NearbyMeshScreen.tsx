@@ -125,7 +125,9 @@ export function NearbyMeshScreen({ onBack }: NearbyMeshScreenProps) {
             Only the hazard type, how severe it is, a location rounded to about 10 m, the time, and an id that changes every day.
             Never your name, your notes or your phone’s name. Reports from nearby phones are marked unverified until Moby checks them.
           </Text>
-          <Text style={muted}>Uses some extra battery while on, and only works while Moby is open (for now).</Text>
+          <Text style={muted}>
+            While on, it keeps working with Moby in the background, and Android shows a notification so you always know. It uses some extra battery; turn it off here any time.
+          </Text>
         </View>
 
         {enabled && (

@@ -2,16 +2,18 @@
 // rules (./relay) and the API (gateway uploads + alerts) together. One instance per app.
 //
 //   radio hears bytes ──decode──▶ relay.receive ──▶ saved on the phone
-//   every 1.5 s:  relay.nextBroadcast ──encode──▶ radio.advertise
-//   when online:  relay.pendingUploads ──▶ POST /v1/mesh/sync ──▶ relay.markUploaded
-//                 GET /v1/mesh/alerts ──▶ relay.addAlert (we become a source for offline phones)
+//   on every change: relay.broadcastSet ──encode──▶ radio.setBroadcast (radio rotates them)
+//   when online:     relay.pendingUploads ──▶ POST /v1/mesh/sync ──▶ relay.markUploaded
+//                    GET /v1/mesh/alerts ──▶ relay.addAlert (we become a source for offline phones)
 //
-// Foreground only for now: Android keeps scanning for a while in the background, but a
-// reliable background mesh needs a foreground service (docs/mesh-guide.md, "Next").
+// Background: a foreground service keeps Moby running (with a notification). Android
+// pauses JS timers in the background, so nothing important depends on them: the radio
+// rotates packets natively, and uploads/saves are triggered by events (a packet heard,
+// the connection coming back) as well as by timers.
 
 import NetInfo from '@react-native-community/netinfo';
 import * as Crypto from 'expo-crypto';
-import { PermissionsAndroid, Platform } from 'react-native';
+import { AppState, PermissionsAndroid, Platform } from 'react-native';
 import { MobyMesh, type RadioState } from '../../modules/moby-mesh';
 import { api } from '@/api/client';
 import type { MeshRecord } from '@/api/types';
@@ -28,6 +30,8 @@ const HEADLINES_KEY = 'mesh-headlines-v1';
 
 /** How long each packet is on the air before the next one replaces it. */
 const BROADCAST_MS = 1_500;
+/** Re-send the broadcast set this often in the foreground, so expired packets drop off. */
+const REFRESH_EVERY_MS = 30_000;
 const UPLOAD_EVERY_MS = 60_000;
 const ALERTS_EVERY_MS = 10 * 60_000;
 /** "Phones nearby" means we heard one in the last two minutes. */
@@ -70,6 +74,7 @@ const listeners = new Set<() => void>();
 let timers: ReturnType<typeof setInterval>[] = [];
 let subscriptions: { remove(): void }[] = [];
 let lastAlertsFetch = 0;
+let lastGatewayPass = 0;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 function loadJson<T>(key: string, fallback: T): T {
@@ -87,15 +92,34 @@ function loadRelay(): MeshRelay {
 
 /** Saving on every packet would hammer storage; once a second is plenty. */
 function scheduleSave(): void {
+  // In the background timers are paused, so save straight away.
+  if (AppState.currentState !== 'active') {
+    saveNow();
+    return;
+  }
   if (saveTimer) return;
   saveTimer = setTimeout(() => {
     saveTimer = null;
-    try {
-      kv.set(RELAY_KEY, JSON.stringify(relay));
-    } catch {
-      // Storage full: the mesh keeps working in memory.
-    }
+    saveNow();
   }, 1_000);
+}
+
+function saveNow(): void {
+  try {
+    kv.set(RELAY_KEY, JSON.stringify(relay));
+  } catch {
+    // Storage full: the mesh keeps working in memory.
+  }
+}
+
+/** Hands the radio everything worth repeating; it rotates through them by itself. */
+function syncBroadcast(): void {
+  if (!MobyMesh || !canAdvertise || status !== 'running') return;
+  try {
+    MobyMesh.setBroadcast(relay.broadcastSet().map((p) => Array.from(encodePacket(p))), BROADCAST_MS);
+  } catch (e) {
+    lastError = e instanceof Error ? e.message : String(e);
+  }
 }
 
 function note(line: string): void {
@@ -203,6 +227,7 @@ export async function originateReport(r: {
   });
   note(`your report is on the mesh (${r.hazard_type}, ${r.severity})`);
   scheduleSave();
+  syncBroadcast();
   emit();
 }
 
@@ -214,7 +239,9 @@ async function requestPermissions(): Promise<boolean> {
     Number(Platform.Version) >= 31
       ? [PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN, PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE]
       : [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION];
-  const result = await PermissionsAndroid.requestMultiple(wanted);
+  // Optional: shows the "sharing with nearby phones" notification while in the background.
+  const optional = Number(Platform.Version) >= 33 ? [PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS] : [];
+  const result = await PermissionsAndroid.requestMultiple([...wanted, ...optional]);
   return wanted.every((p) => result[p] === PermissionsAndroid.RESULTS.GRANTED);
 }
 
@@ -226,26 +253,19 @@ function onPacket(bytes: number[]): void {
   if (result === 'new') {
     note(`heard ${packet.kind} ${packet.hazard}/${packet.severity}, ${packet.hops} hop${packet.hops === 1 ? '' : 's'}`);
     scheduleSave();
+    syncBroadcast();
+    // Timers don't run in the background, so a new report is also the cue to upload it.
+    if (packet.kind === 'report' && Date.now() - lastGatewayPass > UPLOAD_EVERY_MS) void gatewayPass();
   } else if (result !== 'duplicate') {
     note(`dropped a packet: ${result}`);
   }
   emit();
 }
 
-async function broadcastNext(): Promise<void> {
-  if (!MobyMesh || !canAdvertise) return;
-  const packet = relay.nextBroadcast();
-  try {
-    if (packet) await MobyMesh.advertise(Array.from(encodePacket(packet)));
-    else MobyMesh.stopAdvertising();
-  } catch (e) {
-    lastError = e instanceof Error ? e.message : String(e);
-  }
-}
-
 // ── Gateway ──────────────────────────────────────────────────────────
 
 async function gatewayPass(): Promise<void> {
+  lastGatewayPass = Date.now();
   const net = await NetInfo.fetch();
   if (!net.isConnected || net.isInternetReachable === false) return;
 
@@ -280,6 +300,7 @@ async function gatewayPass(): Promise<void> {
         if (relay.all().length > before) added++;
       }
       if (added) note(`sharing ${added} official alert(s) with nearby phones`);
+      syncBroadcast();
       kv.set(HEADLINES_KEY, JSON.stringify(headlines));
       scheduleSave();
     } catch (e) {
@@ -312,10 +333,15 @@ export async function startMesh(): Promise<MeshStatus> {
     canAdvertise = radio.canAdvertise === true;
     subscriptions = [
       MobyMesh.addListener('onPacket', (e) => onPacket(e.bytes)),
+      // The connection coming back is the cue to upload what we carry (works in the background).
+      { remove: NetInfo.addEventListener((net) => {
+        if (net.isConnected && net.isInternetReachable !== false && Date.now() - lastGatewayPass > 10_000) void gatewayPass();
+      }) },
       MobyMesh.addListener('onStateChange', (e) => {
         // The module resumes the radio itself; we only keep the status honest.
         if (status === 'running' || status === 'bluetooth_off') {
           status = e.enabled ? 'running' : 'bluetooth_off';
+          if (e.enabled) syncBroadcast();
           note(e.enabled ? 'Bluetooth back on: mesh resumed' : 'Bluetooth turned off: mesh paused');
           emit();
         }
@@ -329,10 +355,12 @@ export async function startMesh(): Promise<MeshStatus> {
     try {
       await MobyMesh.startScanning();
       timers = [
-        setInterval(() => void broadcastNext(), BROADCAST_MS),
+        setInterval(syncBroadcast, REFRESH_EVERY_MS),
         setInterval(() => void gatewayPass(), UPLOAD_EVERY_MS),
       ];
       status = 'running';
+      syncBroadcast();
+      if (!MobyMesh.setKeepRunning(true)) note('background mode unavailable: works while Moby is open');
       note(canAdvertise ? 'mesh on: listening and relaying' : 'mesh on: listening only (this phone cannot advertise)');
       void gatewayPass();
     } catch (e) {
@@ -352,7 +380,8 @@ export function stopMesh(): void {
   subscriptions = [];
   if (MobyMesh) {
     MobyMesh.stopScanning();
-    MobyMesh.stopAdvertising();
+    MobyMesh.setBroadcast([], BROADCAST_MS);
+    MobyMesh.setKeepRunning(false);
   }
   if (status === 'running') note('mesh off');
   status = 'off';
@@ -369,5 +398,6 @@ export function resumeMeshIfEnabled(): void {
 export function clearMesh(): void {
   relay = new MeshRelay();
   kv.set(RELAY_KEY, '[]');
+  syncBroadcast();
   emit();
 }

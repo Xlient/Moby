@@ -3,6 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { Button, IconButton, ProgressBar, Surface, Text } from 'react-native-paper';
 import {
   Camera,
+  LogManager,
   Map,
   OfflineManager,
   UserLocation,
@@ -23,6 +24,18 @@ import { DiagramMapScreen } from './DiagramMapScreen';
 // MapLibre preview of the full-screen map (issue #21): open basemaps with terrain
 // shading, alert *areas* drawn by severity, and offline packs. Behind the
 // "Terrain map (preview)" switch in Settings; Google stays the default.
+
+// Offline, MapLibre reports every map tile it can't download as an error. That's expected
+// (Moby is built for no signal), and in development the error banner then covers the
+// screen. Log those as plain messages instead; anything else keeps MapLibre's handling.
+const OFFLINE_TILE_ERROR = /Unable to resolve host|Failed to connect|No address associated|timeout/i;
+LogManager.onLog(({ level, message }) => {
+  if (level === 'error' && OFFLINE_TILE_ERROR.test(message)) {
+    console.log(`MapLibre (offline): ${message}`);
+    return true;
+  }
+  return false;
+});
 
 interface Props {
   onBack: () => void;

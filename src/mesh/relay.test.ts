@@ -138,3 +138,22 @@ test('survives an app restart (JSON round trip)', () => {
   const restored = MeshRelay.fromJSON(JSON.parse(JSON.stringify(relay)), { now: c.now });
   assert.deepEqual(restored.all(), relay.all());
 });
+
+test('broadcast set for the radio: priorities, hop + 1, nothing past the limit', () => {
+  const c = clock();
+  const relay = new MeshRelay({ now: c.now });
+  const old = packet({ hops: 2 });
+  relay.receive(old);
+  c.advance(60_000);
+  const recent = packet({ hops: 0 });
+  relay.receive(recent);
+  relay.receive(packet({ hops: MAX_HOPS }));          // kept for upload, never repeated
+  const alert = packet({ kind: 'alert' });
+  relay.addAlert(alert);
+  const own = packet({ reporter: '33333333' });
+  relay.addOwn(own);
+  const set = relay.broadcastSet();
+  assert.deepEqual(set.map((p) => p.id), [alert.id, own.id, recent.id, old.id]);
+  assert.deepEqual(set.map((p) => p.hops), [0, 0, 1, 3]);
+  assert.equal(relay.broadcastSet(2).length, 2);
+});

@@ -89,7 +89,8 @@ export class MeshRelay {
     if (this.entries.has(packet.id) || !this.isLive(packet)) return;
     this.entries.set(packet.id, {
       packet: { ...packet, kind: 'alert', hops: 0 },
-      own: false,
+      // We're its first broadcaster, so it goes out at hop 0, like our own reports.
+      own: true,
       firstHeardAt: this.now(),
       heardCount: 0,
       sentCount: 0,
@@ -146,6 +147,22 @@ export class MeshRelay {
     const pick = candidates[0]!;
     pick.sentCount += 1;
     return { ...pick.packet, hops: pick.own ? 0 : pick.packet.hops + 1 };
+  }
+
+  /**
+   * Everything worth repeating right now, ready to hand to the radio, which rotates
+   * through it on its own (so it keeps going while the app is in the background, when
+   * JavaScript timers are paused). Alerts first, then our own reports, then the newest.
+   * Hop counts are already + 1 (0 for our own).
+   */
+  broadcastSet(limit = 20): MeshPacket[] {
+    this.prune();
+    const rank = (e: MeshEntry) => (e.packet.kind === 'alert' ? 0 : e.own ? 1 : 2);
+    return [...this.entries.values()]
+      .filter((e) => this.isLive(e.packet) && (e.own || e.packet.hops + 1 <= MAX_HOPS))
+      .sort((a, b) => rank(a) - rank(b) || b.firstHeardAt - a.firstHeardAt)
+      .slice(0, limit)
+      .map((e) => ({ ...e.packet, hops: e.own ? 0 : e.packet.hops + 1 }));
   }
 
   /** Reports waiting for a gateway (any phone with signal) to upload them. */
