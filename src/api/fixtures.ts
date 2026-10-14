@@ -5,6 +5,7 @@ import type {
   GuidanceCard,
   Subscription,
   BriefPending,
+  AlertExplanation,
   EventReports,
   ReportSummary,
 } from './types';
@@ -342,4 +343,18 @@ export function getMockGuidanceCards(): GuidanceCard[] {
 
 export function getMockSubscriptions(): Subscription[] {
   return mockSubscriptions;
+}
+
+// "What this means for you" sample (the real one is written by Nemotron Super from the agency's text).
+export function getMockExplanation(eventId: string): AlertExplanation | undefined {
+  if (eventId !== 'event-001') return undefined;
+  return {
+    event_id: eventId,
+    summary:
+      'Rivers in the area are rising after heavy rain, and flooding is expected along low-lying roads. '
+      + 'The warning says this is dangerous for anyone driving or walking near the water.',
+    actions: ['Move to higher ground if water rises around you.', 'Do not drive through flooded roads.'],
+    model: 'nvidia/nemotron-3-super-120b-a12b',
+    generated_at: new Date().toISOString(),
+  };
 }

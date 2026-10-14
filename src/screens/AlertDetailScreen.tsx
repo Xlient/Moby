@@ -9,10 +9,12 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { AlertCard } from '@/components/AlertCard';
 import { BriefPanel } from '@/components/BriefPanel';
+import { ExplanationCard } from '@/components/ExplanationCard';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { ContributingReports } from '@/components/ContributingReports';
 import { TierLadder } from '@/components/TierLadder';
 import { useBrief } from '@/hooks/useBrief';
+import { useExplanation } from '@/hooks/useExplanation';
 import { useEventReports } from '@/hooks/useEventReports';
 import { useAlerts } from '@/hooks/useAlerts';
 import { GuidanceCard } from '@/components/GuidanceCard';
@@ -57,6 +59,7 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
   // Official alerts come from agencies, not people nearby; only community alerts have reports.
   const fromCommunity = !!alert && alert.verification_label !== 'official_confirmed';
   const reports = useEventReports(alert?.event_id, fromCommunity);
+  const explained = useExplanation(alert?.event_id, !!alert && !fromCommunity && !!alert.body);
   const { cards } = useGuidance();
   const whatToDo = cardsForHazard(cards, alert?.hazard_type ?? 'other').slice(0, WHAT_TO_DO_CARDS);
 
@@ -76,6 +79,7 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
       ) : (
         <ScrollView style={styles.container} contentContainerStyle={{ padding: r.gutter }}>
           <AlertCard alert={alert} distanceKm={distance} />
+          {!fromCommunity && <ExplanationCard {...explained} />}
           {alert.body ? (
             // The agency's message: what's happening and what to do.
             <Text variant="bodyLarge" style={[styles.body, { color: theme.text.primary }]}>

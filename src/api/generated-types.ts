@@ -604,6 +604,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/events/{event_id}/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * "What this means for you": a plain-language explanation of an official warning
+         * @description Written by NVIDIA Nemotron Super from the agency's own text only, then checked: every number must appear in the original, and actions must come from the warning itself. 200 when ready; 202 while it's being written (the first viewer triggers it, then it's cached); 404 when there is nothing to explain or it failed the checks. Clients must label it as Moby's AI explanation and keep the official text visible.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    event_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ready */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AlertExplanation"];
+                    };
+                };
+                /** @description Being written */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @enum {string} */
+                            status?: "pending";
+                            retry_after_seconds?: number;
+                        };
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/{event_id}/confirm": {
         parameters: {
             query?: never;
@@ -1518,6 +1573,17 @@ export interface components {
             captured_offline?: boolean;
             /** @description Arrived over the Bluetooth mesh. */
             via_mesh?: boolean;
+        };
+        AlertExplanation: {
+            event_id: string;
+            /** @description 2-3 plain sentences grounded in the agency's text */
+            summary: string;
+            /** @description Instructions taken from the warning itself (empty if it gives none) */
+            actions: string[];
+            /** @description e.g. nvidia/nemotron-3-super-120b-a12b */
+            model: string;
+            /** Format: date-time */
+            generated_at?: string;
         };
         SituationalBrief: {
             event_id: string;

@@ -2,6 +2,7 @@ import type {
   Alert,
   AlertPreferences,
   BriefPending,
+  AlertExplanation,
   CascadeAssessment,
   ClientConfig,
   GuidanceCard,
@@ -21,6 +22,7 @@ import {
   getMockAlert,
   getMockConfig,
   getMockBrief,
+  getMockExplanation,
   getMockGuidanceCards,
   getMockSubscriptions,
   getMockEventReports,
@@ -288,6 +290,18 @@ export class ApiClient {
       body: data,
       noContent: true,
     });
+  }
+
+  // ── "What this means for you" (Nemotron Super) ─────────────────────
+
+  /** 202 → { status: 'pending' } while it's being written; 404 throws (nothing to explain). */
+  async getExplanation(eventId: string): Promise<AlertExplanation | { status: 'pending'; retry_after_seconds?: number }> {
+    if (USE_MOCK) {
+      const e = getMockExplanation(eventId);
+      if (!e) throw new ApiRequestError(404, 'NOT_FOUND', 'No explanation');
+      return e;
+    }
+    return this.request('GET', `/events/${encodeURIComponent(eventId)}/explain`);
   }
 
   // ── Situational brief ────────────────────────────────────────────

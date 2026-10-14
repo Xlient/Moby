@@ -19,6 +19,7 @@ export type CoordinateFrame = components['schemas']['CoordinateFrame'];
 
 // ── Situational awareness ────────────────────────────────────────────
 export type SituationalBrief = components['schemas']['SituationalBrief'];
+export type AlertExplanation = components['schemas']['AlertExplanation'];
 export type CascadeAssessment = components['schemas']['CascadeAssessment'];
 
 // ── Guidance ─────────────────────────────────────────────────────────

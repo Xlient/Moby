@@ -7,6 +7,7 @@ Public, read-only:
   GET  /v1/events/{event_id}        one event (contract `Alert` shape); also /v1/alerts/{alert_id}
   GET  /v1/events/{event_id}/reports  community reports behind an event (coarse, no notes)
   GET  /v1/events/{event_id}/brief  situational brief (200), or 202 while it is being written
+  GET  /v1/events/{event_id}/explain  'What this means for you' (Nemotron Super), 202 while written
   GET  /v1/config                   client feature flags
   GET  /v1/guidance/manifest, /v1/guidance/cards  published offline guidance (see guidance.py)
 
@@ -250,6 +251,28 @@ async def event_reports(event_id: uuid.UUID):
             for r in rows
         ],
     }
+
+
+@app.get("/v1/events/{event_id}/explain")
+async def event_explain(event_id: uuid.UUID):
+    """'What this means for you' (moby/ai/explain.py): 200 with the explanation, 202 while
+    Nemotron Super writes it (the first viewer asks; everyone after gets the cache), 404 when
+    there is nothing to explain or it failed its grounding checks (the app then shows the
+    official text only). Official warnings only: community reports have no agency text."""
+    async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            """UPDATE events SET explainer_status = 'pending'
+               WHERE event_id = %s AND explainer_status = 'none' AND source = 'official'
+                 AND length(coalesce(description, '')) >= 40""", (event_id,))
+        await cur.execute("SELECT source, explainer, explainer_status FROM events WHERE event_id = %s", (event_id,))
+        row = await cur.fetchone()
+    if row is None:
+        raise HTTPException(404, "event not found")
+    if row["explainer_status"] == "done":
+        return {"event_id": str(event_id), **row["explainer"]}
+    if row["explainer_status"] == "pending":
+        return JSONResponse({"status": "pending", "retry_after_seconds": 5}, status_code=202)
+    raise HTTPException(404, "no explanation for this alert")
 
 
 @app.get("/v1/events/{event_id}/brief")

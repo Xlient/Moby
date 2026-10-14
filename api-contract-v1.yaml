@@ -333,6 +333,38 @@ paths:
               schema: { $ref: '#/components/schemas/EventReports' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /events/{event_id}/explain:
+    get:
+      tags: [analysis]
+      summary: '"What this means for you": a plain-language explanation of an official warning'
+      description: >
+        Written by NVIDIA Nemotron Super from the agency's own text only, then checked: every
+        number must appear in the original, and actions must come from the warning itself.
+        200 when ready; 202 while it's being written (the first viewer triggers it, then it's
+        cached); 404 when there is nothing to explain or it failed the checks. Clients must label
+        it as Moby's AI explanation and keep the official text visible.
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AlertExplanation' }
+        '202':
+          description: Being written
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [pending] }
+                  retry_after_seconds: { type: integer }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /events/{event_id}/confirm:
     post:
       tags: [reports]
@@ -1092,6 +1124,20 @@ components:
         distance_from_event_m: { type: integer, description: Rounded to 100 m. }
         captured_offline: { type: boolean }
         via_mesh: { type: boolean, description: Arrived over the Bluetooth mesh. }
+
+    AlertExplanation:
+      type: object
+      required: [event_id, summary, actions, model]
+      properties:
+        event_id: { type: string }
+        summary: { type: string, description: 2-3 plain sentences grounded in the agency's text }
+        actions:
+          type: array
+          maxItems: 3
+          items: { type: string }
+          description: Instructions taken from the warning itself (empty if it gives none)
+        model: { type: string, description: e.g. nvidia/nemotron-3-super-120b-a12b }
+        generated_at: { type: string, format: date-time }
 
     SituationalBrief:
       type: object
