@@ -59,11 +59,11 @@ SPOTS = {
 
 SCENARIOS: dict[str, Scenario] = {
     "lone_low": Scenario(
-        "1 report, 1 person, low → new event, tier 0, no review (END)",
+        "1 report, 1 person, low → new event, tier 0 → draft_alert (shown to people who opted into single reports)",
         [R("alice", "flood", "low", effect="rising_water")],
     ),
     "corroborated_flood": Scenario(
-        "3 people within ~150 m and 25 min → ONE event, 3 distinct reporters, tier 1 → human_review",
+        "3 people within ~150 m and 25 min → ONE event, 3 distinct reporters, tier 1 → draft_alert",
         [R("bob", "flood", "high", 0, 0, 25, "rising_water"),
          R("carol", "flood", "high", 80, 40, 15, "rising_water"),
          R("dan", "flood", "medium", -60, 110, 5, "blocked_road")],
@@ -75,16 +75,16 @@ SCENARIOS: dict[str, Scenario] = {
          R("erin", "fire", "high", -15, 5, 10, "smoke_or_fire_visible")],
     ),
     "critical_single": Scenario(
-        "1 critical report → tier 0 but SEVERITY FLOOR → human_review straight away",
+        "1 critical report → tier 0 → draft_alert; review_reason severity_floor (optional flag, no pause)",
         [R("frank", "landslide", "critical", effect="blocked_road")],
     ),
     "conflicting": Scenario(
-        "2 people, same place, critical vs low → conflicting → human_review (never average them)",
+        "2 people, same place, critical vs low → ONE event at CRITICAL (the highest), reports_disagree, tier 1",
         [R("grace", "fire", "critical", 0, 0, 12, "smoke_or_fire_visible"),
          R("heidi", "fire", "low", 50, 30, 8, "other")],
     ),
     "near_official": Scenario(
-        "official flood event at the spot + 1 report 300 m away → official match (join or link the official event)",
+        "official flood event at the spot + 1 report 300 m away → joins the official event (official match), END",
         [R("ivan", "flood", "medium", 250, 170, 5, "rising_water")],
         official="flood",
     ),

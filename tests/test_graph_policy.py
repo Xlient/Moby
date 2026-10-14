@@ -3,15 +3,17 @@
 Skipped until `moby/graph/policy.py` exists. These are pure functions, no LLM and no
 database, so they're fast and they guard the scariest bugs (a wrong tier, a skipped review).
 
-Rules from the plan:
+Rules (decided 2026-10-14: no review gate):
   * Tier is VERIFICATION, not severity:
-      0 unverified (logged) → 1 corroborated (reviewer notified) → 2 confirmed (public alert).
+      0 = one person, 1 = 2+ different people, 2 = matches an official warning.
+    Community events are delivered without waiting for anyone, always labelled unverified,
+    to people whose community_reports choice includes them (tier 0 opt-in, tier 1 default).
   * Only DISTINCT people corroborate: repeats from one person and mesh relay hops never count.
-  * Tier 2 for community events needs an official match or reviewer approval. (The plan also
-    allows "high corroboration"; we chose a human gate on every community alert. Change
-    HIGH_CORROBORATION_PROMOTES if you decide otherwise.)
-  * Severity floor: a single critical report goes to review right away.
-  * Conflicting reports go to review, never averaged.
+  * Only an official match makes tier 2. Lots of people agreeing is still "unverified".
+  * Conflicting reports: never averaged. The event takes the HIGHEST severity and sets
+    reports_disagree (a missed danger is worse than an over-warning).
+  * Review is optional (local partners). review_reason only flags an event for them;
+    the graph never pauses for it.
 
 Lines marked DECISION are choices, not facts: change the expected values if you decide
 differently, and the tests keep you honest about the rule you picked.
@@ -22,7 +24,7 @@ from langgraph.graph import END
 policy = pytest.importorskip("moby.graph.policy", reason="moby/graph/policy.py not written yet")
 
 CORROBORATION_MIN = 2            # DECISION: distinct people needed for tier 1
-HIGH_CORROBORATION_PROMOTES = False  # DECISION: never auto-promote a community event to tier 2
+HIGH_CORROBORATION_PROMOTES = False  # decided: only an official match makes tier 2
 
 
 # ── distinct reporters ───────────────────────────────────────────────────────
@@ -70,7 +72,16 @@ def test_is_conflicting(severities, expected):
     assert policy.is_conflicting(severities) == expected
 
 
-# ── review reason (None = no human review needed) ────────────────────────────
+@pytest.mark.parametrize("severities, expected", [
+    (["low"], "low"),
+    (["medium", "high", "medium"], "high"),
+    (["critical", "low"], "critical"),          # conflicting: warn at the higher level
+])
+def test_event_severity_is_the_highest(severities, expected):
+    assert policy.event_severity(severities) == expected
+
+
+# ── review reason: flags an event for OPTIONAL review (None = nothing to flag) ──
 
 @pytest.mark.parametrize("tier, severity, conflicting, expected", [
     (0, "low", False, None),                              # logged only
@@ -97,20 +108,12 @@ def test_review_reasons_match_the_review_queue_table():
 # ── routing (the conditional edge) ───────────────────────────────────────────
 
 @pytest.mark.parametrize("state, expected", [
-    ({"tier": 0, "review_reason": None}, END),
-    ({"tier": 0, "review_reason": "severity_floor"}, "human_review"),
-    ({"tier": 1, "review_reason": "tier1_corroborated"}, "human_review"),
-    ({"tier": 2, "review_reason": None}, "draft_alert"),
+    ({"tier": 0, "official_match": False}, "draft_alert"),   # single reports reach people who opted in
+    ({"tier": 1, "official_match": False}, "draft_alert"),
+    ({"tier": 2, "official_match": True}, END),              # the official warning already says it
 ])
 def test_route_by_tier(state, expected):
-    # State keys "tier" / "review_reason" and node names are suggestions: rename here if yours differ.
+    # No human_review branch: nothing waits for a reviewer. State keys and node names are
+    # suggestions; rename here if yours differ. DECISION: an official match ends the run
+    # (the report just joins the official event) instead of drafting a second alert.
     assert policy.route_by_tier(state) == expected
-
-
-@pytest.mark.parametrize("decision, expected", [
-    ("approve", "draft_alert"),
-    ("reject", END),
-    ("hold", END),           # DECISION: hold = stays out of public alerts until decided again
-])
-def test_route_after_review(decision, expected):
-    assert policy.route_after_review({"reviewer_decision": decision}) == expected
