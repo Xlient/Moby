@@ -17,7 +17,7 @@ export interface PacketEvent {
   /** The 24 raw bytes (0-255). */
   bytes: number[];
   rssi: number;
-  /** Randomised by Android every ~15 minutes: only for counting nearby phones. */
+  /** Randomised by Android (often per advertisement): not an identity, not even a stable count. */
   device: string;
 }
 
@@ -29,6 +29,8 @@ export interface RadioErrorEvent {
 type Events = {
   onPacket(event: PacketEvent): void;
   onError(event: RadioErrorEvent): void;
+  /** Bluetooth switched off or on. The module resumes scanning and advertising by itself. */
+  onStateChange(event: { enabled: boolean }): void;
 };
 
 declare class MobyMeshNative extends NativeModule<Events> {

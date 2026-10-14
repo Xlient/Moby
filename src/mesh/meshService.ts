@@ -30,7 +30,7 @@ const HEADLINES_KEY = 'mesh-headlines-v1';
 const BROADCAST_MS = 1_500;
 const UPLOAD_EVERY_MS = 60_000;
 const ALERTS_EVERY_MS = 10 * 60_000;
-/** A phone counts as "nearby" if we heard it in the last two minutes. */
+/** "Phones nearby" means we heard one in the last two minutes. */
 const NEARBY_WINDOW_MS = 2 * 60_000;
 
 export type MeshStatus =
@@ -44,7 +44,9 @@ export interface MeshSnapshot {
   status: MeshStatus;
   /** False on phones that can only listen. */
   canAdvertise: boolean;
-  nearbyPhones: number;
+  /** Heard any Moby phone in the last two minutes. (We can't count phones: Android gives
+   *  every advertisement a fresh random address, which is good for privacy.) */
+  hearingNearby: boolean;
   carrying: number;
   waitingToUpload: number;
   uploaded: number;
@@ -62,7 +64,6 @@ let lastHeardAt: number | undefined;
 let lastError: string | undefined;
 let uploadedCount = 0;
 let location: { lat: number; lon: number } | null = null;
-const nearby = new Map<string, number>();
 const headlines: Record<string, string> = loadJson(HEADLINES_KEY, {});
 const log: string[] = [];
 const listeners = new Set<() => void>();
@@ -98,7 +99,7 @@ function scheduleSave(): void {
 }
 
 function note(line: string): void {
-  const stamp = new Date().toISOString().slice(11, 19);
+  const stamp = new Date().toTimeString().slice(0, 8);
   log.unshift(`${stamp} ${line}`);
   log.length = Math.min(log.length, 50);
 }
@@ -113,12 +114,10 @@ export function subscribeMesh(cb: () => void): () => void {
 }
 
 export function getMeshSnapshot(): MeshSnapshot {
-  const now = Date.now();
-  for (const [device, at] of nearby) if (now - at > NEARBY_WINDOW_MS) nearby.delete(device);
   return {
     status,
     canAdvertise,
-    nearbyPhones: nearby.size,
+    hearingNearby: lastHeardAt !== undefined && Date.now() - lastHeardAt < NEARBY_WINDOW_MS,
     carrying: relay.all().length,
     waitingToUpload: relay.pendingUploads().length,
     uploaded: uploadedCount,
@@ -219,10 +218,9 @@ async function requestPermissions(): Promise<boolean> {
   return wanted.every((p) => result[p] === PermissionsAndroid.RESULTS.GRANTED);
 }
 
-function onPacket(bytes: number[], device: string): void {
+function onPacket(bytes: number[]): void {
   const packet = decodePacket(Uint8Array.from(bytes));
   if (!packet) return;
-  nearby.set(device, Date.now());
   lastHeardAt = Date.now();
   const result: ReceiveResult = relay.receive(packet);
   if (result === 'new') {
@@ -313,7 +311,15 @@ export async function startMesh(): Promise<MeshStatus> {
   } else {
     canAdvertise = radio.canAdvertise === true;
     subscriptions = [
-      MobyMesh.addListener('onPacket', (e) => onPacket(e.bytes, e.device)),
+      MobyMesh.addListener('onPacket', (e) => onPacket(e.bytes)),
+      MobyMesh.addListener('onStateChange', (e) => {
+        // The module resumes the radio itself; we only keep the status honest.
+        if (status === 'running' || status === 'bluetooth_off') {
+          status = e.enabled ? 'running' : 'bluetooth_off';
+          note(e.enabled ? 'Bluetooth back on: mesh resumed' : 'Bluetooth turned off: mesh paused');
+          emit();
+        }
+      }),
       MobyMesh.addListener('onError', (e) => {
         lastError = `${e.where} failed (code ${e.code})`;
         note(lastError);
@@ -350,7 +356,7 @@ export function stopMesh(): void {
   }
   if (status === 'running') note('mesh off');
   status = 'off';
-  nearby.clear();
+  lastHeardAt = undefined;
   emit();
 }
 

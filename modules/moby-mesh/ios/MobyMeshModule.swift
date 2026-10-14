@@ -7,7 +7,7 @@ import ExpoModulesCore
 public class MobyMeshModule: Module {
   public func definition() -> ModuleDefinition {
     Name("MobyMesh")
-    Events("onPacket", "onError")
+    Events("onPacket", "onError", "onStateChange")
 
     Function("getState") { () -> [String: Any] in
       return ["supported": false, "enabled": false, "reason": "ios_not_implemented"]

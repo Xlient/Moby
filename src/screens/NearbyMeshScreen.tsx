@@ -73,7 +73,7 @@ export function NearbyMeshScreen({ onBack }: NearbyMeshScreenProps) {
           </View>
           {enabled && mesh.status === 'running' && (
             <>
-              <Stat label="Phones nearby" value={String(mesh.nearbyPhones)} hint="Heard in the last 2 minutes" />
+              <Stat label="Moby phones nearby" value={mesh.hearingNearby ? 'Yes' : 'None heard'} hint="In the last 2 minutes" />
               <Stat label="Messages this phone is passing on" value={String(mesh.carrying)} />
               <Stat label="Reports waiting for a phone with signal" value={String(mesh.waitingToUpload)} />
               <Stat label="Reports this phone uploaded for others" value={String(mesh.uploaded)} last={!mesh.lastHeardAt} />

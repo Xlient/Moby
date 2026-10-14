@@ -10,7 +10,10 @@ import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.util.Log
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
@@ -25,6 +28,10 @@ import expo.modules.kotlin.modules.ModuleDefinition
 //
 // Packets ride in the manufacturer-specific data of a non-connectable advertisement:
 // no pairing, no connection, any number of listeners.
+//
+// Bluetooth can be switched off and on (by the user, or by Android restarting its
+// Bluetooth stack), which silently ends our scan and advertisement. So we remember what
+// JS asked for (`wantScan`, `lastPacket`) and resume it when Bluetooth comes back on.
 
 private const val TAG = "MobyMesh"
 
@@ -35,18 +42,21 @@ private const val PACKET_BYTES = 24
 
 class MeshException(message: String) : CodedException(message)
 
-// JS asks for the Nearby devices permission before calling anything (src/mesh/radio.ts),
-// and every call catches the SecurityException if it was refused anyway.
+// JS asks for the Nearby devices permission before calling anything
+// (src/mesh/meshService.ts), and every call catches the SecurityException anyway.
 @SuppressLint("MissingPermission")
 class MobyMeshModule : Module() {
   private var scanning = false
   private var advertising = false
+  private var wantScan = false
+  private var lastPacket: ByteArray? = null
+  private var receiverRegistered = false
 
   private val context: Context
     get() = appContext.reactContext ?: throw MeshException("React context is gone")
 
   private val adapter: BluetoothAdapter?
-    get() = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+    get() = (appContext.reactContext?.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
 
   private val scanCallback = object : ScanCallback() {
     override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -83,9 +93,97 @@ class MobyMeshModule : Module() {
     }
   }
 
+  private val bluetoothStateReceiver = object : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+      when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
+        BluetoothAdapter.STATE_TURNING_OFF, BluetoothAdapter.STATE_OFF -> {
+          // The stack has dropped our scan and advertisement; don't call stop on them.
+          scanning = false
+          advertising = false
+          sendEvent("onStateChange", mapOf("enabled" to false))
+        }
+        BluetoothAdapter.STATE_ON -> {
+          Log.i(TAG, "Bluetooth back on: resuming (scan=$wantScan, advertise=${lastPacket != null})")
+          if (wantScan) startScan()
+          lastPacket?.let { startAdvertising(it) }
+          sendEvent("onStateChange", mapOf("enabled" to true))
+        }
+      }
+    }
+  }
+
+  /** Starts listening. Returns null on success, or why it couldn't. */
+  private fun startScan(): String? {
+    val scanner = adapter?.takeIf { it.isEnabled }?.bluetoothLeScanner ?: return "Bluetooth is off or missing"
+    if (scanning) return null
+    // Filtering in the Bluetooth chip (not in our code) saves battery and keeps working
+    // when the screen is off. Chips without filter support fall back to software.
+    val filter = ScanFilter.Builder()
+      .setManufacturerData(COMPANY_ID, byteArrayOf(MAGIC), byteArrayOf(0xFF.toByte()))
+      .build()
+    val settings = ScanSettings.Builder()
+      .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+      .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+      .build()
+    return try {
+      scanner.startScan(listOf(filter), settings, scanCallback)
+      scanning = true
+      null
+    } catch (e: SecurityException) {
+      "Nearby devices permission is missing"
+    }
+  }
+
+  /** Replaces whatever we were advertising. Returns null on success, or why it couldn't. */
+  private fun startAdvertising(packet: ByteArray): String? {
+    val advertiser = adapter?.takeIf { it.isEnabled && it.isMultipleAdvertisementSupported }?.bluetoothLeAdvertiser
+      ?: return "This phone can't advertise over Bluetooth LE"
+    val settings = AdvertiseSettings.Builder()
+      .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+      .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+      .setConnectable(false)
+      .setTimeout(0)
+      .build()
+    val data = AdvertiseData.Builder()
+      .setIncludeDeviceName(false) // the phone's name would identify its owner, and doesn't fit
+      .setIncludeTxPowerLevel(false)
+      .addManufacturerData(COMPANY_ID, packet)
+      .build()
+    return try {
+      // Always stop first (harmless when idle): a start that hasn't reported back yet
+      // would otherwise fail with "already started".
+      advertiser.stopAdvertising(advertiseCallback)
+      advertising = false
+      advertiser.startAdvertising(settings, data, advertiseCallback)
+      null
+    } catch (e: SecurityException) {
+      "Nearby devices permission is missing"
+    }
+  }
+
+  private fun stopAll() {
+    try {
+      if (scanning) adapter?.bluetoothLeScanner?.stopScan(scanCallback)
+      if (advertising) adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
+    } catch (e: SecurityException) {
+      Log.w(TAG, "stop: ${e.message}")
+    } catch (e: IllegalStateException) {
+      Log.w(TAG, "stop: ${e.message}") // Bluetooth already off
+    }
+    scanning = false
+    advertising = false
+  }
+
   override fun definition() = ModuleDefinition {
     Name("MobyMesh")
-    Events("onPacket", "onError")
+    Events("onPacket", "onError", "onStateChange")
+
+    OnCreate {
+      appContext.reactContext?.let {
+        it.registerReceiver(bluetoothStateReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
+        receiverRegistered = true
+      }
+    }
 
     // What this phone can do. Never throws, so the UI can always explain itself.
     Function("getState") {
@@ -107,37 +205,22 @@ class MobyMeshModule : Module() {
       )
     }
 
-    // Listens until stopScanning(). Android allows only ~5 scan starts per 30 seconds,
-    // so JS starts this once and leaves it running, rather than toggling it.
+    // Listens until stopScanning(), and resumes by itself after Bluetooth comes back on.
+    // Android allows only ~5 scan starts per 30 seconds, so JS starts this once.
     AsyncFunction("startScanning") { promise: Promise ->
-      val scanner = adapter?.takeIf { it.isEnabled }?.bluetoothLeScanner
-        ?: return@AsyncFunction promise.reject(MeshException("Bluetooth is off or missing"))
-      if (scanning) return@AsyncFunction promise.resolve(null)
-      // Filtering in the Bluetooth chip (not in our code) saves battery and keeps
-      // working when the screen is off.
-      val filter = ScanFilter.Builder()
-        .setManufacturerData(COMPANY_ID, byteArrayOf(MAGIC), byteArrayOf(0xFF.toByte()))
-        .build()
-      val settings = ScanSettings.Builder()
-        .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-        .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
-        .build()
-      try {
-        scanner.startScan(listOf(filter), settings, scanCallback)
-        scanning = true
-        promise.resolve(null)
-      } catch (e: SecurityException) {
-        promise.reject(MeshException("Nearby devices permission is missing"))
-      }
+      wantScan = true
+      val problem = startScan()
+      if (problem == null) promise.resolve(null) else promise.reject(MeshException(problem))
     }
 
     Function("stopScanning") {
-      if (scanning) {
-        try {
-          adapter?.bluetoothLeScanner?.stopScan(scanCallback)
-        } catch (e: SecurityException) {
-          Log.w(TAG, "stopScan: ${e.message}")
-        }
+      wantScan = false
+      try {
+        if (scanning) adapter?.bluetoothLeScanner?.stopScan(scanCallback)
+      } catch (e: SecurityException) {
+        Log.w(TAG, "stopScan: ${e.message}")
+      } catch (e: IllegalStateException) {
+        Log.w(TAG, "stopScan: ${e.message}")
       }
       scanning = false
     }
@@ -147,51 +230,36 @@ class MobyMeshModule : Module() {
       if (bytes.size != PACKET_BYTES) {
         return@AsyncFunction promise.reject(MeshException("packet must be $PACKET_BYTES bytes"))
       }
-      val advertiser = adapter?.takeIf { it.isEnabled && it.isMultipleAdvertisementSupported }?.bluetoothLeAdvertiser
-        ?: return@AsyncFunction promise.reject(MeshException("This phone can't advertise over Bluetooth LE"))
-      val settings = AdvertiseSettings.Builder()
-        .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-        .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-        .setConnectable(false)
-        .setTimeout(0)
-        .build()
-      val data = AdvertiseData.Builder()
-        .setIncludeDeviceName(false) // the phone's name would identify its owner, and doesn't fit
-        .setIncludeTxPowerLevel(false)
-        .addManufacturerData(COMPANY_ID, ByteArray(PACKET_BYTES) { bytes[it].toByte() })
-        .build()
-      try {
-        // Always stop first (harmless when idle): a start that hasn't reported back yet
-        // would otherwise fail with "already started".
-        advertiser.stopAdvertising(advertiseCallback)
-        advertising = false
-        advertiser.startAdvertising(settings, data, advertiseCallback)
-        promise.resolve(null)
-      } catch (e: SecurityException) {
-        promise.reject(MeshException("Nearby devices permission is missing"))
-      }
+      val packet = ByteArray(PACKET_BYTES) { bytes[it].toByte() }
+      lastPacket = packet
+      val problem = startAdvertising(packet)
+      if (problem == null) promise.resolve(null) else promise.reject(MeshException(problem))
     }
 
     Function("stopAdvertising") {
-      if (advertising) {
-        try {
-          adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
-        } catch (e: SecurityException) {
-          Log.w(TAG, "stopAdvertising: ${e.message}")
-        }
+      lastPacket = null
+      try {
+        if (advertising) adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
+      } catch (e: SecurityException) {
+        Log.w(TAG, "stopAdvertising: ${e.message}")
+      } catch (e: IllegalStateException) {
+        Log.w(TAG, "stopAdvertising: ${e.message}")
       }
       advertising = false
     }
 
     OnDestroy {
-      try {
-        if (scanning) adapter?.bluetoothLeScanner?.stopScan(scanCallback)
-        if (advertising) adapter?.bluetoothLeAdvertiser?.stopAdvertising(advertiseCallback)
-      } catch (e: SecurityException) {
-        Log.w(TAG, "cleanup: ${e.message}")
+      wantScan = false
+      lastPacket = null
+      stopAll()
+      if (receiverRegistered) {
+        try {
+          appContext.reactContext?.unregisterReceiver(bluetoothStateReceiver)
+        } catch (e: IllegalArgumentException) {
+          Log.w(TAG, "unregister: ${e.message}")
+        }
+        receiverRegistered = false
       }
-      scanning = false
-      advertising = false
     }
   }
 }
