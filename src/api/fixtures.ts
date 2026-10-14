@@ -5,6 +5,8 @@ import type {
   GuidanceCard,
   Subscription,
   BriefPending,
+  AlertExplanation,
+  AskAnswer,
   EventReports,
   ReportSummary,
 } from './types';
@@ -30,6 +32,7 @@ export const mockConfig: ClientConfig = {
     cascade_analysis: false,
     offline_guidance_cards: true,
     on_device_assistant: false,
+    ask_moby: true,
     mesh_relay: false,
     proximity_confirmation: false,
     early_tier_opt_in: false,
@@ -342,4 +345,34 @@ export function getMockGuidanceCards(): GuidanceCard[] {
 
 export function getMockSubscriptions(): Subscription[] {
   return mockSubscriptions;
+}
+
+// "What this means for you" sample (the real one is written by Nemotron Super from the agency's text).
+export function getMockExplanation(eventId: string): AlertExplanation | undefined {
+  if (eventId !== 'event-001') return undefined;
+  return {
+    event_id: eventId,
+    summary:
+      'Flash flooding is expected in low-lying areas along the Russian River. '
+      + 'The warning tells anyone there to move to higher ground immediately.',
+    actions: ['Move to higher ground immediately.'],
+    model: 'nvidia/nemotron-3-super-120b-a12b',
+    generated_at: new Date().toISOString(),
+  };
+}
+
+// Ask Moby sample: answers about floods, abstains on anything else (like the real one off-topic).
+export function getMockAnswer(question: string): AskAnswer {
+  if (!/flood|water|road/i.test(question)) {
+    return { answer: null, abstained: true, sources: [], model: 'nvidia/nemotron-3-super-120b-a12b', searched_web: false };
+  }
+  return {
+    answer: 'Turn around and find another route: never drive through a flooded road [1]. '
+      + 'Just 12 inches of moving water can carry away most cars [1].',
+    abstained: false,
+    sources: [{ n: 1, kind: 'guidance', title: 'Flooded road: turn around', publisher: 'National Weather Service',
+      url: 'https://www.weather.gov/safety/flood-turn-around-dont-drown' }],
+    model: 'nvidia/nemotron-3-super-120b-a12b',
+    searched_web: false,
+  };
 }

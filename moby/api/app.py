@@ -7,10 +7,12 @@ Public, read-only:
   GET  /v1/events/{event_id}        one event (contract `Alert` shape); also /v1/alerts/{alert_id}
   GET  /v1/events/{event_id}/reports  community reports behind an event (coarse, no notes)
   GET  /v1/events/{event_id}/brief  situational brief (200), or 202 while it is being written
+  GET  /v1/events/{event_id}/explain  'What this means for you' (Nemotron Super), 202 while written
   GET  /v1/config                   client feature flags
   GET  /v1/guidance/manifest, /v1/guidance/cards  published offline guidance (see guidance.py)
 
 Signed-in users (Firebase ID token):
+  POST /v1/ask                      Ask Moby: a cited answer from official sources, or none
   POST /v1/reports                  submit a ground report (write-first, 202)
   GET  /v1/reports/{client_event_id} status of one of your own reports
   POST /v1/me/devices               register this phone's push token (DELETE on sign-out)
@@ -58,7 +60,10 @@ from moby.feeds.poller import FEEDS, health as feeds_health
 from moby.feeds.schema import Severity
 from moby.llm import EMBEDDING_DIM
 
+from moby.ai import ask
+
 from .alerts import to_alert
+from .auth import Caller, require_user
 from .reports import router as reports_router
 from .appcheck import app_check_middleware
 from .guidance import router as guidance_router
@@ -252,6 +257,47 @@ async def event_reports(event_id: uuid.UUID):
     }
 
 
+class AskRequest(BaseModel):
+    question: str = Field(min_length=3, max_length=500)
+    lat: float | None = Field(None, ge=-90, le=90)
+    lon: float | None = Field(None, ge=-180, le=180)
+    country: str | None = Field(None, pattern="^[A-Z]{2}$")
+
+
+@app.post("/v1/ask")
+async def ask_moby(body: AskRequest, caller: Annotated[Caller, Depends(require_user)]):
+    """Ask Moby (moby/ai/ask.py): answers only from official alerts, Moby's guidance and
+    official websites, with citations; `abstained` when it can't ground an answer.
+    Signed-in only and rate-limited, since every question costs model calls."""
+    if get_settings().token_factory_api_key is None:
+        raise HTTPException(503, "Ask Moby isn't available right now")
+    if not ask.allow(caller.uid):
+        raise HTTPException(429, "Too many questions; try again later")
+    return await ask.answer(_pool(), body.question.strip(), lat=body.lat, lon=body.lon, country=body.country)
+
+
+@app.get("/v1/events/{event_id}/explain")
+async def event_explain(event_id: uuid.UUID):
+    """'What this means for you' (moby/ai/explain.py): 200 with the explanation, 202 while
+    Nemotron Super writes it (the first viewer asks; everyone after gets the cache), 404 when
+    there is nothing to explain or it failed its grounding checks (the app then shows the
+    official text only). Official warnings only: community reports have no agency text."""
+    async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(
+            """UPDATE events SET explainer_status = 'pending'
+               WHERE event_id = %s AND explainer_status = 'none' AND source = 'official'
+                 AND length(coalesce(description, '')) >= 40""", (event_id,))
+        await cur.execute("SELECT source, explainer, explainer_status FROM events WHERE event_id = %s", (event_id,))
+        row = await cur.fetchone()
+    if row is None:
+        raise HTTPException(404, "event not found")
+    if row["explainer_status"] == "done":
+        return {"event_id": str(event_id), **row["explainer"]}
+    if row["explainer_status"] == "pending":
+        return JSONResponse({"status": "pending", "retry_after_seconds": 5}, status_code=202)
+    raise HTTPException(404, "no explanation for this alert")
+
+
 @app.get("/v1/events/{event_id}/brief")
 async def event_brief(event_id: uuid.UUID):
     """Contract 4. 200 with the brief, 202 while the situational_brief job is working on
@@ -309,6 +355,7 @@ async def legal(doc: Literal["privacy", "terms", "delete-account"]):
 @app.get("/v1/config")
 async def get_config():
     # Feature-flag discipline (plan v3 §1): everything past Week 4 ships off.
+    s = get_settings()
     return {
         "min_supported_client": "0.1.0",
         "flags": {
@@ -316,6 +363,7 @@ async def get_config():
             "cascade_analysis": False,
             "offline_guidance_cards": True,   # Week 5: synced cards + built-in fallbacks
             "on_device_assistant": False,
+            "ask_moby": s.token_factory_api_key is not None,   # POST /v1/ask
             "mesh_relay": False,
             "proximity_confirmation": False,
             "early_tier_opt_in": False,
