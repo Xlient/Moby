@@ -131,3 +131,21 @@ def test_event_reports_are_public_and_coarse(client, db_url):
     assert rep["observed_effect"] == "rising_water" and rep["distance_from_event_m"] == 0
     assert "note" not in rep and "reporter" not in rep and "location" not in rep
     assert client.get(f"/v1/events/{uuid.uuid4()}/reports").status_code == 404
+
+
+def test_pipeline_counts_and_recent_events(client, db_url):
+    queued = seed(db_url, reason="tier1_corroborated", minutes_ago=5)
+    approved = seed(db_url, reason="severity_floor", minutes_ago=10, reports=1)
+    client.post(f"/v1/review/{approved}/decision", json={"decision": "approve"})
+    with psycopg.connect(db_url, autocommit=True) as c:
+        c.execute(
+            "INSERT INTO reports (client_event_id, fusion_status, reporter_hash, hazard_type, severity, location, observed_at) "
+            "VALUES (%s, 'pending', %s, 'fire', 'medium', ST_SetSRID(ST_MakePoint(-122.4, 37.7), 4326)::geography, now())",
+            (str(uuid.uuid4()), "r" * 32))
+    body = client.get("/v1/review/pipeline").json()
+    assert body["reports"]["pending"] == 1 and body["reports"]["oldest_pending_at"]
+    assert body["reports"]["fused_24h"] == 3
+    assert body["review"] == {"open": 1, "awaiting_resume": 1}
+    by_id = {e["event_id"]: e for e in body["events"]}
+    assert by_id[queued]["review_status"] == "open" and by_id[queued]["report_count"] == 2
+    assert by_id[approved]["reviewer_decision"] == "approve" and by_id[approved]["alert_drafted"] is False

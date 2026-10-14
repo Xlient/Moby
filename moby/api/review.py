@@ -113,6 +113,72 @@ async def review_queue(_: Reviewer, region: Literal["US", "CN"] | None = None):
     ]
 
 
+PIPELINE_COUNTS_SQL = """
+SELECT
+  (SELECT count(*) FROM reports WHERE fusion_status = 'pending')                                   AS pending,
+  (SELECT min(received_at) FROM reports WHERE fusion_status = 'pending')                           AS oldest_pending_at,
+  (SELECT count(*) FROM reports WHERE fusion_status = 'fused'  AND received_at > now() - interval '24 hours') AS fused_24h,
+  (SELECT count(*) FROM reports WHERE fusion_status = 'failed' AND received_at > now() - interval '24 hours') AS failed_24h,
+  (SELECT count(*) FROM review_queue WHERE status = 'open')                                        AS review_open,
+  -- Approved but the event isn't tier 2 yet: the pipeline hasn't resumed the thread (or draft_alert failed).
+  (SELECT count(*) FROM review_queue q JOIN events e USING (event_id)
+     WHERE q.status = 'decided' AND q.decision = 'approve' AND e.tier < 2)                         AS awaiting_resume
+"""
+
+PIPELINE_EVENTS_SQL = """
+SELECT e.event_id, e.source, e.hazard_type, e.severity, e.tier, e.confidence, e.distinct_reporter_count,
+       e.reviewer_decision, e.official_match_id, e.alert_headline, e.first_reported_at, e.last_updated_at,
+       q.status AS review_status, q.reason AS review_reason,
+       (SELECT count(*) FROM reports r WHERE r.event_id = e.event_id) AS report_count
+FROM events e LEFT JOIN review_queue q USING (event_id)
+WHERE e.source <> 'official' AND e.last_updated_at > now() - interval '48 hours'
+ORDER BY e.last_updated_at DESC
+LIMIT 100
+"""
+
+
+@router.get("/pipeline")
+async def pipeline(_: Reviewer):
+    """Read-only view of the fusion pipeline for the console's Pipeline tab: how many reports
+    are waiting, fused or failed, and where recent community events stand. Never runs the graph."""
+    from .app import _pool
+
+    async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(PIPELINE_COUNTS_SQL)
+        counts = await cur.fetchone()
+        await cur.execute(PIPELINE_EVENTS_SQL)
+        events = await cur.fetchall()
+    return {
+        "reports": {
+            "pending": counts["pending"],
+            "oldest_pending_at": _iso(counts["oldest_pending_at"]),
+            "fused_24h": counts["fused_24h"],
+            "failed_24h": counts["failed_24h"],
+        },
+        "review": {"open": counts["review_open"], "awaiting_resume": counts["awaiting_resume"]},
+        "events": [
+            {
+                "event_id": str(e["event_id"]),
+                "source": e["source"],
+                "hazard_type": e["hazard_type"],
+                "severity": e["severity"],
+                "tier": e["tier"],
+                "confidence": e["confidence"],
+                "distinct_reporter_count": e["distinct_reporter_count"],
+                "report_count": e["report_count"],
+                "official_match": e["official_match_id"] is not None,
+                "review_status": e["review_status"],
+                "review_reason": e["review_reason"],
+                "reviewer_decision": e["reviewer_decision"],
+                "alert_drafted": e["alert_headline"] is not None,
+                "first_reported_at": _iso(e["first_reported_at"]),
+                "last_updated_at": _iso(e["last_updated_at"]),
+            }
+            for e in events
+        ],
+    }
+
+
 class DecisionIn(BaseModel):
     decision: Literal["approve", "reject", "hold"]
     note: str | None = Field(default=None, max_length=500)
