@@ -79,8 +79,9 @@ def test_modes(client, monkeypatch, key):
     assert status(client, monkeypatch, "enforce") == 401
     assert status(client, monkeypatch, "enforce", bad) == 401
     assert status(client, monkeypatch, "enforce", good) == 200
-    # Exempt routes don't need a token even when enforcing.
-    assert status(client, monkeypatch, "enforce", path="/healthz") in (200, 503)
+    # Exempt routes don't need a token even when enforcing. (/console/config, not /healthz:
+    # /healthz queries feed tables, and this test runs against an unmigrated database in CI.)
+    assert status(client, monkeypatch, "enforce", path="/console/config") == 200
 
 
 def test_enforce_message(client, monkeypatch):
