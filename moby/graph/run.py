@@ -9,7 +9,7 @@ Not the production worker (claiming reports with SKIP LOCKED, the loop, resuming
 review_queue rows): that's yours to build. This only makes each step easy to try.
 
 Contract with your graph (change GRAPH or pass --graph if you name things differently):
-  * `moby.graph.fusion.build_graph(checkpointer)` returns a compiled graph
+  * `moby.graph.pipeline.build_graph(checkpointer)` returns the compiled main graph
     (`StateGraph(...).compile(checkpointer=checkpointer)`).
   * The input state is `{"report": {...}}`: the reports row as a dict, with `lat`/`lon` floats
     in place of the PostGIS `location`.
@@ -30,7 +30,7 @@ from typing import Any
 import psycopg
 from psycopg.rows import dict_row
 
-GRAPH = "moby.graph.fusion:build_graph"
+GRAPH = "moby.graph.pipeline:build_graph"
 DEFAULT_DB = "postgresql://moby:moby@localhost:5432/moby"
 
 REPORT_SQL = """
