@@ -464,6 +464,8 @@ async def run(feeds: list[FeedName], once: bool, force: bool = False) -> list[Po
     NHC, JTWC, feeds/centers.py): multi-document sources with their own poll loops."""
     from moby.db import make_pool
 
+    from moby.ai import ask, explain
+
     from . import cap, centers, translate
 
     async with make_pool() as pool, _http_client() as http:
@@ -475,6 +477,9 @@ async def run(feeds: list[FeedName], once: bool, force: bool = False) -> list[Po
             extra.append(centers.run_centers(pool, http, once=once))
         if "translate" in feeds:
             extra.append(translate.run_translator(pool, once=once))
+        if "explain" in feeds:
+            extra.append(explain.run_explainer(pool, once=once))
+            extra.append(ask.run_card_indexer(pool, once=once))   # Ask Moby's guidance retrieval
         if extra:
             if once:
                 await asyncio.gather(*extra)
