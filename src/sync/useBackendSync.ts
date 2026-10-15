@@ -6,6 +6,7 @@ import { onBeforeSignOut, useAuth } from '@/auth/AuthContext';
 import { useAlertPreferences } from '@/hooks/useAlertPreferences';
 import { useNearbyRadius } from '@/hooks/useNearbyRadius';
 import { fetchCenter, useUserCenterPassive } from '@/location/UserLocationContext';
+import { phoneLanguage } from '@/lib/language';
 import { alertIdOf, deviceId, pushSupported, setUpPush } from '@/lib/notifications';
 import { usePrivacySettings } from '@/lib/privacySettings';
 
@@ -35,7 +36,13 @@ export function useBackendSync(onOpenAlert: (alertId: string) => void): void {
       if (token === sent) return;
       sent = token;
       api
-        .registerDevice({ device_id: deviceId(), push_provider: platform === 'ios' ? 'apns' : 'fcm', push_token: token, platform })
+        .registerDevice({
+          device_id: deviceId(),
+          push_provider: platform === 'ios' ? 'apns' : 'fcm',
+          push_token: token,
+          platform,
+          language: phoneLanguage(),
+        })
         .catch((err) => {
           sent = null;
           console.warn('Could not register for push', err);

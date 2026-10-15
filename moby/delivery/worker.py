@@ -20,15 +20,23 @@ retried on later cycles, up to MAX_ATTEMPTS.
 
 Only events that changed after the device registered, and within FRESH_FOR, are
 pushed: a fresh install isn't flooded with everything already on the map.
+
+Plain language on the lock screen: a new official warning that isn't critical waits up
+to HOLD_FOR for Moby's grounded explanation (moby/ai/explain.py), so the push says what
+it means and what to do, in the phone's language (moby/ai/localize.py). Critical
+warnings never wait. If the explanation fails its checks, runs over budget or takes too
+long, the push goes out with the official wording, as before.
 """
 import asyncio
 import logging
-from datetime import timedelta
+import os
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 
+from moby.ai import localize
 from moby.api.alerts import to_alert
 
 from .fcm import Push, Result, Sender
@@ -38,15 +46,17 @@ log = logging.getLogger("moby.delivery")
 FRESH_FOR = timedelta(hours=6)
 MAX_ATTEMPTS = 3
 BATCH = 500
+HOLD_FOR = timedelta(seconds=int(os.environ.get("MOBY_PUSH_HOLD_S", "90")))
 
 CANDIDATES_SQL = """
 SELECT DISTINCT ON (e.event_id, d.device_id)
        e.event_id, e.source, e.source_feed, e.external_id, e.hazard_type, e.product, e.marine, e.severity, e.tier,
        e.title, e.description, e.alert_headline, e.alert_body, e.distinct_reporter_count, e.reports_disagree,
-       e.language, e.title_en, e.description_en, e.translation_status,
+       e.language, e.title_en, e.description_en, e.translation_status, e.country,
        e.first_reported_at, e.last_updated_at, e.expires_at, e.raw_payload,
+       e.explainer, e.explainer_status,
        ST_Y(e.location::geometry) AS lat, ST_X(e.location::geometry) AS lon,
-       d.device_id, d.push_token
+       d.device_id, d.push_token, d.language AS device_language
 FROM events e
 JOIN subscriptions s
   ON ST_DWithin(s.center, COALESCE(e.area, e.location), s.radius_km * 1000)
@@ -101,12 +111,34 @@ SET status = EXCLUDED.status, error = EXCLUDED.error, sent_at = now(),
 """
 
 
-def build_push(row: dict[str, Any]) -> Push:
-    """Contract 3: draft_alert's text when present, else the official wording."""
+def _explained(row: dict[str, Any]) -> bool:
+    return row.get("source") == "official" and row.get("explainer_status") == "done" and bool(row.get("explainer"))
+
+
+def waits_for_explanation(row: dict[str, Any], now: datetime) -> bool:
+    """Hold a fresh, non-critical official warning while its explanation is being written."""
+    return (row.get("source") == "official" and row["severity"] != "critical"
+            and row.get("explainer_status") in ("none", "pending")
+            and len(row.get("description") or "") >= 40
+            and now - row["last_updated_at"] < HOLD_FOR)
+
+
+def build_push(row: dict[str, Any], localized: dict | None = None) -> Push:
+    """Contract 3: draft_alert's text when present, then Moby's checked explanation (in the
+    phone's language when `localized` is given), else the official wording."""
     alert = to_alert(row)
     title = row.get("alert_headline") or alert["headline"]
     translated = bool(alert.get("translated"))
-    if row.get("alert_body"):
+    if not row.get("alert_body") and _explained(row):
+        # Labelled as Moby's, like in the app; the official text is one tap away.
+        title = (localized or {}).get("headline") or title
+        body = " ".join(((localized or row["explainer"])["summary"]).split())
+        suffix = " (Moby AI)"
+        if len(body) > 240 - len(suffix):
+            body = body[: 240 - len(suffix) - 1].rstrip() + "…"
+        body += suffix
+        translated = False
+    elif row.get("alert_body"):
         body = row["alert_body"]
     elif translated:
         body = " — ".join(p for p in (alert.get("location_name"), " ".join((alert.get("body") or "").split())) if p)
@@ -117,9 +149,10 @@ def build_push(row: dict[str, Any]) -> Push:
     # Always keep the translation label: truncate the text, never the label.
     suffix = f" (Translated by Moby from {alert['original_language']})" if translated else ""
     limit = 240 - len(suffix)
-    if len(body) > limit:
-        body = body[: limit - 1].rstrip() + "…"
-    body += suffix
+    if not _explained(row) or row.get("alert_body"):
+        if len(body) > limit:
+            body = body[: limit - 1].rstrip() + "…"
+        body += suffix
     critical = row["severity"] == "critical"
     if row.get("source") in ("manual", "mesh"):
         # Never let a community report read like an agency warning: say so in the title.
@@ -145,8 +178,22 @@ async def deliver_once(conn: AsyncConnection, sender: Sender) -> dict[str, int]:
         rows = await cur.fetchall()
 
     counts = {"sent": 0, "failed": 0, "invalid_token": 0}
+    # Explanations need Token Factory; without it nothing is ever held.
+    if localize.nano() is not None:
+        now = datetime.now(timezone.utc)
+        held = [r for r in rows if waits_for_explanation(r, now)]
+        if held:
+            await conn.execute(
+                """UPDATE events SET explainer_status = 'pending'
+                   WHERE event_id = ANY(%s) AND explainer_status = 'none' AND source = 'official'""",
+                (list({r["event_id"] for r in held}),))
+            counts["held"] = len(held)
+            rows = [r for r in rows if not waits_for_explanation(r, now)]
     for row in rows:
-        result: Result = await asyncio.to_thread(sender.send, build_push(row))
+        loc = None
+        if _explained(row) and (code := localize.normalize(row.get("device_language"))):
+            loc = await localize.explanation_in(conn, row, code)
+        result: Result = await asyncio.to_thread(sender.send, build_push(row, loc))
         counts[result.outcome] += 1
         async with conn.transaction():
             await conn.execute(LOG_SQL, {"event_id": row["event_id"], "device_id": row["device_id"],

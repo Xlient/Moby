@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api, ApiRequestError } from '@/api/client';
 import type { AlertExplanation } from '@/api/types';
+import { phoneLanguage } from '@/lib/language';
 
 type Pending = { status: 'pending'; retry_after_seconds?: number };
 
@@ -11,9 +12,10 @@ type Pending = { status: 'pending'; retry_after_seconds?: number };
  * agency's own text is always on screen anyway.
  */
 export function useExplanation(eventId: string | undefined, enabled: boolean) {
+  const lang = phoneLanguage();
   const query = useQuery({
-    queryKey: ['explanation', eventId],
-    queryFn: (): Promise<AlertExplanation | Pending> => api.getExplanation(eventId!),
+    queryKey: ['explanation', eventId, lang],
+    queryFn: (): Promise<AlertExplanation | Pending> => api.getExplanation(eventId!, lang),
     enabled: enabled && !!eventId,
     retry: (count, err) => !(err instanceof ApiRequestError && err.status === 404) && count < 1,
     staleTime: 30 * 60_000,

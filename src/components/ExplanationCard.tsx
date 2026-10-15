@@ -3,6 +3,7 @@ import { Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing, radius } from '@/theme/tokens';
 import type { AlertExplanation } from '@/api/types';
+import { languageName } from '@/lib/language';
 
 /**
  * Plain-language explanation of an official warning. Always labelled as AI and always
@@ -34,7 +35,9 @@ export function ExplanationCard({ explanation, pending }: { explanation?: AlertE
             </Text>
           ))}
           <Text style={[typography.meta, styles.label, { color: theme.text.faint }]}>
-            Explained by Moby AI · NVIDIA Nemotron, from the official text below. If they differ, follow the official text.
+            Explained by Moby AI · NVIDIA Nemotron
+            {languageName(explanation.language) ? `, translated into ${languageName(explanation.language)}` : ''}, from
+            the official text below. If they differ, follow the official text.
           </Text>
         </>
       )}
