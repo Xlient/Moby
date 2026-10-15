@@ -90,7 +90,10 @@ LIMIT %s
 
 
 async def translate_pending(conn: AsyncConnection, llm, model: str) -> dict[str, int]:
+    from moby.ai import budget
+
     rows = await (await conn.execute(PENDING_SQL, (BATCH,))).fetchall()
+    rows = rows[:await budget.take(conn, "translate", len(rows))]   # the rest wait for tomorrow's budget
     sem = asyncio.Semaphore(CONCURRENCY)
 
     async def work(row):

@@ -6,7 +6,7 @@ come from the environment; nothing here has a real default for them.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     # Tavily web search / extract (moby/search/tavily.py). Optional: features that use
     # it degrade gracefully without it. Never set in ordinary CI (model-evals only).
     tavily_api_key: SecretStr | None = Field(default=None, validation_alias="TAVILY_API_KEY")
+
+    @field_validator("token_factory_api_key", "tavily_api_key", mode="before")
+    @classmethod
+    def _blank_is_unset(cls, v):
+        # .env.example ships `N_FACTORY_ACC_KEY=`: an empty key means "no AI features", not a key.
+        return None if isinstance(v, str) and not v.strip() else v
 
     # Exact model strings, verified by scripts/verify_models.py (see docs/models.md).
     model_nano: str = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"

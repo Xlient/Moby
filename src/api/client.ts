@@ -99,6 +99,14 @@ export class ApiClient {
     this.getToken = null;
   }
 
+  /** Point at a different API (see apiOverride.ts). Returns true if it changed. */
+  setBaseUrl(baseUrl: string): boolean {
+    const next = baseUrl.replace(/\/+$/, '');
+    if (next === this.baseUrl) return false;
+    this.baseUrl = next;
+    return true;
+  }
+
   setTokenProvider(provider: (() => Promise<string | null>) | null): void {
     this.getToken = provider;
   }

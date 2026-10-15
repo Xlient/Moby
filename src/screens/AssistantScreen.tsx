@@ -29,7 +29,7 @@ type Turn = { question: string; answer?: AskAnswer; error?: string };
 export function AssistantScreen() {
   const { theme } = useTheme();
   const r = useResponsive();
-  const { user } = useAuth();
+  const { user, isConfigured: authConfigured } = useAuth();
   const center = useUserCenter();
   const country = countryAt(center.lat, center.lon);
   const [draft, setDraft] = useState('');
@@ -49,7 +49,9 @@ export function AssistantScreen() {
       update(question, {
         error:
           err instanceof ApiRequestError && err.status === 429
-            ? 'You’ve asked a lot of questions this hour. Please try again later.'
+            ? /today/i.test(JSON.stringify(err.body ?? ''))
+              ? 'Ask Moby has answered all it can for today. Safety guidance still works, even offline.'
+              : 'You’ve asked a lot of questions this hour. Please try again later.'
             : 'Couldn’t reach Moby. Check your connection and try again.',
       }),
   });
@@ -67,7 +69,8 @@ export function AssistantScreen() {
     ask.mutate(question);
   }
 
-  if (!user && !env.useMock) {
+  // No Firebase (mock data, or a local backend with MOBY_AUTH_DISABLED): nothing to sign in to.
+  if (!user && authConfigured && !env.useMock) {
     return (
       <View style={[styles.center, { padding: r.gutter }]}>
         <Text accessibilityRole="header" style={[r.heading, { color: theme.text.primary }]}>Ask Moby</Text>

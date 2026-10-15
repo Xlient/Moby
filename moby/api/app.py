@@ -60,7 +60,7 @@ from moby.feeds.poller import FEEDS, health as feeds_health
 from moby.feeds.schema import Severity
 from moby.llm import EMBEDDING_DIM
 
-from moby.ai import ask
+from moby.ai import ask, budget
 
 from .alerts import to_alert
 from .auth import Caller, require_user
@@ -89,6 +89,11 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Moby early-warning API", version="0.5.0", lifespan=lifespan)
 # Only the official signed app (Play Integrity) may call /v1/* — see appcheck.py.
 app.middleware("http")(app_check_middleware)
+# Local web development only (README "Run it locally"): the phone app needs no CORS.
+if cors := os.environ.get("MOBY_CORS_ORIGINS"):
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(CORSMiddleware, allow_origins=cors.split(","), allow_methods=["*"], allow_headers=["*"])
 app.include_router(reports_router)
 app.include_router(mesh_router)
 app.include_router(review_router)
@@ -125,7 +130,7 @@ def _pool() -> AsyncConnectionPool:
 async def healthz():
     try:
         async with _pool().connection() as conn:
-            await conn.execute("SELECT 1")
+            ai_usage = await budget.usage_today(conn)   # also proves the database answers
     except Exception as e:  # noqa: BLE001
         raise HTTPException(503, f"database unavailable: {type(e).__name__}") from e
     ok, lines = await feeds_health([*FEEDS, "cap", "centers"])  # CAP is reported but never makes feeds_fresh false
@@ -133,7 +138,7 @@ async def healthz():
     # last good data, which beats restarting the whole endpoint.
     # "ephemeral" means the endpoint fell back to local disk (see deploy/endpoint/start.sh).
     return {"status": "ok", "storage": os.environ.get("MOBY_STORAGE", "persistent"),
-            "feeds_fresh": ok, "feeds": lines}
+            "feeds_fresh": ok, "feeds": lines, "ai_usage_today": ai_usage}
 
 
 @app.get("/v1/alerts")
@@ -275,6 +280,9 @@ async def ask_moby(body: AskRequest, caller: Annotated[Caller, Depends(require_u
         raise HTTPException(503, "Ask Moby isn't available right now")
     if not ask.allow(caller.uid):
         raise HTTPException(429, "Too many questions; try again later")
+    async with _pool().connection() as conn:
+        if not await budget.take(conn, "ask"):
+            raise HTTPException(429, "Ask Moby has answered all it can for today; try again tomorrow")
     return await ask.answer(_pool(), body.question.strip(), lat=body.lat, lon=body.lon, country=body.country)
 
 

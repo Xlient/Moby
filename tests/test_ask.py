@@ -87,6 +87,10 @@ def wire(monkeypatch, *, cards, answer_json, web=()):
             searched.append((query, include_domains))
             return list(web)
 
+    async def take(_conn, _feature, n=1):
+        return n
+
+    monkeypatch.setattr(ask.budget, "take", take)
     monkeypatch.setattr(ask, "card_sources", card_sources)
     monkeypatch.setattr(ask, "alert_sources", alert_sources)
     monkeypatch.setattr("moby.search.tavily.Tavily", FakeTavily)
