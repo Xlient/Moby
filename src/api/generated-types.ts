@@ -308,6 +308,8 @@ export interface paths {
                         push_token: string;
                         /** @enum {string} */
                         platform: "ios" | "android";
+                        /** @description Phone language tag (e.g. es-MX). Moby's AI text is translated into it when supported; English otherwise (push text) */
+                        language?: string;
                     };
                 };
             };
@@ -617,7 +619,10 @@ export interface paths {
          */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description Phone language tag (e.g. es-MX). Moby's AI text is translated into it when supported; English otherwise */
+                    lang?: string;
+                };
                 header?: never;
                 path: {
                     event_id: string;
@@ -1652,6 +1657,8 @@ export interface components {
             model: string;
             /** Format: date-time */
             generated_at?: string;
+            /** @description Language of summary and actions (ISO 639-1); 'en' unless translated by Moby */
+            language?: string;
         };
         AskRequest: {
             question: string;
@@ -1660,6 +1667,8 @@ export interface components {
             lon?: number;
             /** @description Picks the official websites to search */
             country?: string;
+            /** @description Phone language tag (e.g. es-MX). Moby's AI text is translated into it when supported; English otherwise */
+            language?: string;
         };
         AskAnswer: {
             /** @description Plain-language answer with [n] markers matching sources; null when abstained */
@@ -1676,6 +1685,8 @@ export interface components {
             model: string;
             /** @description True when official websites were searched via Tavily */
             searched_web: boolean;
+            /** @description Language of the answer (ISO 639-1); 'en' unless translated by Moby */
+            language?: string;
         };
         SituationalBrief: {
             event_id: string;

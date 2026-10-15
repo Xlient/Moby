@@ -60,7 +60,7 @@ from moby.feeds.poller import FEEDS, health as feeds_health
 from moby.feeds.schema import Severity
 from moby.llm import EMBEDDING_DIM
 
-from moby.ai import ask, budget
+from moby.ai import ask, budget, localize
 
 from .alerts import to_alert
 from .auth import Caller, require_user
@@ -202,17 +202,20 @@ async def alert_areas(
     return {"type": "FeatureCollection", "features": features}
 
 
+# What to_alert needs from an event row.
+EVENT_COLUMNS = """event_id, source, source_feed, external_id, hazard_type, product, marine, severity, tier,
+    title, description, alert_headline, alert_body, distinct_reporter_count, reports_disagree,
+    language, title_en, description_en, translation_status, country,
+    first_reported_at, last_updated_at, expires_at, raw_payload,
+    ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon"""
+
+
 @app.get("/v1/events/{event_id}")
 @app.get("/v1/alerts/{event_id}")  # contract /alerts/{alert_id}: alert_id is the event_id
 async def get_event(event_id: uuid.UUID):
     async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            """SELECT event_id, source, source_feed, external_id, hazard_type, product, marine, severity, tier,
-                      title, description, alert_headline, alert_body, distinct_reporter_count, reports_disagree,
-                      language, title_en, description_en, translation_status, country,
-                      first_reported_at, last_updated_at, expires_at, raw_payload,
-                      ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon
-               FROM events WHERE event_id = %s""",
+            f"SELECT {EVENT_COLUMNS} FROM events WHERE event_id = %s",
             (event_id,),
         )
         row = await cur.fetchone()
@@ -269,6 +272,7 @@ class AskRequest(BaseModel):
     lat: float | None = Field(None, ge=-90, le=90)
     lon: float | None = Field(None, ge=-180, le=180)
     country: str | None = Field(None, pattern="^[A-Z]{2}$")
+    language: str | None = Field(None, max_length=16, description="phone language, e.g. es-MX")
 
 
 @app.post("/v1/ask")
@@ -283,11 +287,13 @@ async def ask_moby(body: AskRequest, caller: Annotated[Caller, Depends(require_u
     async with _pool().connection() as conn:
         if not await budget.take(conn, "ask"):
             raise HTTPException(429, "Ask Moby has answered all it can for today; try again tomorrow")
-    return await ask.answer(_pool(), body.question.strip(), lat=body.lat, lon=body.lon, country=body.country)
+    return await ask.answer(_pool(), body.question.strip(), lat=body.lat, lon=body.lon, country=body.country,
+                            language=body.language)
 
 
 @app.get("/v1/events/{event_id}/explain")
-async def event_explain(event_id: uuid.UUID):
+async def event_explain(event_id: uuid.UUID,
+                        lang: Annotated[str | None, Query(max_length=16, description="phone language, e.g. es-MX")] = None):
     """'What this means for you' (moby/ai/explain.py): 200 with the explanation, 202 while
     Nemotron Super writes it (the first viewer asks; everyone after gets the cache), 404 when
     there is nothing to explain or it failed its grounding checks (the app then shows the
@@ -297,12 +303,18 @@ async def event_explain(event_id: uuid.UUID):
             """UPDATE events SET explainer_status = 'pending'
                WHERE event_id = %s AND explainer_status = 'none' AND source = 'official'
                  AND length(coalesce(description, '')) >= 40""", (event_id,))
-        await cur.execute("SELECT source, explainer, explainer_status FROM events WHERE event_id = %s", (event_id,))
+        await cur.execute(f"SELECT {EVENT_COLUMNS}, explainer, explainer_status FROM events WHERE event_id = %s",
+                          (event_id,))
         row = await cur.fetchone()
-    if row is None:
-        raise HTTPException(404, "event not found")
-    if row["explainer_status"] == "done":
-        return {"event_id": str(event_id), **row["explainer"]}
+        if row is None:
+            raise HTTPException(404, "event not found")
+        if row["explainer_status"] == "done":
+            explained = {k: row["explainer"].get(k) for k in ("summary", "actions", "model", "generated_at")}
+            # In the phone's language when we can (moby/ai/localize.py); English otherwise.
+            if (code := localize.normalize(lang)) and (loc := await localize.explanation_in(conn, row, code)):
+                explained |= {"summary": loc["summary"], "actions": loc["actions"]}
+                return {"event_id": str(event_id), **explained, "language": code}
+            return {"event_id": str(event_id), **explained, "language": "en"}
     if row["explainer_status"] == "pending":
         return JSONResponse({"status": "pending", "retry_after_seconds": 5}, status_code=202)
     raise HTTPException(404, "no explanation for this alert")

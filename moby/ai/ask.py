@@ -35,7 +35,7 @@ from moby.alerts.preferences import AlertPreferences, alerts_near
 from moby.api.alerts import to_alert
 from moby.search.official import OFFICIAL
 
-from . import budget
+from . import budget, localize
 from .grounding import stray_numbers, support
 
 log = logging.getLogger("moby.ai.ask")
@@ -52,7 +52,7 @@ INDEX_INTERVAL_S = 600
 QUERY_INSTRUCTION = ("Instruct: Given a question about staying safe in a natural hazard, "
                      "retrieve safety guidance that answers it\nQuery: ")
 
-QUERY_PROMPT = """Rewrite this question as a short web search query (at most 12 words) about the
+QUERY_PROMPT = """Rewrite this question as a short English web search query (at most 12 words) about the
 safety topic only. Remove names, addresses, phone numbers, and any other personal details.
 Return only the query.
 
@@ -65,6 +65,7 @@ Rules:
 - At most 120 words, plain language. Cite the sources you use inline, like [1] or [2].
 - Never say a place, route or action is safe, or that a danger has passed, unless a source says so.
 - Only use numbers that appear in the sources. Don't give phone numbers (the app shows them).
+- Write the answer in English, whatever language the question is in (it is translated for the reader afterwards).
 
 Return ONLY JSON: {{"answer": "...", "citations": [1, 2], "abstain": false}}
 
@@ -209,7 +210,7 @@ def _numbered(sources: list[Source]) -> str:
 
 
 async def answer(pool: AsyncConnectionPool, question: str, *, lat: float | None = None,
-                 lon: float | None = None, country: str | None = None) -> dict:
+                 lon: float | None = None, country: str | None = None, language: str | None = None) -> dict:
     m = _models()
     with tracing_context(enabled=False):      # questions may contain personal details
         vector = await m["embed"].aembed_query(QUERY_INSTRUCTION + question)
@@ -222,7 +223,7 @@ async def answer(pool: AsyncConnectionPool, question: str, *, lat: float | None 
             web, query = await web_sources(pool, question, country)
             sources += web
         result = {"answer": None, "abstained": True, "sources": [], "model": m["super_name"],
-                  "searched_web": query is not None}
+                  "searched_web": query is not None, "language": "en"}
         if not sources:
             return result
         try:
@@ -239,6 +240,12 @@ async def answer(pool: AsyncConnectionPool, question: str, *, lat: float | None 
     text = re.sub(r"\[(\d+)\]", lambda g: f"[{renumber[int(g[1])]}]" if int(g[1]) in renumber else "",
                   out["answer"])
     cited = [sources[c - 1] for c in out["citations"]]
+    # Checked in English; now in the reader's language if we can (numbers and [n] markers kept).
+    if (code := localize.normalize(language)) and (llm := localize.nano()):
+        async with pool.connection() as conn:
+            allowed = await budget.take(conn, "localize")
+        if allowed and (loc := await localize.localize(llm, {"answer": text}, code)):
+            text, result = loc["answer"], result | {"language": code}
     return result | {
         "answer": text, "abstained": False,
         "sources": [{"n": i, "kind": s.kind, "title": s.title[:200], "publisher": s.publisher, "url": s.url}
