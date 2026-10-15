@@ -57,3 +57,4 @@ docs/
 db/README.md
 *-plan*.md
 design-system-mobile*.md
+.secrets/

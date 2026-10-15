@@ -15,4 +15,5 @@ class PipelineState(TypedDict, total=False):
     review_reason: str | None
     alert_headline: str
     alert_body: str
+    attached: bool
     saved: bool

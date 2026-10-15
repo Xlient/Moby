@@ -18,6 +18,7 @@ PostGIS crash course for reading this file:
   * ST_DWithin(a, b, metres): true when a and b are within that distance (uses the index).
   * ST_Distance(a, b): the distance in metres.
 """
+
 import json
 from datetime import timedelta
 from typing import Any

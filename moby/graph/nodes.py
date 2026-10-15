@@ -1,14 +1,13 @@
-import psycopg
 from .state import PipelineState    
 from .policy import assign_tier, is_conflicting, event_severity, review_reason
-from .queries import find_matching_event, create_event, attach_report, event_reporters, save_event, save_alert_text, event_effect
+from .queries import find_matching_event, create_event, attach_report, event_reporters, save_event, save_alert_text, event_effect, lock_for_fusion
 from . import alert_text
-from moby.config import get_settings
+from .db import connection
 
 def fuse(state: PipelineState) -> dict:
     """Return a fused state for the event, based on the original report and any existing events."""
-    db_url = get_settings().database_url
-    with psycopg.connect(db_url) as conn:
+    with connection() as conn:
+        lock_for_fusion(conn, state["report"])
         match = find_matching_event(conn, state["report"])
         if match is None:
             event_id = create_event(conn, state["report"])
@@ -48,7 +47,7 @@ def draft_alert(state: PipelineState) -> dict:
     """Write the alert text for a community event and save it; delivery then pushes it,
     labelled unverified, to people who chose these reports."""
     hazard = state["report"]["hazard_type"]
-    with psycopg.connect(get_settings().database_url) as conn:
+    with connection() as conn:
         # The event's first-seen effect, not this report's: the headline mustn't flip each
         # time someone new reports (e.g. "Rising water" → "Blocked road" for the same flood).
         title = alert_text.headline(hazard, event_effect(conn, state["event_id"]))
@@ -59,8 +58,7 @@ def draft_alert(state: PipelineState) -> dict:
 
 def save(state: PipelineState) -> dict:
     """Save the event to the database, based on the fused state."""
-    db_url = get_settings().database_url
-    with psycopg.connect(db_url) as conn:
+    with connection() as conn:
         saved = save_event(conn, state["event_id"], tier=state["tier"], severity=state["severity"],
                            reports_disagree=state["reports_disagree"], distinct_reporters=state["distinct_reporters"])
         return {"saved": saved}
