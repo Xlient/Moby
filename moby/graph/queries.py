@@ -29,7 +29,7 @@ from psycopg.rows import dict_row
 MATCH_RADIUS_M = 1_000
 MATCH_WINDOW = timedelta(hours=2)
 
-# Worker leases (migration 0018).
+# Worker leases (migration 0019).
 LEASE = timedelta(minutes=5)      # a claim older than this is presumed dead and re-claimable
 MAX_ATTEMPTS = 3                  # then the report is marked 'failed' (poison message)
 
@@ -179,7 +179,7 @@ def event_effect(conn: Connection, event_id: str) -> str | None:
 
 
 
-# ── Worker: claiming work, failures, and fusion locking (migration 0018) ─────────────────
+# ── Worker: claiming work, failures, and fusion locking (migration 0019) ─────────────────
 
 # Claim up to `limit` reports in one statement:
 #   * FOR UPDATE SKIP LOCKED: rows another worker is claiming right now are skipped, not

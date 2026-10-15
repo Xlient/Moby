@@ -1,4 +1,4 @@
-"""Worker SQL (migration 0018): leases, retries, poison messages, fusion locking.
+"""Worker SQL (migration 0019): leases, retries, poison messages, fusion locking.
 
 These test the distributed guarantees with real concurrent connections and threads:
 two workers never get the same report; a crashed worker's reports come back; a report
