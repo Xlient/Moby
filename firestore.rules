@@ -99,6 +99,13 @@ service cloud.firestore {
       }
     }
 
+    // Public app settings (e.g. public/app.api_url, see src/api/apiOverride.ts).
+    // Written only from the Firebase console; the app just reads them.
+    match /public/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Everything else is closed.
     match /{document=**} {
       allow read, write: if false;

@@ -22,6 +22,7 @@ from psycopg import AsyncConnection
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
+from . import budget
 from .grounding import stray_numbers, support
 
 log = logging.getLogger("moby.ai.explain")
@@ -116,6 +117,7 @@ async def explain_pending(conn: AsyncConnection, llm, model: str) -> dict[str, i
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(PENDING_SQL, (BATCH,))
         rows = await cur.fetchall()
+    rows = rows[:await budget.take(conn, "explain", len(rows))]   # the rest stay pending until tomorrow
     results = await asyncio.gather(*(explain_one(llm, r) for r in rows))
     counts = {"done": 0, "failed": 0}
     for row, (out, problem) in zip(rows, results, strict=True):

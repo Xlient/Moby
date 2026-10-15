@@ -57,3 +57,7 @@ docs/
 db/README.md
 *-plan*.md
 design-system-mobile*.md
+
+# Production Firebase config: CI writes it from the GOOGLE_SERVICES_JSON_BASE64 secret.
+google-services.json
+.secrets/

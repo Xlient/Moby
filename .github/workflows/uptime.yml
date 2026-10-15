@@ -1,0 +1,75 @@
+# Checks the live API every 30 minutes and opens (or comments on) an "uptime" issue when
+# it's down, so GitHub emails the maintainer. Closes the issue when it recovers.
+# Needs the repository secret MOBY_API_URL. A secret, not a variable: Actions logs and
+# issues on a public repository are public, and the production URL must not appear in them.
+# Note: GitHub pauses scheduled workflows after 60 days without repository activity.
+name: uptime
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency: uptime
+
+jobs:
+  check:
+    # Fork PRs and forks have no secrets: the check simply doesn't run there.
+    if: github.repository == 'Xlient/Moby'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check /healthz (3 tries)
+        id: health
+        env:
+          URL: ${{ secrets.MOBY_API_URL }}
+        run: |
+          if [ -z "$URL" ]; then echo "MOBY_API_URL secret not set; skipping"; exit 0; fi
+          for i in 1 2 3; do
+            body=$(curl -fs -m 30 "$URL/healthz" 2>/dev/null) && break   # quiet: errors would print the host
+            body=""; sleep 20
+          done
+          if [ -z "$body" ]; then
+            echo "problem=The API did not answer /healthz (3 tries)." >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          storage=$(echo "$body" | jq -r .storage)
+          fresh=$(echo "$body" | jq -r .feeds_fresh)
+          if [ "$storage" != "persistent" ]; then
+            echo "problem=The API is up but running on ephemeral storage (data is lost on restart)." >> "$GITHUB_OUTPUT"
+          elif [ "$fresh" != "true" ]; then
+            echo "problem=The API is up but official feeds are stale: $(echo "$body" | jq -c '.feeds')" >> "$GITHUB_OUTPUT"
+          fi
+          echo "$body" | jq .
+
+      - name: Report
+        uses: actions/github-script@v7
+        env:
+          PROBLEM: ${{ steps.health.outputs.problem }}
+        with:
+          script: |
+            const problem = process.env.PROBLEM;
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo, labels: 'uptime', state: 'open' });
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            if (problem) {
+              const body = `${problem}\n\n${new Date().toISOString()} · [run](${run})\n\n` +
+                'Runbook: restart with `nebius ai endpoint restart <id>`. Do not redeploy (it changes the URL).';
+              if (open.length) {
+                await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: open[0].number, body });
+              } else {
+                await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo,
+                  title: 'Live API is down or degraded', labels: ['uptime'], body });
+              }
+              core.setFailed(problem);
+            } else {
+              for (const issue of open) {
+                await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: issue.number, body: `Recovered at ${new Date().toISOString()} · [run](${run})` });
+                await github.rest.issues.update({ owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: issue.number, state: 'closed' });
+              }
+            }
