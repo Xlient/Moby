@@ -9,6 +9,7 @@ pool of reused connections served all 300. So nodes borrow from this pool instea
 transaction, committed when the block ends (rolled back on an error), then the connection
 goes back to the pool. Safe to use from several threads at once.
 """
+import atexit
 import threading
 
 from psycopg_pool import ConnectionPool
@@ -38,3 +39,8 @@ def close_pools() -> None:
         for pool in _pools.values():
             pool.close()
         _pools.clear()
+
+
+# Short-lived users (the --once harness, tests) never call close_pools(): close at exit, or
+# Python warns that the pool's background threads can't be joined during shutdown.
+atexit.register(close_pools)
