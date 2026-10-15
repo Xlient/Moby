@@ -142,6 +142,17 @@ env_from_dotenv() {  # public values only (Firebase web config); secrets come fr
   grep -E "^$1=" "$ROOT/.env" 2>/dev/null | tail -1 | cut -d= -f2-
 }
 
+# App Check needs the Firebase project number. google-services.json is no longer in the repo
+# (CI writes it from a secret); locally it lives in .secrets/, or point GOOGLE_SERVICES_JSON at it.
+firebase_project_number() {
+  local f
+  for f in "${GOOGLE_SERVICES_JSON:-}" "$ROOT/.secrets/google-services.json" "$ROOT/google-services.json"; do
+    [ -n "$f" ] && [ -f "$f" ] || continue
+    python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["project_info"]["project_number"])' "$f" 2>/dev/null && return
+  done
+  echo "warning: google-services.json not found: App Check can't verify tokens (FIREBASE_PROJECT_NUMBER empty)" >&2
+}
+
 cmd_endpoint() {
   need IMAGE push; need DATA_FS_ID setup; need SERVICE_SECRET setup; need SALT_SECRET setup; need TF_SECRET setup
   local fb_project fb_key fb_domain
@@ -160,7 +171,7 @@ cmd_endpoint() {
     --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET" \
     ${TAVILY_SECRET:+--env-secret "TAVILY_API_KEY=$TAVILY_SECRET"} \
     --env "FIREBASE_PROJECT_ID=$fb_project" \
-    --env "FIREBASE_PROJECT_NUMBER=$(python3 -c 'import json;print(json.load(open("'"$ROOT"'/google-services.json"))["project_info"]["project_number"])' 2>/dev/null)" \
+    --env "FIREBASE_PROJECT_NUMBER=$(firebase_project_number)" \
     --env "MOBY_APP_CHECK=${MOBY_APP_CHECK:-monitor}" \
     --env "FIREBASE_WEB_API_KEY=$fb_key" \
     --env "FIREBASE_AUTH_DOMAIN=$fb_domain" \
