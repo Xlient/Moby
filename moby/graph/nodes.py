@@ -1,7 +1,8 @@
 import psycopg
 from .state import PipelineState    
 from .policy import assign_tier, is_conflicting, event_severity, review_reason
-from .queries import find_matching_event, create_event, attach_report, event_reporters, save_event
+from .queries import find_matching_event, create_event, attach_report, event_reporters, save_event, save_alert_text, event_effect
+from . import alert_text
 from moby.config import get_settings
 
 def fuse(state: PipelineState) -> dict:
@@ -44,11 +45,17 @@ def score(state: PipelineState) -> dict:
     }
 
 def draft_alert(state: PipelineState) -> dict:
-    """Return a draft alert for the event, based on the fused state."""
-    return {
-        "alert_headline": "Fake headline",
-        "alert_body": "Fake body",
-    }
+    """Write the alert text for a community event and save it; delivery then pushes it,
+    labelled unverified, to people who chose these reports."""
+    hazard = state["report"]["hazard_type"]
+    with psycopg.connect(get_settings().database_url) as conn:
+        # The event's first-seen effect, not this report's: the headline mustn't flip each
+        # time someone new reports (e.g. "Rising water" → "Blocked road" for the same flood).
+        title = alert_text.headline(hazard, event_effect(conn, state["event_id"]))
+        text = alert_text.body(hazard, state["severity"])
+        save_alert_text(conn, state["event_id"], title, text)
+    return {"alert_headline": title, "alert_body": text}
+
 
 def save(state: PipelineState) -> dict:
     """Save the event to the database, based on the fused state."""

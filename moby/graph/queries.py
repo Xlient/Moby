@@ -94,6 +94,15 @@ WHERE event_id = %(event_id)s AND source <> 'official'
 """
 
 
+EVENT_EFFECT_SQL = "SELECT observed_effect FROM events WHERE event_id = %(event_id)s"
+
+# Same rule as SAVE_EVENT_SQL: an agency's own wording is never replaced.
+SAVE_ALERT_TEXT_SQL = """
+UPDATE events SET alert_headline = %(headline)s, alert_body = %(body)s
+WHERE event_id = %(event_id)s AND source <> 'official'
+"""
+
+
 def _point(report: dict[str, Any]) -> dict[str, Any]:
     return {"lat": report["lat"], "lon": report["lon"]}
 
@@ -148,3 +157,16 @@ def save_event(conn: Connection, event_id: str, *, tier: int, severity: str,
         "reports_disagree": reports_disagree, "distinct_reporters": distinct_reporters,
     })
     return cur.rowcount == 1
+
+
+def save_alert_text(conn: Connection, event_id: str, headline: str, body: str) -> bool:
+    """Write draft_alert's text to a community event (delivery and the app use it).
+    False for official events (left untouched)."""
+    cur = conn.execute(SAVE_ALERT_TEXT_SQL, {"event_id": event_id, "headline": headline, "body": body})
+    return cur.rowcount == 1
+
+
+def event_effect(conn: Connection, event_id: str) -> str | None:
+    """What was seen when the event was first reported (stable: later reports don't change it)."""
+    row = conn.execute(EVENT_EFFECT_SQL, {"event_id": event_id}).fetchone()
+    return row[0] if row else None

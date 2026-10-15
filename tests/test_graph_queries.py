@@ -206,3 +206,14 @@ def test_save_event_never_overwrites_an_official_warning(conn):
     eid = fuse_one(conn, report)
     assert q.save_event(conn, eid, tier=2, severity="medium", reports_disagree=False, distinct_reporters=1) is False
     assert conn.execute("SELECT severity FROM events WHERE event_id = %s", (eid,)).fetchone()[0] == "high"
+
+
+def test_save_alert_text_writes_community_events_only(conn):
+    reports = seeded(conn, "lone_low")
+    eid = fuse_one(conn, reports[0])
+    assert q.save_alert_text(conn, eid, "Flooding reported", "People nearby say…") is True
+    assert conn.execute("SELECT alert_headline FROM events WHERE event_id = %s", (eid,)).fetchone()[0] == "Flooding reported"
+    (official_report,) = seeded(conn, "near_official")
+    official = q.find_matching_event(conn, official_report)["event_id"]
+    assert q.save_alert_text(conn, official, "x", "y") is False
+    assert conn.execute("SELECT alert_headline FROM events WHERE event_id = %s", (official,)).fetchone()[0] is None
