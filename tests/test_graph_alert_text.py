@@ -33,3 +33,14 @@ def test_never_repeats_the_trust_wording_the_push_adds():
     for severity in ["low", "critical"]:
         text = t.headline("fire", None) + " " + t.body("fire", severity)
         assert "unverified" not in text.lower() and "reported by" not in text.lower()
+
+
+def test_community_event_without_drafted_text_still_gets_a_real_headline():
+    # If draft_alert never ran (the known gap), the API and the push fall back to the template.
+    from datetime import datetime, timezone
+
+    from moby.api.alerts import to_alert
+    row = {"event_id": "e1", "source": "manual", "source_feed": None, "hazard_type": "flood",
+           "observed_effect": "rising_water", "severity": "high", "tier": 1, "title": None,
+           "description": None, "first_reported_at": datetime.now(timezone.utc), "lat": 1.0, "lon": 2.0}
+    assert to_alert(row)["headline"] == "Rising water reported"

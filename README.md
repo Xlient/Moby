@@ -59,7 +59,7 @@ flowchart LR
   end
   Sources --> Poller[Feed poller<br/>conditional polling, no gaps]
   Poller --> DB[(Postgres<br/>PostGIS + pgvector)]
-  People --> Graph[LangGraph pipeline<br/>structure → fuse → score → route]
+  People --> Graph[LangGraph fusion worker<br/>structure → fuse → score → save → draft]
   Graph --> DB
   DB --> API[FastAPI]
   API --> App[Moby app<br/>Android · Expo]
@@ -69,14 +69,16 @@ flowchart LR
 
 - **Backend** (`moby/`): Python 3.14, FastAPI, LangGraph, psycopg. Official feeds are polled with
   ETag / If-Modified-Since, normalized into one event schema, and linked across updates (an NWS
-  alert and its updates stay one event). Urgency decisions are deterministic; models help structure
-  and match reports, and a human approves before any community report becomes a public alert.
+  alert and its updates stay one event). Reports from people are fused into events by a LangGraph
+  worker: same hazard within 1 km and 2 hours becomes one event, counting distinct people. Urgency
+  decisions are deterministic, and community reports are always labelled unverified; each user
+  chooses whether to hear about them.
 - **Models**: NVIDIA Nemotron 3 (Nano, Super, Ultra) and Qwen3 embeddings, served by
   [Nebius Token Factory](https://nebius.com/).
 - **Data**: Postgres 17 with PostGIS (where things are) and pgvector (what they're about).
 - **App**: Expo / React Native with React Native Paper, Firebase Auth + Firestore for accounts.
-- **Hosting**: one [Nebius](https://nebius.com/) Serverless Endpoint runs the API, poller and
-  database; Nebius Serverless Jobs handle background work (embeddings, backups).
+- **Hosting**: one [Nebius](https://nebius.com/) Serverless Endpoint runs the API, poller, fusion
+  and delivery workers, and the database; Nebius Serverless Jobs handle background work (embeddings, backups).
 
 ## Quick start
 
@@ -87,7 +89,7 @@ Requires Docker and [uv](https://docs.astral.sh/uv/).
 ```bash
 git clone https://github.com/Xlient/Moby.git && cd Moby
 cp .env.example .env                 # add your Nebius Token Factory key (only needed for AI features)
-docker compose up -d --build         # Postgres + PostGIS + pgvector, migrations, live feed poller
+docker compose up -d --build         # Postgres + PostGIS + pgvector, migrations, feed poller, fusion worker
 uv sync
 uv run --env-file .env uvicorn moby.api.app:app --reload
 ```

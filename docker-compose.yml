@@ -1,4 +1,5 @@
-# Local stack: Postgres (PostGIS + pgvector), a one-shot migration, and the feed poller.
+# Local stack: Postgres (PostGIS + pgvector), a one-shot migration, the feed poller and the
+# fusion worker (community reports → events).
 # Extensions are created by db/migrations/0001_extensions.sql (not an init script) so
 # the exact same migrations work on a managed instance.
 #
@@ -6,6 +7,7 @@
 #   docker compose up -d --build db           # just the database (dev on the host)
 #   docker compose logs -f poller
 #   docker compose exec poller python -m moby.feeds health
+#   docker compose logs -f fusion
 services:
   db:
     build: ./db
@@ -51,6 +53,19 @@ services:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped
     stop_grace_period: 20s
+
+  fusion:
+    build: .
+    image: moby-backend
+    container_name: moby-fusion
+    command: ["python", "-m", "moby.graph.worker"]
+    environment:
+      DATABASE_URL: postgresql://moby:moby@db:5432/moby
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+    stop_grace_period: 20s   # SIGTERM: finish the batch, then exit
 
 volumes:
   moby-pgdata:
