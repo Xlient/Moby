@@ -35,6 +35,7 @@ from moby.alerts.preferences import AlertPreferences, alerts_near
 from moby.api.alerts import to_alert
 from moby.search.official import OFFICIAL
 
+from . import budget
 from .grounding import stray_numbers, support
 
 log = logging.getLogger("moby.ai.ask")
@@ -146,8 +147,8 @@ def _domain(url: str) -> str:
     return re.sub(r"^https?://(www\.)?", "", url).split("/")[0]
 
 
-async def web_sources(question: str, country: str | None) -> tuple[list[Source], str | None]:
-    """Official websites via Tavily. ([], None) when there's no domain list or no key."""
+async def web_sources(pool: AsyncConnectionPool, question: str, country: str | None) -> tuple[list[Source], str | None]:
+    """Official websites via Tavily. ([], None) when there's no domain list, no key or no budget left."""
     domains = OFFICIAL.get(country or "")
     if not domains:
         return [], None
@@ -157,6 +158,9 @@ async def web_sources(question: str, country: str | None) -> tuple[list[Source],
         tavily = Tavily(timeout=10)
     except TavilyNotConfigured:
         return [], None
+    async with pool.connection() as conn:
+        if not await budget.take(conn, "tavily"):
+            return [], None
     query = (await _models()["nano"].ainvoke(QUERY_PROMPT.format(question=question))).content
     query = str(query).strip().strip('"')[:150]
     try:
@@ -215,7 +219,7 @@ async def answer(pool: AsyncConnectionPool, question: str, *, lat: float | None 
         sources = alerts + [s for s, _ in cards]
         web, query = [], None
         if not cards or cards[0][1] < WEB_WHEN_BEST_BELOW:
-            web, query = await web_sources(question, country)
+            web, query = await web_sources(pool, question, country)
             sources += web
         result = {"answer": None, "abstained": True, "sources": [], "model": m["super_name"],
                   "searched_web": query is not None}
