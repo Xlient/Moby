@@ -7,8 +7,11 @@ Fusion rules (decided 2026-10-15):
   * The same thing = same hazard_type, within MATCH_RADIUS_M (1 km), and the event's most
     recent report is no older than MATCH_WINDOW (2 h) before this report was observed.
     An event stays alive as long as people keep reporting it.
-  * Official warnings count too: the report is inside or within 1 km of the warning's
-    area (or point), and the warning hasn't expired. Official beats community.
+  * Official warnings count too, from every country's feed: the report is inside or within
+    1 km of the warning's area (or point), and the warning is in force. Only tier 2 counts
+    (authoritative; NASA EONET is tier 1). A warning with no expiry time (quakes from USGS,
+    EMSC, JMA, GDACS…) counts for OFFICIAL_WINDOW (24 h) after its last update or the last
+    report attached to it, so it stays live while people report it. Official beats community.
   * Among several candidates: official first, then the closest.
 
 PostGIS crash course for reading this file:
@@ -28,6 +31,7 @@ from psycopg.rows import dict_row
 
 MATCH_RADIUS_M = 1_000
 MATCH_WINDOW = timedelta(hours=2)
+OFFICIAL_WINDOW = timedelta(hours=24)   # official events without an expiry time (decided 2026-10-15)
 
 # Worker leases (migration 0019).
 LEASE = timedelta(minutes=5)      # a claim older than this is presumed dead and re-claimable
@@ -50,8 +54,16 @@ WHERE e.hazard_type = %(hazard_type)s
   AND e.reviewer_decision IS DISTINCT FROM 'reject' -- a taken-down report doesn't absorb new ones
   AND ST_DWithin(COALESCE(e.area, e.location), here.point, %(radius_m)s)
   AND (
-        -- official: any warning still in force when the report was made
-        (e.source = 'official' AND (e.expires_at IS NULL OR e.expires_at > %(observed_at)s))
+        -- official: an authoritative (tier 2) warning still in force when the report was made;
+        -- with no expiry time, live for 24 h after its last update or its latest report
+        (e.source = 'official' AND e.tier = 2 AND (
+            e.expires_at > %(observed_at)s
+            OR (e.expires_at IS NULL AND GREATEST(
+                    e.last_updated_at,
+                    (SELECT max(r.observed_at) FROM reports r
+                     WHERE r.event_id = e.event_id AND r.fusion_status = 'fused')
+                ) >= %(observed_at)s::timestamptz - %(official_window)s)
+        ))
      OR -- community: someone reported it within the window before this report
         (e.source <> 'official' AND e.last_updated_at >= %(observed_at)s::timestamptz - %(window)s)
   )
@@ -122,6 +134,7 @@ def find_matching_event(conn: Connection, report: dict[str, Any]) -> dict[str, A
             "observed_at": report["observed_at"],
             "radius_m": MATCH_RADIUS_M,
             "window": MATCH_WINDOW,
+            "official_window": OFFICIAL_WINDOW,
         })
         return cur.fetchone()
 

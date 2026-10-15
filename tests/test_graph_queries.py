@@ -217,3 +217,64 @@ def test_save_alert_text_writes_community_events_only(conn):
     official = q.find_matching_event(conn, official_report)["event_id"]
     assert q.save_alert_text(conn, official, "x", "y") is False
     assert conn.execute("SELECT alert_headline FROM events WHERE event_id = %s", (official,)).fetchone()[0] is None
+
+
+# ── official warnings from every country (decided 2026-10-15) ─────────────────
+
+def official_event(conn, *, feed="jma", hazard="earthquake", tier=2, lat=35.6895, lon=139.6917,  # noqa: F811
+                   hours_ago=1, expires_in_hours=None, area_m=None, country="JP") -> str:
+    """An official event like the poller writes, by default a JMA quake in Tokyo with no expiry."""
+    (eid,) = conn.execute(
+        "INSERT INTO events (source, source_feed, external_id, hazard_type, severity, tier, location, area, "
+        "country, first_reported_at, last_updated_at, expires_at) VALUES ('official', %(feed)s, %(ext)s, "
+        "%(hazard)s, 'high', %(tier)s, ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, "
+        "CASE WHEN %(area)s::float IS NULL THEN NULL ELSE "
+        "ST_Multi(ST_Buffer(ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, %(area)s)::geometry)::geography END, "
+        "%(country)s, now() - %(ago)s, now() - %(ago)s, "
+        "CASE WHEN %(exp)s::float IS NULL THEN NULL ELSE now() + make_interval(hours => %(exp)s::int) END) "
+        "RETURNING event_id::text",
+        {"feed": feed, "ext": f"test-{feed}-{hours_ago}-{tier}", "hazard": hazard, "tier": tier, "lat": lat,
+         "lon": lon, "area": area_m, "country": country, "ago": timedelta(hours=hours_ago),
+         "exp": expires_in_hours}).fetchone()
+    return eid
+
+
+def report_at(lat, lon, hazard="earthquake", minutes_ago=5) -> dict:
+    """A report as the graph sees it (only the fields find_matching_event reads)."""
+    observed = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+    return {"lat": lat, "lon": lon, "hazard_type": hazard, "observed_at": observed}
+
+
+def test_a_japanese_quake_without_expiry_matches_within_24_hours(conn):
+    eid = official_event(conn, hours_ago=3)
+    match = q.find_matching_event(conn, report_at(35.6900, 139.6920))
+    assert match == {"event_id": eid, "official": True, "distance_m": match["distance_m"]}
+
+
+def test_a_quake_quiet_for_over_24_hours_no_longer_matches(conn):
+    official_event(conn, feed="emsc", country=None, hours_ago=30)       # EMSC: worldwide, no expiry
+    assert q.find_matching_event(conn, report_at(35.6900, 139.6920)) is None
+
+
+def test_reports_keep_a_quiet_official_event_live(conn):
+    eid = official_event(conn, hours_ago=30)
+    # Someone reported it an hour ago (attached to it): the 24 h clock restarts from then.
+    conn.execute(
+        "INSERT INTO reports (client_event_id, event_id, fusion_status, reporter_hash, hazard_type, severity, "
+        "location, observed_at) VALUES ('t-keepalive', %s, 'fused', %s, 'earthquake', 'medium', "
+        "ST_SetSRID(ST_MakePoint(139.6917, 35.6895), 4326)::geography, now() - interval '1 hour')",
+        (eid, "k" * 32))
+    assert q.find_matching_event(conn, report_at(35.6900, 139.6920))["event_id"] == eid
+
+
+def test_an_italian_cap_warning_matches_by_its_area(conn):
+    # A MeteoAlarm-style CAP flood warning for an area around Florence, in force for 6 more hours.
+    eid = official_event(conn, feed="cap", hazard="flood", lat=43.7696, lon=11.2558, area_m=8000,
+                         expires_in_hours=6, country="IT")
+    match = q.find_matching_event(conn, report_at(43.80, 11.28, hazard="flood"))   # ~4 km from the centre
+    assert match["event_id"] == eid and match["official"] is True and match["distance_m"] == 0
+
+
+def test_nasa_eonet_is_not_an_authoritative_match(conn):
+    official_event(conn, feed="eonet", hazard="fire", tier=1, lat=37.7749, lon=-122.4194, country=None)
+    assert q.find_matching_event(conn, report_at(37.7750, -122.4190, hazard="fire")) is None
