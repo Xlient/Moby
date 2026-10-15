@@ -6,19 +6,21 @@ the way it already does when a call fails:
   explain    the app shows only the official text (explained the next day)
   ask        Ask Moby says it has reached today's limit; guidance still works offline
   tavily     Ask Moby answers from alerts and guidance only
+  localize   Moby's AI text stays in English (moby/ai/localize.py)
 
 Caps reset at 00:00 UTC. Override with MOBY_DAILY_CAP_<FEATURE> (e.g. MOBY_DAILY_CAP_ASK=200).
 Defaults are sized for judging and a small user base: even if every cap is hit every
-day, roughly $0.50 a day of Token Factory use (Nano ~$0.0003 per translation, Super
+day, roughly $0.75 a day of Token Factory use (Nano ~$0.0003 per translation, Super
 ~$0.002 per explanation or answer), and Tavily stays inside its free 1,000 searches a
-month. Explanations are cached per event, so 80 a day covers far more than 80 readers.
+month. Explanations are cached per event (and per language), so a cap covers far more
+readers than its number; new warnings that are pushed get explained up front.
 """
 import os
 from datetime import datetime, timezone
 
 from psycopg import AsyncConnection
 
-DEFAULT_CAPS = {"translate": 800, "explain": 80, "ask": 60, "tavily": 25}
+DEFAULT_CAPS = {"translate": 800, "explain": 150, "ask": 60, "tavily": 25, "localize": 400}
 
 
 def cap(feature: str) -> int:

@@ -9,6 +9,7 @@ import { env } from '@/config/env';
 import { EmergencyNumbers } from '@/components/EmergencyNumbers';
 import { countryAt } from '@/data/emergencyNumbers';
 import { useUserCenter } from '@/location/UserLocationContext';
+import { languageName, phoneLanguage } from '@/lib/language';
 import { useTheme } from '@/theme/ThemeContext';
 import { radius, spacing, typography } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -43,6 +44,7 @@ export function AssistantScreen() {
         // Only a real fix: never ask about the demo city as if it were "near you".
         ...(center.source === 'device' ? { lat: center.lat, lon: center.lon } : {}),
         ...(country ? { country } : {}),
+        language: phoneLanguage(),
       }),
     onSuccess: (answer, question) => update(question, { answer }),
     onError: (err, question) =>
@@ -169,6 +171,7 @@ function AnswerCard({ answer }: { answer: AskAnswer }) {
       ))}
       <Text style={[typography.meta, styles.gap, { color: theme.text.faint }]}>
         Answered by Moby AI · NVIDIA Nemotron
+        {languageName(answer.language) ? ` · translated into ${languageName(answer.language)}` : ''}
         {answer.searched_web ? ' · official websites searched with Tavily' : ''}. Follow official instructions if
         they differ.
       </Text>

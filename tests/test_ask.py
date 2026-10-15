@@ -124,7 +124,8 @@ def test_weak_cards_search_official_domains_with_a_rewritten_query(monkeypatch):
 def test_no_country_domains_and_no_sources_means_no_model_call(monkeypatch):
     _, sup, searched = wire(monkeypatch, cards=[], answer_json="{}")
     out = asyncio.run(ask.answer(FakePool(), "What is the capital of France?", country="ZZ"))
-    assert out == {"answer": None, "abstained": True, "sources": [], "model": "super", "searched_web": False}
+    assert out == {"answer": None, "abstained": True, "sources": [], "model": "super", "searched_web": False,
+                   "language": "en"}
     assert sup.prompts == [] and searched == []
 
 
