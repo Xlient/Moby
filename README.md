@@ -112,6 +112,7 @@ flowchart LR
   Poller --> Translate[Nemotron Nano<br/>number-checked translation]
   Translate --> DB
   People --> API
+  DB <--> Fusion[LangGraph fusion worker<br/>reports → events, labelled unverified]
   DB --> API[FastAPI]
   API --> Explain[Nemotron Super<br/>explanations · Ask Moby]
   Explain -. Tavily: official sites only .- Web((Official websites))
@@ -122,6 +123,9 @@ flowchart LR
 
 - **Backend** (`moby/`): Python, FastAPI, psycopg, LangGraph. Feeds are polled with ETag /
   If-Modified-Since, normalised into one event schema, de-duplicated across networks, and linked across updates.
+  Reports from people are fused into events by a LangGraph worker (`moby/graph/`): the same hazard within
+  1 km and 2 hours becomes one event, counting distinct people. Tiers are decided by plain rules, not a
+  model, and community reports are always labelled unverified; each user chooses whether to hear about them.
 - **Data:** Postgres 17 with PostGIS (where things are) and pgvector (what they're about).
 - **App** (`src/`): Expo / React Native, Firebase Auth and Firestore for accounts, FCM for push, App Check.
 - **API contract:** [`api-contract-v1.yaml`](api-contract-v1.yaml) (OpenAPI); app types are generated from it.
@@ -145,8 +149,8 @@ Press `w` if the browser doesn't open. Use a phone-sized window, or your browser
 Needs Docker, [uv](https://docs.astral.sh/uv/) and Node.js 20+. For the Android app, also Android Studio
 (SDK and an emulator) and **JDK 17**.
 
-**1. Database and live feeds.** This starts Postgres (PostGIS + pgvector), runs the migrations and starts
-the poller, which begins pulling real official alerts within a minute:
+**1. Database and live feeds.** This starts Postgres (PostGIS + pgvector), runs the migrations, and starts
+the fusion worker and the poller (which begins pulling real official alerts within a minute):
 
 ```bash
 cp .env.example .env

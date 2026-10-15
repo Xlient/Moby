@@ -1,4 +1,4 @@
-# Backend image: the feed poller today; the FastAPI app and graph workers later.
+# Backend image: the feed poller, and the fusion worker (python -m moby.graph.worker).
 #   docker build -t moby-backend .
 #   docker run --env-file .env moby-backend                       # poll forever
 #   docker run --env-file .env moby-backend python -m moby.feeds --once

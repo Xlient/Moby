@@ -35,6 +35,10 @@ def _headline(row: dict[str, Any]) -> str:
         if place and title.lower().endswith(place.lower()) and len(title) > len(place) + 3:
             title = title[: -len(place)].rstrip(" .,:;-–—")
         return title[:120]
+    if row.get("source") in ("manual", "mesh") and not row.get("title"):
+        # A community event whose draft_alert never ran: the same wording it would have used.
+        from moby.graph.alert_text import headline
+        return headline(row["hazard_type"], row.get("observed_effect"))
     return (row.get("title") or row.get("product") or "Alert")[:120]
 
 
