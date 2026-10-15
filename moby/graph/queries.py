@@ -18,6 +18,7 @@ PostGIS crash course for reading this file:
   * ST_DWithin(a, b, metres): true when a and b are within that distance (uses the index).
   * ST_Distance(a, b): the distance in metres.
 """
+import json
 from datetime import timedelta
 from typing import Any
 
@@ -26,6 +27,10 @@ from psycopg.rows import dict_row
 
 MATCH_RADIUS_M = 1_000
 MATCH_WINDOW = timedelta(hours=2)
+
+# Worker leases (migration 0017).
+LEASE = timedelta(minutes=5)      # a claim older than this is presumed dead and re-claimable
+MAX_ATTEMPTS = 3                  # then the report is marked 'failed' (poison message)
 
 # One candidate list built from two sources, then sorted: official first, closest first.
 #   %(lat)s-style placeholders are filled in by psycopg (never paste values into SQL
@@ -170,3 +175,73 @@ def event_effect(conn: Connection, event_id: str) -> str | None:
     """What was seen when the event was first reported (stable: later reports don't change it)."""
     row = conn.execute(EVENT_EFFECT_SQL, {"event_id": event_id}).fetchone()
     return row[0] if row else None
+
+
+
+# ── Worker: claiming work, failures, and fusion locking (migration 0017) ─────────────────
+
+# Claim up to `limit` reports in one statement:
+#   * FOR UPDATE SKIP LOCKED: rows another worker is claiming right now are skipped, not
+#     waited for, so two workers never get the same report and never block each other.
+#   * The UPDATE stamps the lease and commits with the caller's transaction; the row lock
+#     is released then. The lease, not a lock, is what keeps others away afterwards.
+#   * A report whose lease expired (its worker crashed) is claimable again.
+CLAIM_SQL = """
+WITH next AS (
+    SELECT report_id FROM reports
+    WHERE fusion_status = 'pending'
+      AND attempts < %(max_attempts)s
+      AND (claimed_at IS NULL OR claimed_at < now() - %(lease)s)
+    ORDER BY received_at
+    LIMIT %(limit)s
+    FOR UPDATE SKIP LOCKED
+)
+UPDATE reports r
+SET claimed_at = now(), claimed_by = %(worker_id)s, attempts = r.attempts + 1
+FROM next WHERE r.report_id = next.report_id
+RETURNING r.report_id, r.client_event_id, r.event_id, r.fusion_status, r.source, r.reporter_hash,
+          r.relayed_by, r.hazard_type, r.observed_effect, r.severity,
+          ST_Y(r.location::geometry) AS lat, ST_X(r.location::geometry) AS lon, r.location_accuracy_m,
+          r.observed_at, r.received_at, r.captured_offline, r.note, r.structured, r.attempts
+"""
+
+# On an error: remember it. Out of attempts → 'failed' for good. Otherwise leave the lease
+# in place, so the report is retried once it expires (a built-in backoff of LEASE).
+FAILED_SQL = """
+UPDATE reports
+SET fusion_error = left(%(error)s, 500),
+    fusion_status = CASE WHEN attempts >= %(max_attempts)s THEN 'failed' ELSE fusion_status END
+WHERE report_id = %(report_id)s AND fusion_status = 'pending'
+RETURNING fusion_status = 'failed'
+"""
+
+# Two reports of the same flood fused at the same moment by two workers would both see
+# "no event yet" and both create one. A transaction-scoped advisory lock per hazard type
+# makes fusion of, say, floods one-at-a-time (other hazards still run in parallel); it is
+# released automatically at commit. Coarser than strictly needed, but simple and correct.
+LOCK_SQL = "SELECT pg_advisory_xact_lock(hashtext('moby-fuse:' || %(hazard_type)s))"
+
+
+def claim_reports(conn: Connection, worker_id: str, limit: int) -> list[dict[str, Any]]:
+    """Lease up to `limit` pending reports to this worker. Returns them in the graph's
+    report shape (the same as the --once harness: lat/lon floats, ids and dates as strings).
+    The caller must COMMIT for the claim to take effect (an autocommit connection does)."""
+    with conn.cursor(row_factory=dict_row) as cur:
+        cur.execute(CLAIM_SQL, {"worker_id": worker_id, "limit": limit,
+                                "lease": LEASE, "max_attempts": MAX_ATTEMPTS})
+        rows = cur.fetchall()
+    return [json.loads(json.dumps(r, default=str)) for r in rows]
+
+
+def report_failed(conn: Connection, report_id: str, error: str) -> bool:
+    """Record a failed graph run. True when the report has run out of attempts and is now
+    'failed'; False when it will be retried after its lease expires."""
+    row = conn.execute(FAILED_SQL, {"report_id": report_id, "error": error,
+                                    "max_attempts": MAX_ATTEMPTS}).fetchone()
+    return bool(row and row[0])
+
+
+def lock_for_fusion(conn: Connection, report: dict[str, Any]) -> None:
+    """Call FIRST inside fuse's transaction: fusion of the same hazard type runs one at a time,
+    so concurrent reports of one flood can't both create an event. Released at commit."""
+    conn.execute(LOCK_SQL, {"hazard_type": report["hazard_type"]})
