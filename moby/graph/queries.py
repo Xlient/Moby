@@ -27,6 +27,7 @@ from datetime import timedelta
 from typing import Any
 
 from psycopg import Connection
+from psycopg.types.json import Jsonb
 from psycopg.rows import dict_row
 
 MATCH_RADIUS_M = 1_000
@@ -113,6 +114,9 @@ WHERE event_id = %(event_id)s AND source <> 'official'
 
 
 EVENT_EFFECT_SQL = "SELECT observed_effect FROM events WHERE event_id = %(event_id)s"
+
+# structure_report's extraction (moby/graph/schemas.py ReportDetails.to_saved()).
+SAVE_STRUCTURED_SQL = "UPDATE reports SET structured = %(data)s WHERE report_id = %(report_id)s"
 
 # Same rule as SAVE_EVENT_SQL: an agency's own wording is never replaced.
 SAVE_ALERT_TEXT_SQL = """
@@ -259,3 +263,8 @@ def lock_for_fusion(conn: Connection, report: dict[str, Any]) -> None:
     """Call FIRST inside fuse's transaction: fusion of the same hazard type runs one at a time,
     so concurrent reports of one flood can't both create an event. Released at commit."""
     conn.execute(LOCK_SQL, {"hazard_type": report["hazard_type"]})
+
+
+def save_structured(conn: Connection, report_id: str, data: dict) -> None:
+    """Store the details structure_report read from the note (no free text: see schemas.py)."""
+    conn.execute(SAVE_STRUCTURED_SQL, {"report_id": report_id, "data": Jsonb(data)})

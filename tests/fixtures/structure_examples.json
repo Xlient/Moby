@@ -1,0 +1,49 @@
+[
+  {
+    "name": "sandstorm_trapped_in_car",
+    "report": {"hazard_type": "storm", "severity": "high", "observed_effect": "other",
+               "note": "3 people are now trapped in their car about 4 miles away from the main highway"},
+    "expected": {"trend": "worsening", "extent": null, "extent_basis": null, "extent_stated_km": null,
+                 "water_depth_m": null, "people_hurt": null, "people_trapped": 3, "people_missing": null},
+    "why": "'4 miles' is where the car is, not the storm's size; 'now trapped' reads as worsening"
+  },
+  {
+    "name": "thunderstorm_canyon",
+    "report": {"hazard_type": "storm", "severity": "medium", "observed_effect": "rising_water",
+               "note": "extended heavy rain fall causing rising water in canyon"},
+    "expected": {"trend": "worsening", "extent": "a wider area", "extent_basis": "inferred", "extent_stated_km": null,
+                 "water_depth_m": null, "people_hurt": null, "people_trapped": null, "people_missing": null},
+    "why": "rising = worsening; a canyon under extended rain suggests a wider area, inferred; no people mentioned = null, not 0"
+  },
+  {
+    "name": "flash_flood_missing",
+    "report": {"hazard_type": "flood", "severity": "critical", "observed_effect": null,
+               "note": "flash flood up to 4 feet in the neighborhood. 2 people missing"},
+    "expected": {"trend": null, "extent": "a neighbourhood", "extent_basis": "stated", "extent_stated_km": null,
+                 "water_depth_m": 1.22, "people_hurt": null, "people_trapped": null, "people_missing": 2},
+    "why": "'4 feet' is depth, not extent; missing is not hurt or trapped"
+  },
+  {
+    "name": "winston_fire",
+    "report": {"hazard_type": "fire", "severity": "medium", "observed_effect": "blocked_road",
+               "note": "Three people are trapped in the Winston neighborhood. Fire is rapidly approaching the highway, blocking cars."},
+    "expected": {"trend": "worsening", "extent": "a neighbourhood", "extent_basis": "inferred", "extent_stated_km": null,
+                 "water_depth_m": null, "people_hurt": null, "people_trapped": 3, "people_missing": null},
+    "why": "people trapped in the neighbourhood suggests the fire reaches it (inferred); trapped is not hurt"
+  },
+  {
+    "name": "nothing_extra",
+    "report": {"hazard_type": "flood", "severity": "low", "observed_effect": "rising_water", "note": "Water on the road."},
+    "expected": {"trend": null, "extent": null, "extent_basis": null, "extent_stated_km": null,
+                 "water_depth_m": null, "people_hurt": null, "people_trapped": null, "people_missing": null},
+    "why": "the note only repeats the buttons: every field null, nothing invented"
+  },
+  {
+    "name": "nobody_hurt",
+    "report": {"hazard_type": "landslide", "severity": "low", "observed_effect": "blocked_road",
+               "note": "Small landslide on the hiking trail, nobody hurt, path still passable."},
+    "expected": {"trend": null, "extent": "one spot", "extent_basis": "stated", "extent_stated_km": null,
+                 "water_depth_m": null, "people_hurt": 0, "people_trapped": null, "people_missing": null},
+    "why": "'nobody hurt' is 0, not null; 'small landslide on the trail' is one spot, stated"
+  }
+]
