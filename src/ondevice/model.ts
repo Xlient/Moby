@@ -3,6 +3,7 @@
 // See docs/ondevice-guide.md.
 
 import NetInfo from '@react-native-community/netinfo';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import * as Device from 'expo-device';
 import * as LegacyFS from 'expo-file-system/legacy';
 import { Paths } from 'expo-file-system';
@@ -35,7 +36,8 @@ export type ModelState =
 const DIR = `${LegacyFS.documentDirectory ?? ''}models/`;
 const FINAL = `${DIR}${NANO_MODEL.fileName}`;
 const PART = `${FINAL}.part`;
-const RESUME_KEY = 'ondevice-model-resume-v1';
+const RESUME_KEY = 'ondevice-model-resume-v1'; // no longer read (the .part size is the resume point); cleared on delete
+const KEEP_AWAKE_TAG = 'moby-model-download';
 
 let state: ModelState = { kind: 'not_downloaded' };
 let download: LegacyFS.DownloadResumable | null = null;
@@ -85,10 +87,10 @@ export async function refreshModelState(): Promise<ModelState> {
   if (done.exists && done.size === NANO_MODEL.bytes) {
     set({ kind: 'ready', path: FINAL });
   } else {
-    const part = await LegacyFS.getInfoAsync(PART);
+    const offset = await resumeOffset();
     set(
-      part.exists && kv.get(RESUME_KEY)
-        ? { kind: 'downloading', received: part.size, total: NANO_MODEL.bytes, paused: true }
+      offset
+        ? { kind: 'downloading', received: Number(offset), total: NANO_MODEL.bytes, paused: true }
         : { kind: 'not_downloaded' },
     );
   }
@@ -109,6 +111,18 @@ function onProgress(p: LegacyFS.DownloadProgressData): void {
   });
 }
 
+/**
+ * Where to resume from: the size of the partial file. Android resumes by byte offset
+ * (it requests "Range: bytes=N-" and appends to the .part file), so the file on disk is
+ * the truth whatever stopped the download: Pause, the network dropping when the screen
+ * turned off, or the app being closed. Only a Pause used to record a resume point, so any
+ * other stop restarted 2.8 GB from zero.
+ */
+async function resumeOffset(): Promise<string | undefined> {
+  const part = await LegacyFS.getInfoAsync(PART);
+  return part.exists && part.size > 0 && part.size < NANO_MODEL.bytes ? String(part.size) : undefined;
+}
+
 /** Starts (or resumes) the download. The caller checks Wi-Fi and asks the user first. */
 export async function startDownload(): Promise<void> {
   if (unsupportedReason()) return;
@@ -117,9 +131,12 @@ export async function startDownload(): Promise<void> {
     return;
   }
   await LegacyFS.makeDirectoryAsync(DIR, { intermediates: true }).catch(() => {});
-  const resume = kv.get(RESUME_KEY) ?? undefined;
-  download = LegacyFS.createDownloadResumable(NANO_MODEL.url, PART, {}, onProgress, resume || undefined);
-  set({ kind: 'downloading', received: state.kind === 'downloading' ? state.received : 0, total: NANO_MODEL.bytes, paused: false });
+  const resume = await resumeOffset();
+  download = LegacyFS.createDownloadResumable(NANO_MODEL.url, PART, {}, onProgress, resume);
+  set({ kind: 'downloading', received: resume ? Number(resume) : 0, total: NANO_MODEL.bytes, paused: false });
+  // Keep the screen on while this screen is open: when it turns off, Android cuts the
+  // app's network and the download stops (it now resumes from where it got to).
+  await activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => {});
   try {
     const result = resume ? await download.resumeAsync() : await download.downloadAsync();
     if (!result) return; // paused
@@ -134,22 +151,14 @@ export async function startDownload(): Promise<void> {
     kv.set(RESUME_KEY, '');
     set({ kind: 'ready', path: FINAL });
   } catch (e) {
-    // Network dropped: keep what we have so the next try resumes.
-    await saveResumeData();
+    // Network dropped (often: the screen turned off): the .part file keeps what arrived,
+    // and the next try resumes from its size.
     const received = state.kind === 'downloading' ? state.received : 0;
     set({ kind: 'downloading', received, total: NANO_MODEL.bytes, paused: true });
     if (__DEV__) console.log('model download paused:', e instanceof Error ? e.message : e);
   } finally {
     download = null;
-  }
-}
-
-async function saveResumeData(): Promise<void> {
-  try {
-    const data = download?.savable();
-    if (data?.resumeData) kv.set(RESUME_KEY, data.resumeData);
-  } catch {
-    // Nothing to save: the next try starts over.
+    deactivateKeepAwake(KEEP_AWAKE_TAG);
   }
 }
 
@@ -160,7 +169,6 @@ export async function pauseDownload(): Promise<void> {
   } catch {
     // Already finished or failed.
   }
-  await saveResumeData();
   if (state.kind === 'downloading') set({ ...state, paused: true });
 }
 
