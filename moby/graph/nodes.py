@@ -1,8 +1,14 @@
-from .state import PipelineState    
+import logging
+
+from .state import PipelineState
+from moby.ai.budget import take_sync
 from .policy import assign_tier, is_conflicting, event_severity, review_reason
-from .queries import find_matching_event, create_event, attach_report, event_reporters, save_event, save_alert_text, event_effect, lock_for_fusion
+from .queries import find_matching_event, create_event, attach_report, event_reporters, save_event, save_alert_text, event_effect, lock_for_fusion, save_structured
 from . import alert_text
+from .structure import extract_details
 from .db import connection
+
+log = logging.getLogger("moby.graph.nodes")
 
 def fuse(state: PipelineState) -> dict:
     """Return a fused state for the event, based on the original report and any existing events."""
@@ -28,7 +34,23 @@ def fuse(state: PipelineState) -> dict:
         
 def structured_report(state: PipelineState) -> dict:
     """Return a structured report for the event, based on the original report and the fused state."""
-    return {"structured": {}}
+    note = state["report"]["note"]
+    if note is None or note == "":
+        return {"structured": {}}
+    else:
+        try:
+            with connection() as conn:
+                if take_sync(conn, "structure", 1) == 0:
+                    return {"structured": {}}
+            details = extract_details(state["report"])
+            data = details.to_saved()
+            with connection() as conn:
+                save_structured(conn, state["report"]["report_id"], data)
+            return {"structured": data}
+        except Exception:
+            log.exception("structured report %s failed", state["report"]["report_id"])
+            return {"structured": {}}
+
 
 def score(state: PipelineState) -> dict:
     """Return a score for the event, based on the fused state."""

@@ -96,7 +96,8 @@ def test_details_are_saved_without_the_reasoning(conn, monkeypatch, example):  #
     out = nodes.structured_report({"report": report})
     assert out == {"structured": example["expected"]}
     assert saved(conn, report["report_id"]) == example["expected"]          # 'reasoning' never stored
-    assert model.created_with == ("nano", {"temperature": 0})
+    tier, kwargs = model.created_with
+    assert tier == "nano" and kwargs["temperature"] == 0 and kwargs.get("timeout")   # a hung call must give up
     assert len(model.calls) == 1
 
 

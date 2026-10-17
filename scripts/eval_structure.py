@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))   # run as a file: make `moby` importable
 EXAMPLES = json.loads((ROOT / "tests" / "fixtures" / "structure_examples.json").read_text())
 MIN_SCORE = 0.8
 DEPTH_TOLERANCE_M = 0.1      # "4 feet" → 1.22 m; small rounding differences are fine
