@@ -77,9 +77,7 @@ async def _sleep_unless_stopped(stop: asyncio.Event, seconds: float) -> None:
 
 async def run(stop: asyncio.Event, concurrency: int = 4) -> None:
     """Run the worker until `stop` is set."""
-    # No checkpointer: a failed report is rerun from the start and every node is safe to
-    # repeat, so there's nothing to resume. (An InMemorySaver would also keep every
-    # report's state in memory forever in a long-running process.)
+    
     graph = build_graph(None)
     # One id per PROCESS, worked out once: the host (two machines can share a pid) + the pid.
     worker_id = f"{socket.gethostname()}-{os.getpid()}"
