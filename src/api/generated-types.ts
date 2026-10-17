@@ -1709,6 +1709,32 @@ export interface components {
             /** @description Required. What the brief does not know and where it may be wrong. Clients MUST display this — never render a brief as certainty. */
             uncertainty: string;
             sources?: string[];
+            /** @description Increases each time the brief is rewritten for this event. */
+            version?: number;
+            /** @description The brief's statements, each tied to the citations it rests on. Clients label each by basis; a community claim is never shown as official. */
+            claims?: {
+                text: string;
+                /** @enum {string} */
+                basis: "official" | "community" | "news";
+                evidence: string[];
+            }[];
+            /** @description Where reports or sources disagree. */
+            contradictions?: string[];
+            citations?: {
+                /** @description O1… official, C1… community, W1… web */
+                id: string;
+                title: string;
+                url?: string;
+                /** @enum {string} */
+                kind: "official" | "community" | "news";
+            }[];
+            /** @description What changed since the previous version, in plain words. Absent on a first brief. Computed from a diff of the event's facts; the model only words it. */
+            changes?: string;
+            /**
+             * Format: date-time
+             * @description When the version that `changes` compares against was generated.
+             */
+            changes_since?: string;
         };
         CascadeAssessment: {
             region: components["schemas"]["RegionCode"];

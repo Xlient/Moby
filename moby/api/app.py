@@ -328,7 +328,8 @@ async def event_brief(event_id: uuid.UUID):
     async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             """SELECT e.brief_status, b.generated_at, b.model, b.summary, b.likely_progression, b.exposed_areas,
-                      b.official_guidance, b.uncertainty, b.sources
+                      b.official_guidance, b.uncertainty, b.sources, b.version, b.claims, b.contradictions,
+                      b.citations, b.changes, b.changes_since
                FROM events e LEFT JOIN briefs b USING (event_id) WHERE e.event_id = %s""",
             (event_id,),
         )
@@ -346,6 +347,12 @@ async def event_brief(event_id: uuid.UUID):
             "official_guidance": row["official_guidance"],
             "uncertainty": row["uncertainty"],
             "sources": row["sources"],
+            "version": row["version"],
+            "claims": row["claims"],
+            "contradictions": row["contradictions"],
+            "citations": row["citations"],
+            "changes": row["changes"],
+            "changes_since": row["changes_since"].isoformat() if row["changes_since"] else None,
         }
         return {k: v for k, v in brief.items() if v is not None}
     if row["brief_status"] == "pending":

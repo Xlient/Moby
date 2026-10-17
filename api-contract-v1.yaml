@@ -1,11 +1,15 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.7.0
+  version: 0.8.0
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.8.0 — Situational brief with citations and "what changed" (additive):
+      + SituationalBrief.version, claims (each with basis official | community | news and
+        the citation ids it rests on), contradictions, citations, changes, changes_since
+      ~ SituationalBrief.sources stays a list of strings (URLs or source names)
     0.7.0 — Bluetooth mesh relay is implemented (additive):
       + POST /mesh/sync: rejected[].reason codes (unknown_hazard_type, unknown_severity,
         bad_location, too_many_hops, in_the_future, too_old, rate_limited,
@@ -1255,6 +1259,47 @@ components:
         sources:
           type: array
           items: { type: string }
+        version:
+          type: integer
+          minimum: 1
+          description: Increases each time the brief is rewritten for this event.
+        claims:
+          type: array
+          description: >
+            The brief's statements, each tied to the citations it rests on. Clients label
+            each by basis; a community claim is never shown as official.
+          items:
+            type: object
+            required: [text, basis, evidence]
+            properties:
+              text: { type: string }
+              basis: { type: string, enum: [official, community, news] }
+              evidence:
+                type: array
+                items: { type: string, description: A citation id, e.g. O1, C2, W1 }
+        contradictions:
+          type: array
+          description: Where reports or sources disagree.
+          items: { type: string }
+        citations:
+          type: array
+          items:
+            type: object
+            required: [id, title, kind]
+            properties:
+              id: { type: string, description: 'O1… official, C1… community, W1… web' }
+              title: { type: string }
+              url: { type: string }
+              kind: { type: string, enum: [official, community, news] }
+        changes:
+          type: string
+          description: >
+            What changed since the previous version, in plain words. Absent on a first
+            brief. Computed from a diff of the event's facts; the model only words it.
+        changes_since:
+          type: string
+          format: date-time
+          description: When the version that `changes` compares against was generated.
 
     CascadeAssessment:
       type: object

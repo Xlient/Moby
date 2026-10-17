@@ -8,6 +8,8 @@ the way it already does when a call fails:
   tavily     Ask Moby answers from alerts and guidance only
   localize   Moby's AI text stays in English (moby/ai/localize.py)
   structure  a report's note isn't read for details; the report is fused anyway (moby/graph)
+  brief      no situational brief (Ultra); the alert and its explanation show on their own
+  brief_changes  "What changed" falls back to a plain list of the changes, not written by Super
 
 Caps reset at 00:00 UTC. Override with MOBY_DAILY_CAP_<FEATURE> (e.g. MOBY_DAILY_CAP_ASK=200).
 Defaults are sized for judging and a small user base: even if every cap is hit every
@@ -15,13 +17,16 @@ day, roughly $0.75 a day of Token Factory use (Nano ~$0.0003 per translation, Su
 ~$0.002 per explanation or answer), and Tavily stays inside its free 1,000 searches a
 month. Explanations are cached per event (and per language), so a cap covers far more
 readers than its number; new warnings that are pushed get explained up front.
+The brief caps are on top of that figure: `brief` counts Ultra briefs (a retry claims
+another unit), `brief_changes` Super "what changed" notes. Briefs share the `tavily` cap.
 """
 import os
 from datetime import datetime, timezone
 
 from psycopg import AsyncConnection, Connection
 
-DEFAULT_CAPS = {"translate": 800, "explain": 150, "ask": 60, "tavily": 25, "localize": 400, "structure": 300}
+DEFAULT_CAPS = {"translate": 800, "explain": 150, "ask": 60, "tavily": 25, "localize": 400, "structure": 300,
+                "brief": 20, "brief_changes": 40}
 
 
 def cap(feature: str) -> int:
