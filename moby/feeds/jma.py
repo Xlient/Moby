@@ -23,6 +23,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from .centers import swath
 from .schema import NormalizedEvent, NormalizeResult, Severity
+from .usgs import QUAKE_TTL
 
 log = logging.getLogger("moby.feeds.jma")
 
@@ -66,9 +67,6 @@ def _ts(value: str | None) -> datetime | None:
     except ValueError:
         return None
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone(timedelta(hours=9)))
-
-
-QUAKE_TTL = timedelta(hours=24)      # an earthquake is a moment; list it for a day
 
 
 def normalize_quakes(items: list[dict[str, Any]], *, now: datetime | None = None) -> NormalizeResult:

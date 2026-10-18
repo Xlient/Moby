@@ -9,7 +9,7 @@ from typing import Any
 
 from .geo import region_for
 from .schema import NormalizedEvent, NormalizeResult
-from .usgs import severity_for
+from .usgs import QUAKE_TTL, severity_for
 
 BASE = "https://www.seismicportal.eu/fdsnws/event/1/query"
 # Felt by people nearby; smaller events are mostly noise for this product.
@@ -18,11 +18,17 @@ URL = f"{BASE}?format=json&minmag={MIN_MAGNITUDE}&orderby=time&limit=500"
 
 
 def url_for_gap(since_last_success: timedelta | None) -> str:
-    """Query back over the time since the last good poll (an hour minimum, a week max)."""
+    """Quakes published or revised since the last good poll (an hour minimum, a week max).
+
+    By update time, not origin time: some networks reach EMSC hours after the quake
+    (Mexico's UNM in batches), and magnitudes and locations are revised later. Only
+    origins within QUAKE_TTL are asked for; older ones would be stored already expired."""
+    now = datetime.now(timezone.utc)
     gap = since_last_success or timedelta(days=1)
     gap = min(max(gap + timedelta(minutes=10), timedelta(hours=1)), timedelta(days=7))
-    start = (datetime.now(timezone.utc) - gap).strftime("%Y-%m-%dT%H:%M:%S")
-    return f"{URL}&start={start}"
+    start = (now - QUAKE_TTL).strftime("%Y-%m-%dT%H:%M:%S")
+    updated = (now - gap).strftime("%Y-%m-%dT%H:%M:%S")
+    return f"{URL}&start={start}&updatedafter={updated}"
 
 
 def _ts(value: str | None) -> datetime | None:
@@ -59,6 +65,7 @@ def normalize(payload: dict[str, Any]) -> NormalizeResult:
             description=region,
             first_reported_at=occurred,
             last_updated_at=_ts(p.get("lastupdate")) or occurred,
+            expires_at=occurred + QUAKE_TTL,
             lat=float(lat),
             lon=float(lon),
             region=region_for(float(lat), float(lon)) or "INTL",

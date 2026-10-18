@@ -25,6 +25,9 @@ HOUR_URL = f"{BASE}/all_hour.geojson"
 # Felt-threshold for this product. Smaller quakes are logged by USGS by the thousand
 # and are not hazards to people; the noise would swamp corroboration.
 MIN_MAGNITUDE = 2.5
+# An earthquake is a moment: list it for a day (JMA and EMSC too), so a region's
+# quakes don't pile up as "active" alerts and crowd out warnings that are in force.
+QUAKE_TTL = timedelta(hours=24)
 
 PAGER: dict[str, Severity] = {"red": "critical", "orange": "high", "yellow": "medium", "green": "low"}
 
@@ -95,6 +98,7 @@ def normalize(payload: dict[str, Any]) -> NormalizeResult:
                 description=p.get("place"),
                 first_reported_at=occurred,
                 last_updated_at=_ms(p.get("updated")) or occurred,
+                expires_at=occurred + QUAKE_TTL,
                 lat=lat,
                 lon=lon,
                 region=region,

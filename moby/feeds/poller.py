@@ -47,8 +47,10 @@ class FeedSpec:
 FEEDS: dict[FeedName, FeedSpec] = {
     "noaa": FeedSpec("noaa", timedelta(seconds=60), noaa.normalize, lambda _gap: noaa.URL, snapshot=True),
     "usgs": FeedSpec("usgs", timedelta(seconds=60), usgs.normalize, usgs.url_for_gap),
-    "eonet": FeedSpec("eonet", timedelta(minutes=10), eonet.normalize, lambda _gap: eonet.URL),
-    "gdacs": FeedSpec("gdacs", timedelta(minutes=15), gdacs.normalize, lambda _gap: gdacs.URL),
+    # GDACS and EONET list the events that are current/open now and drop them when they
+    # end, without an end date (coverage check, 2026-10-18): snapshots, like NWS.
+    "eonet": FeedSpec("eonet", timedelta(minutes=10), eonet.normalize, lambda _gap: eonet.URL, snapshot=True),
+    "gdacs": FeedSpec("gdacs", timedelta(minutes=15), gdacs.normalize, lambda _gap: gdacs.URL, snapshot=True),
     "emsc": FeedSpec("emsc", timedelta(seconds=90), emsc.normalize, emsc.url_for_gap),
     "bipad": FeedSpec("bipad", timedelta(minutes=5), bipad.normalize, lambda _gap: bipad.URL),
 }
