@@ -77,7 +77,8 @@ WITH next AS (
 UPDATE events e
 SET brief_claimed_at = now(), brief_claimed_by = %(worker_id)s, brief_attempts = e.brief_attempts + 1
 FROM next WHERE e.event_id = next.event_id
-RETURNING e.event_id, e.source, e.hazard_type, e.severity, e.tier, e.country, e.brief_attempts
+RETURNING e.event_id, e.source, e.hazard_type, e.severity, e.tier, e.country, e.brief_attempts,
+          e.brief_requested_at
 """
 
 FAILED_SQL = """
@@ -102,8 +103,13 @@ def request_brief_on_view(conn: Connection, event_id: str) -> bool:
 
 
 def claim_brief_events(conn: Connection, worker_id: str, limit: int) -> list[dict[str, Any]]:
-    """Lease up to `limit` pending events to this worker, most severe first. Ids come back as
-    strings. The caller must COMMIT for the claim to take effect (an autocommit connection does)."""
+    """Lease up to `limit` pending events to this worker, most severe first. Ids and times come
+    back as strings. The caller must COMMIT for the claim to take effect (an autocommit
+    connection does).
+
+    `brief_requested_at` identifies the REQUEST: set when a brief is asked for, untouched by
+    claims and retries, new on the next request. Use it in the checkpointer's thread id, so a
+    retry after a crash resumes its run and a new request starts a fresh one."""
     with conn.cursor(row_factory=dict_row) as cur:
         cur.execute(CLAIM_SQL, {"worker_id": worker_id, "limit": limit, "lease": LEASE,
                                 "debounce": DEBOUNCE, "max_attempts": MAX_ATTEMPTS})

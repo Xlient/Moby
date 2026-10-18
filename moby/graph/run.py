@@ -4,6 +4,8 @@
     uv run --env-file .env python -m moby.graph.run --once          # oldest pending report
     uv run --env-file .env python -m moby.graph.run --once --report-id <uuid>
     uv run --env-file .env python -m moby.graph.run --resume <uuid> --decision approve
+    uv run --env-file .env python -m moby.graph.run --brief-list            # events a brief could cover
+    uv run --env-file .env python -m moby.graph.run --brief <event_id>      # run the BRIEF graph on one event
 
 Not the production worker (claiming reports with SKIP LOCKED, the loop, resuming decided
 review_queue rows): that's yours to build. This only makes each step easy to try.
@@ -31,6 +33,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 GRAPH = "moby.graph.pipeline:build_graph"
+BRIEF_GRAPH = "moby.graph.brief_pipeline:build_brief_graph"   # build_brief_graph(checkpointer), input {"event_id"}
 DEFAULT_DB = "postgresql://moby:moby@localhost:5432/moby"
 
 REPORT_SQL = """
@@ -69,6 +72,27 @@ def list_pending() -> None:
         who = r["reporter_hash"][:12]
         print(f"{r['report_id']}  {r['client_event_id'][:28]:28}  {r['hazard_type']:10} {r['severity']:8} "
               f"{r['source']:6} by {who}  ({r['lat']:.4f}, {r['lon']:.4f})")
+
+
+BRIEF_EVENTS_SQL = """
+SELECT e.event_id::text, e.source, e.hazard_type, e.severity, e.tier, e.brief_status,
+       count(r.report_id)::int AS reports, left(COALESCE(e.title_en, e.title, e.alert_headline, ''), 50) AS title
+FROM events e LEFT JOIN reports r ON r.event_id = e.event_id
+WHERE e.brief_status = 'pending' OR r.report_id IS NOT NULL
+GROUP BY e.event_id
+ORDER BY (e.brief_status = 'pending') DESC, count(r.report_id) DESC, e.last_updated_at DESC
+LIMIT 30
+"""
+
+
+def list_brief_events() -> None:
+    with psycopg.connect(db_url(), row_factory=dict_row) as conn:
+        rows = conn.execute(BRIEF_EVENTS_SQL).fetchall()
+    if not rows:
+        print("no events with reports or pending briefs (seed and fuse some: --once a few times)")
+    for r in rows:
+        print(f"{r['event_id']}  {r['source']:9} {r['hazard_type']:10} {r['severity']:8} tier {r['tier']}  "
+              f"{r['reports']:2} report(s)  brief {r['brief_status']:13} {r['title']}")
 
 
 def load_builder(spec: str):
@@ -125,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--list", action="store_true", help="list pending reports")
     g.add_argument("--once", action="store_true", help="run the graph on one report")
     g.add_argument("--resume", metavar="REPORT_ID", help="resume a paused run with --decision")
+    g.add_argument("--brief-list", action="store_true", help="list events a brief could cover")
+    g.add_argument("--brief", metavar="EVENT_ID", help="run the brief graph on one event")
     p.add_argument("--report-id", help="with --once: this report instead of the oldest pending one")
     p.add_argument("--decision", default="approve", help="with --resume: the value passed to Command(resume=…)")
     p.add_argument("--graph", default=GRAPH, help=f"module:function that builds the graph (default {GRAPH})")
@@ -134,6 +160,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.list:
         list_pending()
+        return 0
+    if args.brief_list:
+        list_brief_events()
+        return 0
+    if args.brief:
+        builder = load_builder(BRIEF_GRAPH if args.graph == GRAPH else args.graph)
+        final = asyncio.run(run(builder, state={"event_id": args.brief}, thread_id=f"brief-{args.brief}",
+                                postgres=args.postgres))
+        if args.show_state:
+            print(json.dumps(final, indent=2, default=str))
         return 0
     builder = load_builder(args.graph)
     if args.resume:

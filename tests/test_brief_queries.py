@@ -155,3 +155,16 @@ def test_previous_version_is_the_latest(conn):  # noqa: F811
     prev = bq.previous_version(conn, eid)
     assert prev["version"] == 2 and prev["facts"] == {"v": 2}
     assert bq.event_facts(conn, "00000000-0000-0000-0000-000000000000") is None
+
+
+def test_requested_at_identifies_the_request_not_the_attempt(conn):  # noqa: F811
+    eid = make_event(conn)
+    bq.request_brief(conn, eid)
+    (first,) = bq.claim_brief_events(conn, "w", limit=5)
+    conn.execute("UPDATE events SET brief_claimed_at = NULL")                   # crashed: claim again
+    (retry,) = bq.claim_brief_events(conn, "w", limit=5)
+    assert retry["brief_requested_at"] == first["brief_requested_at"]            # same run → resume
+    conn.execute("UPDATE events SET brief_status = 'ready', brief_requested_at = now() - interval '1 hour'")
+    bq.request_brief(conn, eid)
+    (new,) = bq.claim_brief_events(conn, "w", limit=5)
+    assert new["brief_requested_at"] != first["brief_requested_at"]              # new request → fresh run
