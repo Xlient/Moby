@@ -33,6 +33,7 @@ import { AlertCardReviewScreen } from '@/screens/AlertCardReviewScreen';
 import { MyReportsScreen } from '@/screens/MyReportsScreen';
 import { AboutScreen } from '@/screens/AboutScreen';
 import { TripBriefScreen } from '@/screens/TripBriefScreen';
+import { useTripPacks } from '@/trips/tripPacks';
 import { OnboardingScreen, hasSeenOnboarding, resetOnboarding } from '@/screens/OnboardingScreen';
 
 type Screen =
@@ -92,7 +93,9 @@ export function App() {
   const [onboarded, setOnboarded] = useState(hasSeenOnboarding);
 
   const showAssistant = isEnabled('ask_moby') || isEnabled('on_device_assistant');
-  const showTrip = isEnabled('trip_briefing');
+  // Saved trip packs must open with no signal, when /config (and so the flag) can't load.
+  const tripPacks = useTripPacks();
+  const showTrip = isEnabled('trip_briefing') || tripPacks.length > 0;
   useMeshLifecycle();
 
   const push = useCallback((next: Screen) => setStack((s) => [...s, next]), []);

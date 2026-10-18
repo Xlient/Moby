@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Button, Icon, IconButton, Text } from 'react-native-paper';
 import { useMutation } from '@tanstack/react-query';
 import { api, ApiRequestError } from '@/api/client';
@@ -27,6 +27,8 @@ const RADII = [10, 25, 50, 100] as const;
 const MAX_DAYS = 30;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// The web build's map is a drawn diagram with no long-press.
+const CAN_DROP_PIN = Platform.OS !== 'web';
 
 interface Destination {
   lat: number;
@@ -95,6 +97,7 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
   const [days, setDays] = useState(3);
   const [openPack, setOpenPack] = useState<TripPack | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
+  const scroll = useRef<ScrollView>(null);
 
   const startDate = isoDay(addDays(today, startOffset));
   const endDate = isoDay(addDays(today, startOffset + days));
@@ -111,7 +114,10 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
         ...(d.country ? { country: d.country } : {}),
         ...(d.placeName ? { place_name: d.placeName } : {}),
       }),
-    onSuccess: () => setSavedId(null),
+    onSuccess: () => {
+      setSavedId(null);
+      scroll.current?.scrollTo({ y: 0, animated: false });
+    },
   });
 
   const result = brief.data;
@@ -172,6 +178,7 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
     <View style={styles.flex}>
       <ScreenHeader title="Before you go" onBack={onBack} />
       <ScrollView
+        ref={scroll}
         contentContainerStyle={{ padding: r.gutter, paddingBottom: r.sectionGap, gap: spacing.scale[4] }}
         keyboardShouldPersistTaps="handled"
       >
@@ -238,7 +245,8 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
                   ))}
                   {query.trim().length >= 2 && matches.length === 0 && (
                     <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
-                      Not in Moby’s list of destinations. Use your location, or long-press the map to drop a pin.
+                      Not in Moby’s list of destinations.{' '}
+                      {CAN_DROP_PIN ? 'Use your location, or long-press the map to drop a pin.' : 'Try a nearby town, or use your location.'}
                     </Text>
                   )}
                   {center.source === 'device' && (
@@ -259,9 +267,11 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
                       Use my location
                     </Button>
                   )}
-                  <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
-                    Tip: long-press anywhere on the map to brief that spot.
-                  </Text>
+                  {CAN_DROP_PIN && (
+                    <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
+                      Tip: long-press anywhere on the map to brief that spot.
+                    </Text>
+                  )}
                 </>
               )}
             </Section>
