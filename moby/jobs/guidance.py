@@ -9,9 +9,9 @@ lines it is based on. A card is kept only if it survives grounding checks:
   - every number in it (distances, depths, minutes...) appears in the cited lines,
   - it has the fields and lengths the contract requires.
 
-Cards are always in English. For a page in another language, a second, separate call
-translates the cited lines literally, and the word check runs against that translation
-(numbers are still checked against the original lines).
+Cards are always in English. A page in another language is first translated literally,
+line by line, and the cards are written from those English lines: the word check runs
+against the translation, numbers against the original lines.
 
 Anything that fails is dropped and logged, never "fixed". The surviving cards are
 posted as a *draft* bundle; a reviewer reads them (with their evidence) and
@@ -225,12 +225,20 @@ slug (short-kebab-case), applies_when (<= 80 chars), title (<= 80 chars), body, 
 Page text:
 <<<
 {text}
->>>"""
+>>>{closing}"""
 
 
 LANGUAGE_RULE = """
-- The page is in {language}. Write every card in plain English, translating the page
-  faithfully: no advice, facts or numbers its cited lines don't state. Write numbers as digits."""
+- The page lines are a literal English translation of an official {language} page. Keep to
+  their wording: the cards are checked against these English lines."""
+
+# After a long page the model tends to drift into summarising it, so the output format
+# is restated after the page for translated pages.
+CLOSING = """
+
+Now return ONLY the JSON array of cards. No summary, no headings, no prose.
+Each object has exactly these keys: slug, applies_when, title, body (one string), priority,
+is_critical_fallback, lines (the L numbers of the page lines the card is based on, e.g. [12, 13])."""
 
 TRANSLATE = """Translate each numbered line below from {language} into English, literally and
 completely. Do not explain, summarise or add anything. Keep every number as digits.
@@ -240,7 +248,9 @@ Return ONLY a JSON object mapping each line number (as a string) to its English 
 Lines:
 <<<
 {lines}
->>>"""
+>>>
+
+Now return ONLY the JSON object, e.g. {{"12": "English translation of L12"}}. No prose."""
 
 
 def parse_cards(raw: str) -> list[dict]:
@@ -255,44 +265,82 @@ def parse_cards(raw: str) -> list[dict]:
     return [c for c in data if isinstance(c, dict)]
 
 
-def translate_lines(llm, lines: dict[int, str], language: str) -> dict[int, str]:
-    """Literal English for each page line {number: text}, made apart from the cards so
-    the grounding check has something independent to compare an English card against."""
-    numbered = "\n".join(f"L{i}: {line}" for i, line in sorted(lines.items()))
-    raw = llm.invoke(TRANSLATE.format(language=language, lines=numbered)).content
+# Lines per translation call: keeps each reply well inside max_tokens.
+TRANSLATE_CHUNK_LINES = 40
+TRANSLATE_CHUNK_CHARS = 2_500
+
+
+def _parse_translation(raw) -> dict[int, str]:
     raw = re.sub(r"^```(?:json)?|```$", "", raw if isinstance(raw, str) else str(raw), flags=re.M).strip()
     start, end = raw.find("{"), raw.rfind("}")
-    if start < 0 or end < start:
-        raise ValueError("no JSON object in translation output")
-    data = json.loads(raw[start:end + 1])
+    data: dict = {}
+    if start >= 0 and end > start:
+        try:
+            data = json.loads(raw[start:end + 1])
+        except json.JSONDecodeError:
+            # Long replies sometimes have a stray quote; the "12": "..." pairs are still readable.
+            data = {k: json.loads(f'"{v}"') for k, v in re.findall(r'"L?(\d+)"\s*:\s*"((?:[^"\\]|\\.)*)"', raw)}
+    else:  # also accept the lines echoed back as "L12: translation"
+        data = dict(re.findall(r"^\s*(L?\d+)\s*[:：]\s*(.+?)\s*$", raw, flags=re.M | re.I))
+    if not data:
+        raise ValueError(f"no translations in output: {raw[:120]!r}")
     out = {}
     for k, v in data.items():
         m = re.fullmatch(r"L?(\d+)", str(k).strip(), flags=re.I)
-        if m and int(m.group(1)) in lines and isinstance(v, str) and v.strip():
-            out[int(m.group(1))] = v.strip()
+        if m and isinstance(v, str) and v.strip():
+            out[int(m.group(1))] = " ".join(v.split())
     return out
+
+
+def translate_page(llm, lines: list[str], language: str) -> list[str]:
+    """A literal English line for each page line, in order ("" where the model gave none).
+
+    Cards are then written from these English lines, so the usual word check compares
+    like with like; numbers are still checked against the original lines."""
+    english = [""] * len(lines)
+    chunk: list[int] = []
+
+    def flush():
+        if not chunk:
+            return
+        numbered = "\n".join(f"L{i + 1}: {lines[i]}" for i in chunk)
+        got = _parse_translation(llm.invoke(TRANSLATE.format(language=language, lines=numbered)).content)
+        for i in chunk:
+            english[i] = got.get(i + 1, "")
+        chunk.clear()
+
+    for i in range(len(lines)):
+        if chunk and (len(chunk) >= TRANSLATE_CHUNK_LINES
+                      or sum(len(lines[j]) for j in chunk) + len(lines[i]) > TRANSLATE_CHUNK_CHARS):
+            flush()
+        chunk.append(i)
+    flush()
+    return english
 
 
 def cards_for(source: Source, text: str, llm, reviewed_at: str, country: str = "US") -> tuple[list[dict], list[str]]:
     lines = text.split("\n")
-    numbered = "\n".join(f"L{i}: {line}" for i, line in enumerate(lines, 1))
     language = LANGUAGES.get(source.lang, source.lang)
+    english: list[str] | None = None
+    if source.lang != "en":
+        try:
+            english = translate_page(llm, lines, language)
+        except Exception as e:
+            return [], [f"{source.url}: translation unusable ({e})"]
+    shown = lines if english is None else [e or "(untranslated)" for e in english]
+    numbered = "\n".join(f"L{i}: {line}" for i, line in enumerate(shown, 1))
     msg = PROMPT.format(max_cards=MAX_CARDS_PER_SOURCE, hazard=source.hazard, source=source.name,
                         url=source.url, text=numbered,
-                        language_rule="" if source.lang == "en" else LANGUAGE_RULE.format(language=language))
+                        language_rule="" if source.lang == "en" else LANGUAGE_RULE.format(language=language),
+                        closing="" if source.lang == "en" else CLOSING)
+    raw = ""
     try:
         raw = llm.invoke(msg).content
         proposed = parse_cards(raw if isinstance(raw, str) else str(raw))[:MAX_CARDS_PER_SOURCE]
     except Exception as e:
-        return [], [f"{source.url}: model output unusable ({e})"]
+        return [], [f"{source.url}: model output unusable ({e}; starts {str(raw)[:120]!r})"]
 
     cited = [_cited_numbers(c.get("lines"), lines) for c in proposed]
-    english: dict[int, str] | None = None
-    if source.lang != "en":
-        try:
-            english = translate_lines(llm, {n: lines[n - 1] for ns in cited for n in ns}, language)
-        except Exception as e:
-            return [], [f"{source.url}: translation of cited lines unusable ({e})"]
 
     kept, dropped = [], []
     host = re.sub(r"^www\.", "", httpx.URL(source.url).host).split(".")[0]
@@ -301,7 +349,7 @@ def cards_for(source: Source, text: str, llm, reviewed_at: str, country: str = "
     for c, numbers in zip(proposed, cited, strict=True):
         slug = re.sub(r"[^a-z0-9-]+", "-", str(c.get("slug", "")).lower()).strip("-")[:40] or "card"
         evidence = [lines[n - 1] for n in numbers]
-        translated = None if english is None else [english.get(n, "") for n in numbers]
+        translated = None if english is None else [english[n - 1] for n in numbers]
         card = {
             "card_id": f"{prefix}{source.hazard}-{host}-{slug}"[:64],
             "hazard_type": source.hazard,
@@ -380,6 +428,16 @@ def tavily_texts(urls: list[str]) -> dict[str, str]:
     return texts
 
 
+def job_model(country: str):
+    """Ultra for the job. Outside the US, reasoning is off (as for translation in
+    moby/ai/localize.py): on Chinese pages it reasoned in the reply itself, looped and ran
+    out of tokens before any JSON (seen 2026-10-18). The US runs keep their settings."""
+    if country == "US":
+        return chat_model("ultra", temperature=0, max_tokens=4000)
+    return chat_model("ultra", temperature=0, max_tokens=4000,
+                      extra_body={"chat_template_kwargs": {"enable_thinking": False}})
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Build a draft guidance bundle from official sources.")
     p.add_argument("--country", choices=sorted(c for c, s in SOURCES.items() if s), default="US",
@@ -394,7 +452,7 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
-    llm = chat_model("ultra", temperature=0, max_tokens=4000)
+    llm = job_model(args.country)
     reviewed_at = datetime.now(timezone.utc).isoformat()
     sources = [s for s in SOURCES[args.country] if not args.hazard or s.hazard in args.hazard]
 

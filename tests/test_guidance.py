@@ -137,13 +137,14 @@ ZH_PAGE = "\n".join([
 ])
 ZH_SRC = Source("earthquake", "Ministry of Emergency Management (China)",
                 "https://www.mem.gov.cn/kp/zrzh/202205/t20220512_413512.shtml", "zh")
-ZH_TRANSLATION = """{"2": "At home, hide under sturdy furniture that will not easily fall over nearby, or hide in a corner or bathroom; do not use the elevator to escape.",
+ZH_TRANSLATION = """{"1": "Home > Emergency science > Natural disasters",
+  "2": "At home, hide under sturdy furniture that will not easily fall over nearby, or hide in a corner or bathroom; do not use the elevator to escape.",
   "3": "Outdoors, keep away from buildings, bridges or hillsides, and find an open, safe place.",
   "4": "When standing water reaches about 60 cm, a vehicle will very likely stall."}"""
 
 
 class ScriptedLLM:
-    """Answers the card prompt, then the translation prompt, and records what it was asked."""
+    """Gives scripted replies in order (translation first, then cards) and records the prompts."""
 
     def __init__(self, *contents):
         self.contents, self.prompts = list(contents), []
@@ -154,15 +155,17 @@ class ScriptedLLM:
         return self
 
 
-def test_chinese_page_gives_english_cards_checked_against_a_separate_translation():
+def test_chinese_page_is_translated_first_and_cards_are_written_from_the_english():
     cards = """[{"slug": "indoors", "title": "Earthquake at home", "body": "Hide under sturdy furniture or in a corner or bathroom. Do not use the elevator.", "lines": ["L2"], "priority": 10, "is_critical_fallback": true},
       {"slug": "outdoors", "title": "Earthquake outdoors", "body": "Keep away from buildings, bridges and hillsides. Find an open, safe place.", "lines": [3]},
       {"slug": "invented", "title": "Earthquake outdoors", "body": "Stand in a doorway and call your embassy straight away.", "lines": [3]},
       {"slug": "water", "title": "Standing water", "body": "When standing water reaches about 50 cm, a vehicle will very likely stall.", "lines": [4]}]"""
-    llm = ScriptedLLM(cards, ZH_TRANSLATION)
+    llm = ScriptedLLM(ZH_TRANSLATION, cards)
     kept, dropped = cards_for(ZH_SRC, ZH_PAGE, llm, "2026-10-18T00:00:00+00:00", "CN")
 
-    assert "The page is in Chinese" in llm.prompts[0] and "L2:" in llm.prompts[1] and "L1:" not in llm.prompts[1]
+    assert "from Chinese into English" in llm.prompts[0] and "L2: 在家中" in llm.prompts[0]
+    # The card prompt sees the English lines, not the Chinese ones.
+    assert "L2: At home, hide" in llm.prompts[1] and "在家中" not in llm.prompts[1]
     assert [c["card_id"] for c in kept] == ["cn-earthquake-mem-indoors", "cn-earthquake-mem-outdoors"]
     assert kept[0]["source_name"] == "Ministry of Emergency Management (China)" and kept[0]["source_url"] == ZH_SRC.url
     # The reviewer sees the original line and the translation the check used.
@@ -177,12 +180,40 @@ def test_translation_cannot_add_a_number():
     assert "numbers not in" in grounding_problem(card, [ZH_PAGE.split("\n")[3]], padded)
 
 
-def test_untranslated_or_unusable_translation_drops_the_cards():
+def test_untranslated_lines_and_unusable_translations_drop_cards():
     cards = """[{"slug": "indoors", "title": "Earthquake at home", "body": "Hide under sturdy furniture. Do not use the elevator.", "lines": [2]}]"""
-    kept, dropped = cards_for(ZH_SRC, ZH_PAGE, ScriptedLLM(cards, '{"3": "Outdoors..."}'), "2026-10-18", "CN")
-    assert kept == [] and "no translation" in dropped[0]
-    kept, dropped = cards_for(ZH_SRC, ZH_PAGE, ScriptedLLM(cards, "Sorry"), "2026-10-18", "CN")
-    assert kept == [] and "translation of cited lines unusable" in dropped[0]
+    llm = ScriptedLLM('{"3": "Outdoors, keep away from buildings."}', cards)
+    kept, dropped = cards_for(ZH_SRC, ZH_PAGE, llm, "2026-10-18", "CN")
+    assert "L2: (untranslated)" in llm.prompts[1] and kept == [] and "no translation" in dropped[0]
+    kept, dropped = cards_for(ZH_SRC, ZH_PAGE, ScriptedLLM("Sorry"), "2026-10-18", "CN")
+    assert kept == [] and "translation unusable" in dropped[0]
+
+
+def test_translation_echoed_as_numbered_lines_is_accepted():
+    cards = """[{"slug": "indoors", "title": "Earthquake at home", "body": "Hide under sturdy furniture or in a corner or bathroom. Do not use the elevator.", "lines": [2]}]"""
+    echoed = "L2: At home, hide under sturdy furniture nearby, or hide in a corner or bathroom; do not use the elevator."
+    kept, dropped = cards_for(ZH_SRC, ZH_PAGE, ScriptedLLM(echoed, cards), "2026-10-18", "CN")
+    assert [c["card_id"] for c in kept] == ["cn-earthquake-mem-indoors"], dropped
+
+
+def test_slightly_broken_translation_json_is_still_read():
+    # Seen from Ultra on 2026-10-18: a stray quote before a key.
+    raw = '{\n  "48": "Emergency science",\n  " "49": "Life safety",\n  "50": "Natural \\"disasters\\""\n}'
+    assert job._parse_translation(raw) == {48: "Emergency science", 49: "Life safety", 50: 'Natural "disasters"'}
+
+
+def test_long_pages_are_translated_in_chunks(monkeypatch):
+    monkeypatch.setattr(job, "TRANSLATE_CHUNK_LINES", 2)
+    llm = ScriptedLLM('{"1": "a", "2": "b"}', '{"3": "c", "4": "d"}')
+    assert job.translate_page(llm, ZH_PAGE.split("\n"), "Chinese") == ["a", "b", "c", "d"]
+    assert "L3:" in llm.prompts[1] and "L1:" not in llm.prompts[1]
+
+
+def test_translated_card_prompt_restates_the_format_after_the_page():
+    llm = ScriptedLLM(ZH_TRANSLATION, "A summary of the page.")
+    kept, dropped = cards_for(ZH_SRC, ZH_PAGE, llm, "2026-10-18", "CN")
+    assert "No summary, no headings, no prose." in llm.prompts[1].split(">>>")[-1]
+    assert kept == [] and "starts 'A summary" in dropped[0]
 
 
 def test_english_pages_need_no_translation_call():
@@ -190,7 +221,9 @@ def test_english_pages_need_no_translation_call():
     out = '[{"slug": "s", "title": "Under a flood warning", "body": "Find safe shelter right away.", "lines": [1, 2]}]'
     llm = ScriptedLLM(out)
     kept, _ = cards_for(src, PAGE, llm, "2026-10-04")
-    assert len(llm.prompts) == 1 and "The page is in" not in llm.prompts[0] and kept[0]["card_id"] == "flood-ready-s"
+    assert len(llm.prompts) == 1 and "literal English translation" not in llm.prompts[0]
+    assert llm.prompts[0].rstrip().endswith(">>>")  # no restated format for English pages
+    assert kept[0]["card_id"] == "flood-ready-s"
 
 
 def test_bundles_for_countries_the_api_doesnt_take_are_dry_run_only(monkeypatch):
