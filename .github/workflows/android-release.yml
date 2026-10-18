@@ -77,6 +77,17 @@ jobs:
           fi
           echo "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/upload.jks"
 
+      - name: Firebase config
+        env:
+          GOOGLE_SERVICES_B64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          # Not in the repository (it identifies the production Firebase project).
+          if [ -z "$GOOGLE_SERVICES_B64" ]; then
+            echo "::error::GOOGLE_SERVICES_JSON_BASE64 is not set; release builds need the production Firebase config."
+            exit 1
+          fi
+          echo "$GOOGLE_SERVICES_B64" | base64 --decode > google-services.json
+
       - name: Prebuild (generate android/)
         env:
           MOBY_VERSION_NAME: ${{ steps.version.outputs.name }}
@@ -93,8 +104,9 @@ jobs:
           MOBY_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
           MOBY_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
           MOBY_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
-          # Inlined into the JS bundle at build time (public client config, not secrets).
-          EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
+          # Inlined into the JS bundle at build time. The API URL is a secret only so it's
+          # masked in these (public) logs; the Firebase values are public client config.
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
           EXPO_PUBLIC_FIREBASE_API_KEY: ${{ vars.EXPO_PUBLIC_FIREBASE_API_KEY }}
           EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ vars.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN }}
           EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ vars.EXPO_PUBLIC_FIREBASE_PROJECT_ID }}

@@ -36,5 +36,7 @@ jobs:
           N_FACTORY_ACC_KEY: ${{ secrets.N_FACTORY_ACC_KEY }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
           LANGSMITH_TRACING: "true"
-        # Placeholder until the LangGraph eval suite lands: checks the models respond.
-        run: uv run python scripts/verify_models.py
+        run: |
+          uv run python scripts/verify_models.py
+          # Step 7: does Nano read the example notes the way we decided? (tests/fixtures/structure_examples.json)
+          uv run python scripts/eval_structure.py

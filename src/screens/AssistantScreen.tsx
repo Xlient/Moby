@@ -18,6 +18,7 @@ import {
 } from '@/components/AskMessage';
 import { countryAt } from '@/data/emergencyNumbers';
 import { useUserCenter } from '@/location/UserLocationContext';
+import { languageName, phoneLanguage } from '@/lib/language';
 import { useTheme } from '@/theme/ThemeContext';
 import { spacing, typography } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -51,7 +52,7 @@ type Turn = {
 export function AssistantScreen() {
   const { theme } = useTheme();
   const r = useResponsive();
-  const { user } = useAuth();
+  const { user, isConfigured: authConfigured } = useAuth();
   const center = useUserCenter();
   const country = countryAt(center.lat, center.lon);
   const [draft, setDraft] = useState('');
@@ -80,6 +81,7 @@ export function AssistantScreen() {
         // Only a real fix: never ask about the demo city as if it were "near you".
         ...(center.source === 'device' ? { lat: center.lat, lon: center.lon } : {}),
         ...(country ? { country } : {}),
+        language: phoneLanguage(),
       }),
     onSuccess: (answer, question) => update(question, { answer }),
     onError: (err, question) => {
@@ -88,7 +90,9 @@ export function AssistantScreen() {
       update(question, {
         error:
           err instanceof ApiRequestError && err.status === 429
-            ? 'You’ve asked a lot of questions this hour. Please try again later.'
+            ? /today/i.test(JSON.stringify(err.body ?? ''))
+              ? 'Ask Moby has answered all it can for today. Safety guidance still works, even offline.'
+              : 'You’ve asked a lot of questions this hour. Please try again later.'
             : 'Couldn’t reach Moby. Check your connection and try again.',
       });
     },

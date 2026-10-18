@@ -13,6 +13,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, Field
 
+from moby.ai import localize
 from moby.alerts.preferences import AlertPreferences
 from moby.feeds.schema import HazardType, Severity
 
@@ -37,6 +38,7 @@ class DeviceIn(BaseModel):
     push_provider: Literal["fcm", "apns"]
     push_token: str = Field(min_length=20, max_length=4096)
     platform: Literal["ios", "android"]
+    language: str | None = Field(None, max_length=16, description="phone language, e.g. es-MX")
 
 
 @router.post("/me/devices", status_code=204)
@@ -50,14 +52,16 @@ async def register_device(body: DeviceIn, caller: User):
         await conn.execute("DELETE FROM devices WHERE push_token = %s AND device_id <> %s",
                            (body.push_token, body.device_id))
         await conn.execute(
-            """INSERT INTO devices (device_id, owner, push_provider, push_token, platform)
-               VALUES (%(id)s, %(owner)s, %(provider)s, %(token)s, %(platform)s)
+            """INSERT INTO devices (device_id, owner, push_provider, push_token, platform, language)
+               VALUES (%(id)s, %(owner)s, %(provider)s, %(token)s, %(platform)s, %(language)s)
                ON CONFLICT (device_id) DO UPDATE
                SET owner = EXCLUDED.owner, push_provider = EXCLUDED.push_provider,
-                   push_token = EXCLUDED.push_token, platform = EXCLUDED.platform,
+                   push_token = EXCLUDED.push_token, platform = EXCLUDED.platform, language = EXCLUDED.language,
                    updated_at = now(), disabled_at = NULL""",
             {"id": body.device_id, "owner": caller.reporter_hash, "provider": body.push_provider,
-             "token": body.push_token, "platform": body.platform},
+             "token": body.push_token, "platform": body.platform,
+             # Only languages Moby translates into are kept; anything else means English.
+             "language": localize.normalize(body.language)},
         )
     return Response(status_code=204)
 

@@ -23,6 +23,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "grandalf>=0.8",
     "httpx>=0.28",
     "pytest>=8.3",
     "ruff>=0.13",

@@ -217,6 +217,7 @@ paths:
                 push_provider: { type: string, enum: [fcm, apns] }
                 push_token: { type: string }
                 platform: { type: string, enum: [ios, android] }
+                language: { type: string, maxLength: 16, description: "Phone language tag (e.g. es-MX). Moby's AI text is translated into it when supported; English otherwise (push text)" }
       responses:
         '204': { description: Registered }
 
@@ -357,6 +358,11 @@ paths:
           in: path
           required: true
           schema: { type: string }
+        - name: lang
+          in: query
+          required: false
+          description: "Phone language tag (e.g. es-MX). Moby's AI text is translated into it when supported; English otherwise"
+          schema: { type: string, maxLength: 16 }
       responses:
         '200':
           description: Ready
@@ -1180,6 +1186,7 @@ components:
           description: Instructions taken from the warning itself (empty if it gives none)
         model: { type: string, description: e.g. nvidia/nemotron-3-super-120b-a12b }
         generated_at: { type: string, format: date-time }
+        language: { type: string, description: "Language of summary and actions (ISO 639-1); 'en' unless translated by Moby" }
 
     AskRequest:
       type: object
@@ -1189,6 +1196,7 @@ components:
         lat: { type: number, minimum: -90, maximum: 90, description: Optional; adds nearby official alerts as sources }
         lon: { type: number, minimum: -180, maximum: 180 }
         country: { type: string, pattern: '^[A-Z]{2}$', description: Picks the official websites to search }
+        language: { type: string, maxLength: 16, description: "Phone language tag (e.g. es-MX). Moby's AI text is translated into it when supported; English otherwise" }
 
     AskAnswer:
       type: object
@@ -1212,6 +1220,7 @@ components:
               url: { type: string, nullable: true }
         model: { type: string }
         searched_web: { type: boolean, description: True when official websites were searched via Tavily }
+        language: { type: string, description: "Language of the answer (ISO 639-1); 'en' unless translated by Moby" }
 
     SituationalBrief:
       type: object

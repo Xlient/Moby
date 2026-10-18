@@ -6,6 +6,7 @@ import { ThemeProvider, useTheme } from '@/theme/ThemeContext';
 import { AuthProvider } from '@/auth/AuthContext';
 import { UserLocationProvider } from '@/location/UserLocationContext';
 import { App } from '@/App';
+import { applyApiOverride } from '@/api/apiOverride';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,6 +17,8 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+void applyApiOverride(queryClient);
 
 function ThemedShell() {
   const { theme, isDark } = useTheme();
