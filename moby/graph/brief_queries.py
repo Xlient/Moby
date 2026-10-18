@@ -117,3 +117,65 @@ def brief_failed(conn: Connection, event_id: str, error: str) -> bool:
     row = conn.execute(FAILED_SQL, {"event_id": event_id, "error": error,
                                     "max_attempts": MAX_ATTEMPTS}).fetchone()
     return bool(row and row[0])
+
+
+# ── Evidence for a brief (Step 2: gather_evidence) ───────────────────────────────────────
+#
+# What the brief may say comes only from these rows. No reporter notes or identities: the
+# community side is grouped by what people saw, with Nano's structured details (schemas.py,
+# no free text). `event_facts` is also the snapshot saved with each brief (brief_versions.facts)
+# that the next brief diffs against for "what changed", so every value is JSON-ready.
+
+FACTS_SQL = """
+SELECT e.event_id::text, e.source, e.source_feed, e.hazard_type, e.product, e.severity, e.tier,
+       e.country, e.region,
+       COALESCE(e.title_en, e.title) AS title, COALESCE(e.description_en, e.description) AS description,
+       e.first_reported_at::text, e.last_updated_at::text, e.expires_at::text,
+       ST_Y(e.location::geometry) AS lat, ST_X(e.location::geometry) AS lon,
+       round((ST_Area(e.area) / 1e6)::numeric, 1)::float AS area_km2,
+       e.reports_disagree,
+       (SELECT count(DISTINCT r.reporter_hash) FROM reports r WHERE r.event_id = e.event_id)::int AS reporters,
+       (SELECT count(*) FROM reports r WHERE r.event_id = e.event_id)::int AS reports
+FROM events e WHERE e.event_id = %(event_id)s
+"""
+
+COMMUNITY_SQL = """
+SELECT COALESCE(r.observed_effect, 'unspecified') AS effect,
+       count(DISTINCT r.reporter_hash)::int AS reporters,
+       count(*)::int AS reports,
+       min(r.observed_at)::text AS first_seen,
+       max(r.observed_at)::text AS last_seen,
+       array_agg(DISTINCT r.severity) AS severities,
+       COALESCE(jsonb_agg(r.structured ORDER BY r.observed_at)
+                FILTER (WHERE r.structured IS NOT NULL AND r.structured <> '{}'::jsonb), '[]'::jsonb) AS details
+FROM reports r
+WHERE r.event_id = %(event_id)s
+GROUP BY 1
+ORDER BY reporters DESC, last_seen DESC
+"""
+
+PREVIOUS_SQL = """
+SELECT version, created_at::text, facts, brief
+FROM brief_versions WHERE event_id = %(event_id)s
+ORDER BY version DESC LIMIT 1
+"""
+
+
+def event_facts(conn: Connection, event_id: str) -> dict[str, Any] | None:
+    """The event as the brief sees it (official wording in English when translated), plus
+    area in km² and reporter counts. None if the event doesn't exist."""
+    with conn.cursor(row_factory=dict_row) as cur:
+        return cur.execute(FACTS_SQL, {"event_id": event_id}).fetchone()
+
+
+def community_evidence(conn: Connection, event_id: str) -> list[dict[str, Any]]:
+    """Reports attached to the event, one group per thing people saw ("rising water",
+    "blocked road"...): distinct reporters, when, severities, structured details. Biggest first."""
+    with conn.cursor(row_factory=dict_row) as cur:
+        return cur.execute(COMMUNITY_SQL, {"event_id": event_id}).fetchall()
+
+
+def previous_version(conn: Connection, event_id: str) -> dict[str, Any] | None:
+    """The latest saved brief and the facts it was written from, or None for a first brief."""
+    with conn.cursor(row_factory=dict_row) as cur:
+        return cur.execute(PREVIOUS_SQL, {"event_id": event_id}).fetchone()

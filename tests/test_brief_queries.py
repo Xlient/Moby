@@ -1,5 +1,6 @@
 """Brief queue SQL (migration 0020): requests merge, claims are leased and debounced,
 failures retry then give up."""
+import json
 from datetime import timedelta
 
 import psycopg
@@ -126,3 +127,31 @@ def test_view_ignores_expired_warnings(conn):  # noqa: F811
     eid = make_event(conn, "lone_low")
     conn.execute("UPDATE events SET tier = 1, expires_at = now() - interval '1 minute'")
     assert bq.request_brief_on_view(conn, eid) is False
+
+
+# ── Evidence (Step 2) ───────────────────────────────────────────────────────
+
+def test_evidence_for_a_corroborated_flood(conn):  # noqa: F811
+    reports = seeded(conn, "corroborated_flood")
+    eid = fuse_one(conn, reports[0])
+    for r in reports[1:]:
+        fuse_one(conn, r)
+    facts = bq.event_facts(conn, eid)
+    assert facts["event_id"] == eid and facts["source"] != "official"
+    assert facts["reporters"] == 3 and facts["reports"] == 3
+    assert isinstance(facts["lat"], float) and facts["area_km2"] is None   # community events have no area
+    json.dumps(facts)                                                       # JSON-ready snapshot
+    groups = bq.community_evidence(conn, eid)
+    assert sum(g["reporters"] for g in groups) >= 3 and all(g["first_seen"] <= g["last_seen"] for g in groups)
+    assert "note" not in json.dumps(groups)                                 # never the free text
+    assert bq.previous_version(conn, eid) is None
+
+
+def test_previous_version_is_the_latest(conn):  # noqa: F811
+    eid = make_event(conn)
+    for v in (1, 2):
+        conn.execute("INSERT INTO brief_versions (event_id, version, facts, brief) VALUES (%s, %s, %s, %s)",
+                     (eid, v, json.dumps({"v": v}), json.dumps({"summary": f"s{v}"})))
+    prev = bq.previous_version(conn, eid)
+    assert prev["version"] == 2 and prev["facts"] == {"v": 2}
+    assert bq.event_facts(conn, "00000000-0000-0000-0000-000000000000") is None
