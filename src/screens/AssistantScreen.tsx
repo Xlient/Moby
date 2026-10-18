@@ -18,7 +18,7 @@ import {
 } from '@/components/AskMessage';
 import { countryAt } from '@/data/emergencyNumbers';
 import { useUserCenter } from '@/location/UserLocationContext';
-import { languageName, phoneLanguage } from '@/lib/language';
+import { phoneLanguage } from '@/lib/language';
 import { useTheme } from '@/theme/ThemeContext';
 import { spacing, typography } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -52,14 +52,15 @@ type Turn = {
 export function AssistantScreen() {
   const { theme } = useTheme();
   const r = useResponsive();
-  const { user, isConfigured: authConfigured } = useAuth();
+  const { user } = useAuth();
   const center = useUserCenter();
   const country = countryAt(center.lat, center.lon);
   const [draft, setDraft] = useState('');
   const [turns, setTurns] = useState<Turn[]>([]);
   const scroll = useRef<ScrollView>(null);
   const isOnline = useOnlineStatus();
-  const { cards } = useGuidance();
+  // Offline answers use the local agencies' cards first (only from a real fix, never the demo city).
+  const { cards } = useGuidance(center.source === 'device' ? country : undefined);
   const model = useModelState();
   const canAnswerOffline = model.kind === 'ready';
 
