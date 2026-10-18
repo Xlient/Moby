@@ -61,6 +61,7 @@ from moby.feeds.schema import Severity
 from moby.llm import EMBEDDING_DIM
 
 from moby.ai import ask, budget, localize
+from moby.graph.brief_queries import VIEW_SQL as BRIEF_ON_VIEW_SQL
 
 from .alerts import to_alert
 from .auth import Caller, require_user
@@ -324,8 +325,13 @@ async def event_explain(event_id: uuid.UUID,
 async def event_brief(event_id: uuid.UUID):
     """Contract 4. 200 with the brief, 202 while the situational_brief job is working on
     it. A brief that was never requested or failed is a 404: the app shows the alert
-    on its own and never waits on this route."""
+    on its own and never waits on this route.
+
+    Opening an event also asks for a brief when community reports arrived that the current
+    one doesn't cover (brief_queries.VIEW_SQL). With no brief yet that's a 202; with one,
+    the reader gets it now and the rewrite follows (debounced, capped)."""
     async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        requested = (await cur.execute(BRIEF_ON_VIEW_SQL, {"event_id": event_id})).rowcount == 1
         await cur.execute(
             """SELECT e.brief_status, b.generated_at, b.model, b.summary, b.likely_progression, b.exposed_areas,
                       b.official_guidance, b.uncertainty, b.sources, b.version, b.claims, b.contradictions,
@@ -355,7 +361,7 @@ async def event_brief(event_id: uuid.UUID):
             "changes_since": row["changes_since"].isoformat() if row["changes_since"] else None,
         }
         return {k: v for k, v in brief.items() if v is not None}
-    if row["brief_status"] == "pending":
+    if row["brief_status"] == "pending" or requested:
         return JSONResponse({"status": "pending", "retry_after_seconds": 15}, status_code=202)
     raise HTTPException(404, "no brief for this event")
 

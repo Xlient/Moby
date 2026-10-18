@@ -450,7 +450,10 @@ paths:
         Generated asynchronously on Ultra after the fast alert has already been sent.
         Returns 202 with status "pending" while generation is in flight — clients
         should render the alert immediately and let the brief arrive behind it.
-        Never block alert display on this endpoint.
+        Never block alert display on this endpoint. Opening an event asks for a brief
+        when community reports arrived that the current brief doesn't cover: with no
+        brief yet the response is 202; with one, the current brief is returned (200)
+        and the rewrite follows.
       parameters:
         - name: event_id
           in: path

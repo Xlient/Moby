@@ -151,6 +151,19 @@ def test_brief_pending_ready_and_missing(client, db_url):
     assert b["contradictions"] == ["Two reports disagree on whether the road is passable"]
 
 
+def test_opening_an_event_with_new_reports_asks_for_a_brief(client, db_url):
+    eid = add_event(db_url)
+    assert client.get(f"/v1/events/{eid}/brief").status_code == 404     # nothing to explain yet
+    with psycopg.connect(db_url, autocommit=True) as c:
+        c.execute("INSERT INTO reports (client_event_id, reporter_hash, hazard_type, severity, location, "
+                  "observed_at, event_id) VALUES ('view-1', 'h', 'flood', 'high', "
+                  "ST_SetSRID(ST_MakePoint(-122.27, 37.80), 4326)::geography, now(), %s)", (eid,))
+    r = client.get(f"/v1/events/{eid}/brief")
+    assert r.status_code == 202 and r.json()["status"] == "pending"
+    with psycopg.connect(db_url, autocommit=True) as c:
+        assert c.execute("SELECT brief_status FROM events WHERE event_id = %s", (eid,)).fetchone()[0] == "pending"
+
+
 # ── Worker ───────────────────────────────────────────────────────────
 
 def test_pushes_once_per_severity_and_again_on_upgrade(client, db_url):
