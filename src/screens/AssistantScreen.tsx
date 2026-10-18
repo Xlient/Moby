@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { Button, Chip, Text, TextInput } from 'react-native-paper';
 import { useMutation } from '@tanstack/react-query';
 import { api, ApiRequestError } from '@/api/client';
@@ -7,10 +7,19 @@ import type { AskAnswer } from '@/api/types';
 import { useAuth } from '@/auth/AuthContext';
 import { env } from '@/config/env';
 import { EmergencyNumbers } from '@/components/EmergencyNumbers';
+import {
+  AnswerSurface,
+  CitedText,
+  Footnote,
+  MobyMessage,
+  QuestionBubble,
+  SourceList,
+  ThinkingBubble,
+} from '@/components/AskMessage';
 import { countryAt } from '@/data/emergencyNumbers';
 import { useUserCenter } from '@/location/UserLocationContext';
 import { useTheme } from '@/theme/ThemeContext';
-import { radius, spacing, typography } from '@/theme/tokens';
+import { spacing, typography } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useGuidance } from '@/guidance/guidanceStore';
@@ -87,7 +96,6 @@ export function AssistantScreen() {
 
   function update(question: string, patch: Partial<Turn>) {
     setTurns((ts) => ts.map((t, i) => (i === ts.length - 1 && t.question === question ? { ...t, ...patch } : t)));
-    setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 50);
   }
 
   function send(text: string) {
@@ -124,7 +132,13 @@ export function AssistantScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView ref={scroll} style={styles.flex} contentContainerStyle={{ padding: r.gutter, gap: spacing.scale[3] }}>
+      <ScrollView
+        ref={scroll}
+        style={styles.flex}
+        contentContainerStyle={{ padding: r.gutter, gap: spacing.scale[3] }}
+        // Follow the conversation: scroll once the new question, the thinking bubble or the answer has laid out.
+        onContentSizeChange={() => turns.length > 0 && scroll.current?.scrollToEnd({ animated: true })}
+      >
         <Text accessibilityRole="header" style={[r.heading, { color: theme.text.primary }]}>Ask Moby</Text>
         <Text style={[typography.body, { color: theme.text.secondary }]}>
           Answers come only from official alerts, Moby’s safety guidance and official websites, and always show their
@@ -151,17 +165,21 @@ export function AssistantScreen() {
 
         {turns.map((t, i) => (
           <View key={i} style={{ gap: spacing.scale[2] }}>
-            <View style={[styles.question, { backgroundColor: theme.bg.recessed }]}>
-              <Text style={[typography.body, { color: theme.text.primary }]}>{t.question}</Text>
-            </View>
+            <QuestionBubble text={t.question} />
             {t.local ? (
               <LocalAnswerCard sources={t.local.sources} answer={t.local.answer} />
             ) : t.answer ? (
               <AnswerCard answer={t.answer} />
             ) : t.error ? (
-              <Text style={[typography.body, { color: theme.text.secondary }]}>{t.error}</Text>
+              <MobyMessage via="couldn’t answer">
+                <AnswerSurface quiet>
+                  <Text style={[typography.body, { color: theme.text.secondary }]}>{t.error}</Text>
+                </AnswerSurface>
+              </MobyMessage>
             ) : (
-              <Text style={[typography.meta, { color: theme.text.secondary }]}>Checking official sources…</Text>
+              <MobyMessage via="official sources">
+                <ThinkingBubble status="Checking official sources…" />
+              </MobyMessage>
             )}
           </View>
         ))}
@@ -194,82 +212,88 @@ function AnswerCard({ answer }: { answer: AskAnswer }) {
   const { theme } = useTheme();
   if (answer.abstained || !answer.answer) {
     return (
-      <View style={[styles.answer, { backgroundColor: theme.bg.raised }]}>
-        <Text style={[typography.body, { color: theme.text.primary }]}>
-          I couldn’t find an answer to that in official alerts or safety guidance, so I won’t guess. Try asking about
-          what to do in a specific hazard, or check the Safety guidance section.
-        </Text>
-      </View>
+      <MobyMessage via="official sources">
+        <AnswerSurface quiet>
+          <Text style={[typography.body, { color: theme.text.primary }]}>
+            I couldn’t find an answer to that in official alerts or safety guidance, so I won’t guess. Try asking about
+            what to do in a specific hazard, or check the Safety guidance section.
+          </Text>
+        </AnswerSurface>
+      </MobyMessage>
     );
   }
   return (
-    <View style={[styles.answer, { backgroundColor: theme.bg.raised }]} accessibilityLabel="Moby's answer">
-      <Text style={[typography.body, { color: theme.text.primary }]}>{answer.answer}</Text>
-      <Text style={[typography.meta, styles.gap, { color: theme.text.secondary }]}>Sources</Text>
-      {answer.sources.map((s) => (
-        <Text
-          key={s.n}
-          style={[typography.meta, { color: s.url ? theme.text.primary : theme.text.secondary }]}
-          onPress={s.url ? () => Linking.openURL(s.url!) : undefined}
-          accessibilityRole={s.url ? 'link' : undefined}
-        >
-          [{s.n}] {s.title} · {s.publisher}
-          {s.kind === 'alert' ? ' (active alert)' : ''}
-        </Text>
-      ))}
-      <Text style={[typography.meta, styles.gap, { color: theme.text.faint }]}>
-        Answered by Moby AI · NVIDIA Nemotron
-        {answer.searched_web ? ' · official websites searched with Tavily' : ''}. Follow official instructions if
-        they differ.
-      </Text>
-    </View>
+    <MobyMessage via="NVIDIA Nemotron" label="Moby's answer">
+      <AnswerSurface>
+        <CitedText text={answer.answer} />
+        <SourceList
+          sources={answer.sources.map((s) => ({
+            n: s.n,
+            title: s.title,
+            publisher: s.publisher,
+            url: s.url,
+            note: s.kind === 'alert' ? 'active alert' : undefined,
+          }))}
+        />
+        <Footnote>
+          {answer.searched_web ? 'Official websites searched with Tavily. ' : ''}Follow official instructions if they
+          differ.
+        </Footnote>
+      </AnswerSurface>
+    </MobyMessage>
   );
 }
 
-/** An answer made on the phone: the saved guidance first (it's vetted and shows at once),
- *  then the model's short, checked answer — or, if it didn't pass, just the guidance. */
+/** An answer made on the phone. While the model writes, a thinking animation; then its
+ *  short, checked answer, or (if it didn't pass the checks) the saved guidance it matched. */
 function LocalAnswerCard({ sources, answer }: { sources: LocalSource[]; answer?: LocalAnswer }) {
   const { theme } = useTheme();
-  const meta = [typography.meta, { color: theme.text.secondary }];
+  const via = `on your phone · ${NANO_MODEL.name}`;
   if (sources.length === 0) {
     return (
-      <View style={[styles.answer, { backgroundColor: theme.bg.raised }]}>
-        <Text style={[typography.body, { color: theme.text.primary }]}>
-          There’s no saved safety guidance about that on your phone, so I won’t guess. Try asking about what to do in a
-          flood, fire, earthquake, storm or landslide.
-        </Text>
-      </View>
+      <MobyMessage via="on your phone">
+        <AnswerSurface quiet>
+          <Text style={[typography.body, { color: theme.text.primary }]}>
+            There’s no saved safety guidance about that on your phone, so I won’t guess. Try asking about what to do in
+            a flood, fire, earthquake, storm or landslide.
+          </Text>
+        </AnswerSurface>
+      </MobyMessage>
+    );
+  }
+  if (!answer) {
+    return (
+      <MobyMessage via={via}>
+        <ThinkingBubble status="Thinking on your phone (about 10–20 seconds)…" />
+      </MobyMessage>
+    );
+  }
+  if (answer.answer) {
+    return (
+      <MobyMessage via={via} label="Moby's offline answer">
+        <AnswerSurface>
+          <CitedText text={answer.answer} />
+          <SourceList sources={answer.sources} />
+          <Footnote>From guidance saved on your phone. Follow official instructions if they differ.</Footnote>
+        </AnswerSurface>
+      </MobyMessage>
     );
   }
   return (
-    <View style={[styles.answer, { backgroundColor: theme.bg.raised }]} accessibilityLabel="Moby's offline answer">
-      {!answer ? (
-        <Text style={meta}>Writing a short answer on your phone (about 10–20 seconds). The saved guidance:</Text>
-      ) : answer.answer ? (
-        <>
-          <Text style={[typography.body, { color: theme.text.primary }]}>{answer.answer}</Text>
-          <Text style={[...meta, styles.gap]}>Sources</Text>
-          {answer.sources.map((s) => (
-            <Text key={s.n} style={meta}>
-              [{s.n}] {s.title} · {s.publisher}
-            </Text>
-          ))}
-          <Text style={[typography.meta, styles.gap, { color: theme.text.faint }]}>
-            Answered on your phone · {NANO_MODEL.name} · from saved guidance. Follow official instructions if they differ.
-          </Text>
-        </>
-      ) : (
-        <Text style={meta}>No short answer this time. Here’s the saved guidance that matches:</Text>
-      )}
-      {(!answer || !answer.answer) &&
-        sources.map((s) => (
-          <View key={s.id} style={styles.gap}>
-            <Text style={[typography.body, { color: theme.text.primary, fontWeight: '600' }]}>{s.title}</Text>
+    <MobyMessage via={via} label="Saved guidance">
+      <AnswerSurface quiet>
+        <Text style={[typography.meta, { color: theme.text.secondary }]}>
+          No short answer this time. Here’s the saved guidance that matches:
+        </Text>
+        {sources.map((s) => (
+          <View key={s.id} style={[styles.card, { borderTopColor: theme.line.hairline }]}>
+            <Text style={[typography.bodyStrong, { color: theme.text.primary }]}>{s.title}</Text>
             <Text style={[typography.body, { color: theme.text.primary }]}>{s.text}</Text>
-            <Text style={meta}>{s.publisher}</Text>
+            <Text style={[typography.meta, { color: theme.text.faint }]}>{s.publisher}</Text>
           </View>
         ))}
-    </View>
+      </AnswerSurface>
+    </MobyMessage>
   );
 }
 
@@ -279,8 +303,7 @@ const styles = StyleSheet.create({
   gap: { marginTop: spacing.scale[2] },
   suggestions: { gap: spacing.scale[2] },
   alignStart: { alignSelf: 'flex-start' },
-  question: { alignSelf: 'flex-end', maxWidth: '85%', padding: spacing.scale[3], borderRadius: radius.card },
-  answer: { padding: spacing.scale[4], borderRadius: radius.card, gap: spacing.scale[1] },
+  card: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: spacing.scale[2], gap: spacing.scale[1] },
   composer: {
     flexDirection: 'row',
     alignItems: 'center',
