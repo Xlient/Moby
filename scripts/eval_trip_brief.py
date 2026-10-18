@@ -23,7 +23,7 @@ FLOOD = Cited("O1", "official", "Flood warning for the Dudh Koshi",
 BRIDGE = Cited("C1", "community", "Bridge washed out reported",
                "Bridge washed out reported. Reports from people nearby, not verified by any official source.\n"
                "Hazard: flooding. What people saw: a blocked road or path.\nSeverity people reported: high.\n"
-               "Reported by 3 different people.\nLast report about 1 hours ago.\nAbout 1.0 km from the destination.")
+               "Reported by 3 different people.\nLast report about 1 hour ago.\nAbout 1.0 km from the destination.")
 QUAKE = Cited("O1", "official", "Magnitude 4.6 earthquake",
               "Magnitude 4.6 earthquake. Issued by U.S. Geological Survey.\nHazard: earthquake. Severity: medium.\n"
               "About 18 km from the destination.")

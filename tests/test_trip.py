@@ -57,12 +57,29 @@ def test_claims_that_add_numbers_places_or_hazards_are_dropped():
         return trip.check_claim(claim(text, *cites), SOURCES, CONTEXT)[1]
 
     assert "numbers" in why("The river is expected to rise above 6 m; avoid river banks.", "O1")
+    assert "numbers" in why("Five people nearby report the bridge washed out.", "C1")      # spelled out
     assert "names" in why("The river is expected to rise near Namche Bazaar; avoid river banks.", "O1")
     assert "hazards" in why("The river is expected to rise and landslides may block low trail sections.", "O1")
     assert "strays" in why("Bring a passport, travel insurance and extra cash for porters and lodges.", "O1")
     assert "no valid citation" in why("Avoid river banks and low trail sections.", "O9")
     # The number is in O1, but only C1 is cited.
     assert "numbers" in why("The river may rise above the danger level of 4.5 m.", "C1")
+
+
+def test_short_sources_allow_framing_words_but_not_new_hazards():
+    # Real Ultra output on a two-line quake alert (scripts/eval_trip_brief.py).
+    quake = Cited("O1", "official", "Magnitude 4.6 earthquake",
+                  "Magnitude 4.6 earthquake. Issued by U.S. Geological Survey.\nHazard: earthquake. Severity: medium.\n"
+                  "About 18 km from the destination.")
+    ctx = "Pokhara, Nepal, within 25 km, from 2026-10-20 to 2026-10-21"
+    ok, problem = trip.check_claim(claim("An official alert reports a magnitude 4.6 earthquake about 18 km from "
+                                         "Pokhara, rated medium severity, close to the travel area.", "O1"),
+                                   {"O1": quake}, ctx)
+    assert problem is None, problem
+    problem = trip.check_claim(claim("An official alert reports a magnitude 4.6 earthquake about 18 km from "
+                                     "Pokhara, which could cause aftershocks during your stay.", "O1"),
+                               {"O1": quake}, ctx)[1]
+    assert "hazards" in problem
 
 
 def test_community_reports_are_never_presented_as_official():

@@ -85,6 +85,16 @@ HAZARD_TERMS = {"flood", "flooding", "floods", "flash", "landslide", "landslides
 OFFICIAL_WORDING = re.compile(r"\b(official(ly)?|confirmed|verified|authorities|government|agency)\b", re.I)
 NEGATED = re.compile(r"\b(not|never|nor|no|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|hasn['’]t|haven['’]t)\s+(\w+\s+)?(\w+\s+)?(official(ly)?|confirmed|verified)\b", re.I)
 CITE_MARK = re.compile(r"[\[(]?\b([OCW]\d{1,2})\b[\])]?")
+# Words that frame a statement without adding a fact ("an official alert reports…", "for your
+# trip"). Short sources (a quake is two lines) otherwise fail the word-support check on these
+# alone (seen with Ultra). Hazards, names and numbers are checked separately and stay strict.
+FRAMING = ("official alert alerts agency warning warnings report reports reported say says said people nearby "
+           "trip travel traveller travellers trek trekking visit stay route routes plan plans area areas "
+           "destination around near close severity severe rated level means matters could may might")
+# Spelled-out numbers are checked like digits ("three reports" needs a 3 in the source).
+NUMBER_WORDS = {w: str(i) for i, w in enumerate(
+    "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
+    "seventeen eighteen nineteen twenty".split())}
 # Capitalised words that may appear without a source (sentence starts are skipped anyway).
 ALLOWED_NAMES = {"moby", "i"}
 
@@ -220,7 +230,8 @@ def community_source(i: int, row: dict, now: datetime) -> Cited:
         f"Severity people reported: {row['severity']}."
         + (" The reports disagree about how severe it is." if row.get("reports_disagree") else ""),
         f"Reported by {people} different {'person' if people == 1 else 'people'}.",
-        "Last report less than an hour ago." if hours == 0 else f"Last report about {hours} hours ago.",
+        "Last report less than an hour ago." if hours == 0
+        else f"Last report about {hours} hour{'' if hours == 1 else 's'} ago.",
         _where(row["distance_km"]),
     ]
     return Cited(f"C{i}", "community", a["headline"], "\n".join(lines), publisher="People nearby (unverified)")
@@ -292,7 +303,8 @@ Rules:
 - Reports from people nearby (C) are unverified: write "people nearby report…". Never call them official
   or confirmed, and never present them as an agency's warning.
 - Never say a place, route or plan is safe, or that a danger has passed, unless a source says so.
-- No phone numbers (the app shows them). Distances and expiry times only when they matter for the trip.
+- No phone numbers, report counts or report times: the app shows them exactly. Distances and expiry times
+  only when they matter for the trip.
 - At most {MAX_CLAIMS} statements of one or two plain English sentences, most important first. Skip
   web pages that say nothing useful about these hazards."""
 
@@ -332,14 +344,15 @@ def check_claim(claim: TripClaim, sources: dict[str, Cited], context: str) -> tu
     if not text or len(text) > 400:
         return None, "statement empty or too long"
     cited = "\n".join(f"{sources[c].title}\n{sources[c].text}" for c in cites) + f"\n{context}"
-    if stray := stray_numbers(text, cited):
+    spelled = " ".join(NUMBER_WORDS.get(w, w) for w in text.lower().split())
+    if stray := stray_numbers(f"{text} {spelled}", cited):
         return None, f"numbers not in {', '.join(cites)}: {stray}"
     have = set(norm(cited).split())
     if missing := sorted(n for n in _proper_names(text) if norm(n) not in have and norm(n).strip("'’") not in have):
         return None, f"names not in {', '.join(cites)}: {missing}"
     if extra := sorted({w for w in norm(text).split() if w in HAZARD_TERMS} - have):
         return None, f"hazards not in {', '.join(cites)}: {extra}"
-    if support(text, cited) < MIN_CLAIM_SUPPORT:
+    if support(text, f"{cited}\n{FRAMING}") < MIN_CLAIM_SUPPORT:
         return None, f"strays from {', '.join(cites)}: {text[:60]!r}"
     community = any(c.startswith("C") for c in cites)
     if community and not any(c.startswith("O") for c in cites) and OFFICIAL_WORDING.search(NEGATED.sub("", text)):
