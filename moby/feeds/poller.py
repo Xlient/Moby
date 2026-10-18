@@ -241,14 +241,29 @@ async def apply_cancels(conn: AsyncConnection, feed: FeedName, cancels: list[Nor
 
 # Content columns only move forward in time: an older message in the chain never
 # overwrites a newer one. Tier/confidence only ever rise from the feed policy and
-# are left alone once a reviewer has decided; brief_status and the rest belong to
-# the graph and are never touched here.
+# are left alone once a reviewer has decided.
+#
+# Situational briefs (Ultra, capped at ~20 a day; moby/graph/brief_queries.py): a new
+# CRITICAL warning asks for one; an update asks for a rewrite when its wording, severity,
+# area or expiry changed and the warning is critical or already has a brief. ("high"
+# alone is ~140 new warnings a day worldwide, far over the cap.) Same rules as
+# request_brief: an already-pending request is left as it is.
+_REBRIEF = """events.brief_status <> 'pending'
+    AND EXCLUDED.last_updated_at >= events.last_updated_at
+    AND (events.brief_status IN ('ready', 'failed') OR EXCLUDED.severity = 'critical')
+    AND (EXCLUDED.title IS DISTINCT FROM events.title
+         OR EXCLUDED.description IS DISTINCT FROM events.description
+         OR EXCLUDED.severity IS DISTINCT FROM events.severity
+         OR EXCLUDED.expires_at IS DISTINCT FROM events.expires_at
+         OR ST_AsBinary(EXCLUDED.area::geometry) IS DISTINCT FROM ST_AsBinary(events.area::geometry))"""
+
 UPSERT_SQL = """
 INSERT INTO events (
     source, source_feed, external_id, feed_item_ids, region, country, magnitude, language, translation_status,
     hazard_type, product, marine,
     severity, title, description, location, area, location_accuracy_m,
-    first_reported_at, last_updated_at, expires_at, raw_payload, tier, confidence
+    first_reported_at, last_updated_at, expires_at, raw_payload, tier, confidence,
+    brief_status, brief_requested_at
 ) VALUES (
     'official', %(source_feed)s, %(external_id)s, %(item_ids)s, %(region)s, %(country)s, %(magnitude)s,
     %(language)s, %(translation_status)s, %(hazard_type)s,
@@ -259,9 +274,16 @@ INSERT INTO events (
          ELSE ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_GeomFromText(%(area)s::text, 4326)), 3))::geography END,
     %(accuracy)s,
     %(first_reported_at)s, %(last_updated_at)s, %(expires_at)s, %(raw_payload)s,
-    %(tier)s, %(confidence)s
+    %(tier)s, %(confidence)s,
+    CASE WHEN %(severity)s = 'critical' THEN 'pending' ELSE 'not_requested' END,
+    CASE WHEN %(severity)s = 'critical' THEN now() END
 )
 ON CONFLICT (source_feed, external_id) DO UPDATE SET
+    -- Evaluated against the row BEFORE this update (Postgres reads `events.*` as the old row).
+    brief_status       = CASE WHEN __REBRIEF__ THEN 'pending' ELSE events.brief_status END,
+    brief_requested_at = CASE WHEN __REBRIEF__ THEN now() ELSE events.brief_requested_at END,
+    brief_attempts     = CASE WHEN __REBRIEF__ THEN 0 ELSE events.brief_attempts END,
+    brief_error        = CASE WHEN __REBRIEF__ THEN NULL ELSE events.brief_error END,
     -- append new chain ids, keeping arrival order (oldest first)
     feed_item_ids   = events.feed_item_ids || ARRAY(SELECT x FROM unnest(EXCLUDED.feed_item_ids) AS x
                                             WHERE NOT x = ANY(events.feed_item_ids)),
@@ -293,7 +315,7 @@ WHERE events.raw_payload IS DISTINCT FROM EXCLUDED.raw_payload
    OR events.expires_at IS DISTINCT FROM EXCLUDED.expires_at
    OR NOT (EXCLUDED.feed_item_ids <@ events.feed_item_ids)
    OR events.tier < EXCLUDED.tier
-"""
+""".replace("__REBRIEF__", _REBRIEF)
 
 
 def _params(row: ChainedEvent) -> dict:
