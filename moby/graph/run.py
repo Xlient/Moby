@@ -6,6 +6,7 @@
     uv run --env-file .env python -m moby.graph.run --resume <uuid> --decision approve
     uv run --env-file .env python -m moby.graph.run --brief-list            # events a brief could cover
     uv run --env-file .env python -m moby.graph.run --brief <event_id>      # run the BRIEF graph on one event
+    uv run --env-file .env python -m moby.graph.run --brief <event_id> --postgres   # …with checkpoints that survive a crash
 
 Not the production worker (claiming reports with SKIP LOCKED, the loop, resuming decided
 review_queue rows): that's yours to build. This only makes each step easy to try.
@@ -85,6 +86,15 @@ LIMIT 30
 """
 
 
+def brief_thread_id(event_id: str) -> str:
+    """The brief worker's thread id: the event plus the REQUEST (brief_requested_at), so
+    re-running the same request resumes its checkpoint and a new request starts fresh.
+    An event nobody asked about gets "manual"."""
+    with psycopg.connect(db_url()) as conn:
+        row = conn.execute("SELECT brief_requested_at FROM events WHERE event_id = %s", (event_id,)).fetchone()
+    return f"brief-{event_id}-{row[0] if row and row[0] else 'manual'}"
+
+
 def list_brief_events() -> None:
     with psycopg.connect(db_url(), row_factory=dict_row) as conn:
         rows = conn.execute(BRIEF_EVENTS_SQL).fetchall()
@@ -156,6 +166,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--graph", default=GRAPH, help=f"module:function that builds the graph (default {GRAPH})")
     p.add_argument("--postgres", action="store_true", help="persistent Postgres checkpointer (milestone 4)")
     p.add_argument("--show-state", action="store_true", help="print the final state")
+    p.add_argument("--thread-id", help="with --brief: use this checkpointer thread instead of brief-<event>-<requested_at>")
+    p.add_argument("--resume-run", action="store_true",
+                   help="with --brief --postgres: continue the thread from its last checkpoint (input None)")
     args = p.parse_args(argv)
 
     if args.list:
@@ -166,8 +179,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.brief:
         builder = load_builder(BRIEF_GRAPH if args.graph == GRAPH else args.graph)
-        final = asyncio.run(run(builder, state={"event_id": args.brief}, thread_id=f"brief-{args.brief}",
-                                postgres=args.postgres))
+        thread_id = args.thread_id or brief_thread_id(args.brief)
+        # --resume-run: input None continues the thread from its last checkpoint (what the worker
+        # does after a crash) instead of starting over. Only useful with --postgres.
+        final = asyncio.run(run(builder, state=None if args.resume_run else {"event_id": args.brief},
+                                thread_id=thread_id, postgres=args.postgres))
         if args.show_state:
             print(json.dumps(final, indent=2, default=str))
         return 0
