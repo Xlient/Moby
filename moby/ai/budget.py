@@ -7,6 +7,7 @@ the way it already does when a call fails:
   ask        Ask Moby says it has reached today's limit; guidance still works offline
   tavily     Ask Moby answers from alerts and guidance only
   localize   Moby's AI text stays in English (moby/ai/localize.py)
+  structure  a report's note isn't read for details; the report is fused anyway (moby/graph)
 
 Caps reset at 00:00 UTC. Override with MOBY_DAILY_CAP_<FEATURE> (e.g. MOBY_DAILY_CAP_ASK=200).
 Defaults are sized for judging and a small user base: even if every cap is hit every
@@ -18,9 +19,9 @@ readers than its number; new warnings that are pushed get explained up front.
 import os
 from datetime import datetime, timezone
 
-from psycopg import AsyncConnection
+from psycopg import AsyncConnection, Connection
 
-DEFAULT_CAPS = {"translate": 800, "explain": 150, "ask": 60, "tavily": 25, "localize": 400}
+DEFAULT_CAPS = {"translate": 800, "explain": 150, "ask": 60, "tavily": 25, "localize": 400, "structure": 300}
 
 
 def cap(feature: str) -> int:
@@ -45,6 +46,22 @@ async def take(conn: AsyncConnection, feature: str, n: int = 1) -> int:
         if granted:
             await conn.execute("UPDATE ai_usage SET used = used + %s WHERE day = %s AND feature = %s",
                                (granted, day, feature))
+    return granted
+
+
+def take_sync(conn: Connection, feature: str, n: int = 1) -> int:
+    """`take` for synchronous code (the fusion graph's nodes). Same rules, same table."""
+    if n <= 0:
+        return 0
+    limit, day = cap(feature), _today()
+    with conn.transaction():
+        conn.execute("INSERT INTO ai_usage (day, feature) VALUES (%s, %s) ON CONFLICT DO NOTHING", (day, feature))
+        (used,) = conn.execute(
+            "SELECT used FROM ai_usage WHERE day = %s AND feature = %s FOR UPDATE", (day, feature)).fetchone()
+        granted = max(0, min(n, limit - used))
+        if granted:
+            conn.execute("UPDATE ai_usage SET used = used + %s WHERE day = %s AND feature = %s",
+                         (granted, day, feature))
     return granted
 
 
