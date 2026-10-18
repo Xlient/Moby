@@ -13,6 +13,16 @@ import type { AlertPreferences } from '@/api/types';
 import { useSubscriptions } from '@/hooks/useSubscriptions';
 import { RadiusPicker } from '@/components/RadiusPicker';
 import { isMeshEnabled } from '@/mesh/meshService';
+import { useModelState } from '@/ondevice/useModel';
+import type { ModelState } from '@/ondevice/model';
+
+const OFFLINE_LABEL: Record<ModelState['kind'], string> = {
+  unsupported: 'Not on this phone',
+  not_downloaded: 'Off',
+  downloading: 'Downloading',
+  ready: 'On',
+  error: 'Error',
+};
 
 interface SettingsScreenProps {
   onSubscriptions: () => void;
@@ -20,6 +30,7 @@ interface SettingsScreenProps {
   onAbout?: () => void;
   onPrivacy: () => void;
   onNearbyMesh?: () => void;
+  onOfflineAnswers?: () => void;
   onCardReview?: () => void;
   onTrustReview?: () => void;
 }
@@ -173,8 +184,9 @@ function NameRow() {
   );
 }
 
-export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy, onNearbyMesh, onAbout, onCardReview, onTrustReview }: SettingsScreenProps) {
+export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy, onNearbyMesh, onOfflineAnswers, onAbout, onCardReview, onTrustReview }: SettingsScreenProps) {
   const [mapEngine, setMapEngine] = useMapEngine();
+  const modelState = useModelState();
   const { theme, isDark, toggleTheme } = useTheme();
   const r = useResponsive();
   const { user, isConfigured, signOut } = useAuth();
@@ -237,7 +249,15 @@ export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy,
 
         {onNearbyMesh && Platform.OS === 'android' && (
           <Section title="No signal">
-            <LinkRow label="Share through nearby phones" value={isMeshEnabled() ? 'On' : 'Off'} onPress={onNearbyMesh} last />
+            <LinkRow
+              label="Share through nearby phones"
+              value={isMeshEnabled() ? 'On' : 'Off'}
+              onPress={onNearbyMesh}
+              last={!onOfflineAnswers}
+            />
+            {onOfflineAnswers && (
+              <LinkRow label="Offline answers" value={OFFLINE_LABEL[modelState.kind]} onPress={onOfflineAnswers} last />
+            )}
           </Section>
         )}
 
