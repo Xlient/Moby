@@ -106,10 +106,16 @@ def test_usgs_filters_small_quakes_and_keeps_worldwide_ones():
     assert all(e.hazard_type == "earthquake" for e in r.events)
 
 
-def test_usgs_quakes_expire_after_a_day():
+def test_usgs_quakes_expire_after_a_day_strong_ones_after_three():
     # Without an expiry a quake stayed an "active" alert for good (coverage check, 2026-10-18).
     r = usgs.normalize(load("usgs_quakes"))
-    assert all(e.expires_at == e.first_reported_at + timedelta(hours=24) for e in r.events)
+    assert all(e.expires_at == e.first_reported_at + usgs.quake_ttl(e.severity) for e in r.events)
+    assert usgs.quake_ttl("low") == usgs.quake_ttl("medium") == timedelta(hours=24)
+    assert usgs.quake_ttl("high") == usgs.quake_ttl("critical") == timedelta(hours=72)
+    payload = load("usgs_quakes")
+    payload["features"][0]["properties"].update(mag=6.8, alert=None)
+    strong = next(e for e in usgs.normalize(payload).events if e.external_id == payload["features"][0]["id"])
+    assert strong.severity == "high" and strong.expires_at == strong.first_reported_at + timedelta(hours=72)
 
 
 @pytest.mark.parametrize(

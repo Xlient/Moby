@@ -23,7 +23,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from .centers import swath
 from .schema import NormalizedEvent, NormalizeResult, Severity
-from .usgs import QUAKE_TTL
+from .usgs import quake_ttl
 
 log = logging.getLogger("moby.feeds.jma")
 
@@ -90,10 +90,10 @@ def normalize_quakes(items: list[dict[str, Any]], *, now: datetime | None = None
         if ll is None or occurred is None:
             result.skipped["no_location"] += 1
             continue
-        if occurred + QUAKE_TTL <= now:
+        severity, radius = SHINDO[shindo]
+        if occurred + quake_ttl(severity) <= now:
             result.skipped["older_than_a_day"] += 1
             continue
-        severity, radius = SHINDO[shindo]
         try:
             mag = float(q.get("mag"))
         except (TypeError, ValueError):
@@ -110,7 +110,7 @@ def normalize_quakes(items: list[dict[str, Any]], *, now: datetime | None = None
                          f"The area shown is approximate: where shaking was likely felt strongly."),
             first_reported_at=occurred,
             last_updated_at=_ts(q.get("rdt")) or occurred,
-            expires_at=occurred + QUAKE_TTL,
+            expires_at=occurred + quake_ttl(severity),
             lat=ll[0], lon=ll[1],
             region="INTL", country="JP",
             magnitude=mag,

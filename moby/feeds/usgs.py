@@ -27,7 +27,13 @@ HOUR_URL = f"{BASE}/all_hour.geojson"
 MIN_MAGNITUDE = 2.5
 # An earthquake is a moment: list it for a day (JMA and EMSC too), so a region's
 # quakes don't pile up as "active" alerts and crowd out warnings that are in force.
+# A strong one stays up for three days: aftershocks, damage and closures follow it.
 QUAKE_TTL = timedelta(hours=24)
+STRONG_QUAKE_TTL = timedelta(hours=72)
+
+
+def quake_ttl(severity: Severity) -> timedelta:
+    return STRONG_QUAKE_TTL if severity in ("high", "critical") else QUAKE_TTL
 
 PAGER: dict[str, Severity] = {"red": "critical", "orange": "high", "yellow": "medium", "green": "low"}
 
@@ -87,18 +93,19 @@ def normalize(payload: dict[str, Any]) -> NormalizeResult:
         if occurred is None:
             result.skipped["no_timestamp"] += 1
             continue
+        severity = severity_for(float(mag), p.get("alert"), bool(p.get("tsunami")))
         result.events.append(
             NormalizedEvent(
                 source_feed="usgs",
                 external_id=feature["id"],
                 hazard_type="earthquake",
                 product="earthquake",
-                severity=severity_for(float(mag), p.get("alert"), bool(p.get("tsunami"))),
+                severity=severity,
                 title=p.get("title"),
                 description=p.get("place"),
                 first_reported_at=occurred,
                 last_updated_at=_ms(p.get("updated")) or occurred,
-                expires_at=occurred + QUAKE_TTL,
+                expires_at=occurred + quake_ttl(severity),
                 lat=lat,
                 lon=lon,
                 region=region,
