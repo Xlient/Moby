@@ -10,10 +10,12 @@ How the queue works:
         so updates that arrive meanwhile are covered by one rewrite instead of several;
       - expired official warnings aren't briefed at all.
   * brief_failed records an error; after MAX_ATTEMPTS the event is marked 'failed'.
-  * Three things ask for briefs: the report graph (a community event reaching tier 2), the
-    official-feed trigger in the poller's upsert (moby/feeds/poller.py, critical warnings),
-    and someone opening an event (VIEW_SQL, from GET /v1/events/{id}/brief): briefs are
-    then paid for only when someone looks.
+  * Briefs are written when someone looks (decided 2026-10-18): opening an event asks for
+    one (VIEW_SQL, from GET /v1/events/{id}/brief). The stored brief is then served to every
+    reader, so one Ultra call covers everyone until new reports make it out of date. The one
+    automatic trigger is new or changed CRITICAL official warnings, in the poller's upsert
+    (moby/feeds/poller.py): they are pushed widely, so their brief should be ready on tap.
+    request_brief stays for callers that want a brief regardless (scripts, tests).
 """
 
 import json
@@ -37,8 +39,9 @@ WHERE event_id = %(event_id)s AND brief_status <> 'pending'
 
 # Opening an event asks for a brief when there's something new to explain: a community report
 # that arrived after the last brief (or the last request, so a brief that failed isn't retried
-# on every view). Only official events and tier-2 community events: a lone unverified report
-# isn't worth an Ultra call. Expired warnings never. The claim's debounce still applies, so a
+# on every view). Only official events and corroborated community events (tier 1: 2+ people;
+# community events never reach tier 2, which takes an official match): a lone unverified
+# report isn't worth an Ultra call. Expired warnings never. The claim's debounce still applies, so a
 # view right after a brief queues the rewrite for later instead of paying twice.
 VIEW_SQL = """
 UPDATE events e
@@ -46,7 +49,7 @@ SET brief_status = 'pending', brief_requested_at = now(),
     brief_attempts = 0, brief_error = NULL, brief_claimed_at = NULL, brief_claimed_by = NULL
 WHERE e.event_id = %(event_id)s
   AND e.brief_status <> 'pending'
-  AND (e.source = 'official' OR e.tier >= 2)
+  AND (e.source = 'official' OR e.tier >= 1)
   AND (e.expires_at IS NULL OR e.expires_at > now())
   AND EXISTS (
       SELECT 1 FROM reports r

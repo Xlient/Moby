@@ -97,17 +97,17 @@ def test_failures_retry_then_give_up(conn):  # noqa: F811
 
 # ── Opening an event (VIEW_SQL) ─────────────────────────────────────────────
 
-def test_view_asks_for_a_first_brief_of_a_tier2_event_with_reports(conn):  # noqa: F811
+def test_view_asks_for_a_first_brief_of_a_corroborated_event(conn):  # noqa: F811
     lone = make_event(conn, "lone_low")
-    assert bq.request_brief_on_view(conn, lone) is False              # tier 1: not worth Ultra
-    conn.execute("UPDATE events SET tier = 2 WHERE event_id = %s", (lone,))
+    assert bq.request_brief_on_view(conn, lone) is False              # tier 0, one person: not worth Ultra
+    conn.execute("UPDATE events SET tier = 1 WHERE event_id = %s", (lone,))
     assert bq.request_brief_on_view(conn, lone) is True
     assert bq.request_brief_on_view(conn, lone) is False              # already pending
 
 
 def test_view_rewrites_only_for_reports_newer_than_the_brief(conn):  # noqa: F811
     eid = make_event(conn, "lone_low")
-    conn.execute("UPDATE events SET tier = 2, brief_status = 'ready'")
+    conn.execute("UPDATE events SET tier = 1, brief_status = 'ready'")
     add_brief(conn, eid, timedelta(minutes=0))                         # covers every report so far
     assert bq.request_brief_on_view(conn, eid) is False
     conn.execute("UPDATE reports SET received_at = now() + interval '1 second'")   # a newer report
@@ -116,7 +116,7 @@ def test_view_rewrites_only_for_reports_newer_than_the_brief(conn):  # noqa: F81
 
 def test_view_doesnt_retry_a_failed_brief_without_new_reports(conn):  # noqa: F811
     eid = make_event(conn, "lone_low")
-    conn.execute("UPDATE events SET tier = 2")
+    conn.execute("UPDATE events SET tier = 1")
     bq.request_brief_on_view(conn, eid)
     conn.execute("UPDATE events SET brief_status = 'failed'")
     assert bq.request_brief_on_view(conn, eid) is False
@@ -124,5 +124,5 @@ def test_view_doesnt_retry_a_failed_brief_without_new_reports(conn):  # noqa: F8
 
 def test_view_ignores_expired_warnings(conn):  # noqa: F811
     eid = make_event(conn, "lone_low")
-    conn.execute("UPDATE events SET tier = 2, expires_at = now() - interval '1 minute'")
+    conn.execute("UPDATE events SET tier = 1, expires_at = now() - interval '1 minute'")
     assert bq.request_brief_on_view(conn, eid) is False
