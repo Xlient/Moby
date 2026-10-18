@@ -43,7 +43,10 @@ class Source:
     hazard: str
     name: str
     url: str
-    lang: str = "en"   # the page's language; cards are always English (see translate_lines)
+    lang: str = "en"   # the page's language; cards are always English (see translate_page)
+    # Only this part of the page, for pages that cover many hazards (each focus gets its
+    # own MAX_CARDS_PER_SOURCE; the page is still fetched and translated once per run).
+    focus: str | None = None
 
 
 # Official pages only, per country (moby/search/official.py lists each country's official
@@ -51,6 +54,8 @@ class Source:
 # has read it: scripts/discover_guidance_sources.py finds candidates, it never adds them.
 # (The Red Cross and China Earthquake Administration pages refuse automated fetches with
 # 403, so they aren't listed; we don't work around that.)
+CMA_SIGNALS = "https://www.gov.cn/gongbao/content/2008/content_912553.htm"
+
 SOURCES: dict[str, list[Source]] = {
     "US": [
         Source("flood", "FEMA Ready.gov", "https://www.ready.gov/floods"),
@@ -79,8 +84,12 @@ SOURCES: dict[str, list[Source]] = {
                "https://www.cma.gov.cn/2011xwzx/2011xqxxw/2011xqxyw/202508/t20250808_7263954.html", "zh"),
         Source("fire", "Ministry of Emergency Management (China)",
                "https://www.mem.gov.cn/xw/xwfbh/2025n03y21xwfbh/wzsl_4260/202503/t20250321_516998.shtml", "zh"),
-        Source("storm", "China Meteorological Administration",
-               "https://www.gov.cn/gongbao/content/2008/content_912553.htm", "zh"),
+        Source("storm", "China Meteorological Administration", CMA_SIGNALS, "zh",
+               "typhoon warning signals (台风预警信号)"),
+        Source("flood", "China Meteorological Administration", CMA_SIGNALS, "zh",
+               "rainstorm warning signals (暴雨预警信号)"),
+        Source("storm", "China Meteorological Administration", CMA_SIGNALS, "zh",
+               "lightning warning signals (雷电预警信号)"),
     ],
     # Checked 2026-10-18: JNTO (Japan National Tourism Organization) "Safety tips for
     # travelers", written in English for visitors, following JMA warnings.
@@ -207,6 +216,8 @@ correct, calm and brief.
 
 Rules:
 - Use ONLY what the page below says. Do not add advice, facts or numbers from elsewhere.{language_rule}
+- Write for a member of the public or a traveller. Leave out duties of government, departments,
+  schools, ships, ports and businesses; keep only what a person should do.{focus_rule}
 - Each card is one situation (e.g. "during a flood warning", "while the ground is shaking").
 - Body: 2-5 short imperative sentences in plain language, using the page's own wording where you can.
   Keep the page's numbers exactly.
@@ -318,21 +329,30 @@ def translate_page(llm, lines: list[str], language: str) -> list[str]:
     return english
 
 
-def cards_for(source: Source, text: str, llm, reviewed_at: str, country: str = "US") -> tuple[list[dict], list[str]]:
+def cards_for(source: Source, text: str, llm, reviewed_at: str, country: str = "US",
+              translations: dict[str, list[str]] | None = None) -> tuple[list[dict], list[str]]:
+    """`translations` (url -> English lines) is shared across a run, so a page listed with
+    several focuses is translated once."""
     lines = text.split("\n")
     language = LANGUAGES.get(source.lang, source.lang)
     english: list[str] | None = None
     if source.lang != "en":
-        try:
-            english = translate_page(llm, lines, language)
-        except Exception as e:
-            return [], [f"{source.url}: translation unusable ({e})"]
+        english = (translations or {}).get(source.url)
+        if english is None or len(english) != len(lines):
+            try:
+                english = translate_page(llm, lines, language)
+            except Exception as e:
+                return [], [f"{source.url}: translation unusable ({e})"]
+            if translations is not None:
+                translations[source.url] = english
     shown = lines if english is None else [e or "(untranslated)" for e in english]
     numbered = "\n".join(f"L{i}: {line}" for i, line in enumerate(shown, 1))
     msg = PROMPT.format(max_cards=MAX_CARDS_PER_SOURCE, hazard=source.hazard, source=source.name,
                         url=source.url, text=numbered,
                         language_rule="" if source.lang == "en" else LANGUAGE_RULE.format(language=language),
-                        closing="" if source.lang == "en" else CLOSING)
+                        closing="" if source.lang == "en" else CLOSING,
+                        focus_rule="" if not source.focus else
+                        f"\n- Only write cards about {source.focus}. Ignore the rest of the page.")
     raw = ""
     try:
         raw = llm.invoke(msg).content
@@ -456,23 +476,25 @@ def main() -> int:
     reviewed_at = datetime.now(timezone.utc).isoformat()
     sources = [s for s in SOURCES[args.country] if not args.hazard or s.hazard in args.hazard]
 
-    extracted = tavily_texts([s.url for s in sources]) if args.fetcher == "tavily" else {}
+    extracted = tavily_texts(list(dict.fromkeys(s.url for s in sources))) if args.fetcher == "tavily" else {}
 
     cards: list[dict] = []
+    translations: dict[str, list[str]] = {}
     with httpx.Client(follow_redirects=True, timeout=30,
                       headers={"User-Agent": "Mozilla/5.0 moby-guidance/0.1 (+https://github.com/Xlient/Moby)"}) as web:
         for src in sources:
             text = extracted.get(src.url)
             if text is None:
                 try:
-                    text = fetch(web, src.url)
+                    text = extracted[src.url] = fetch(web, src.url)  # once per run, like the translation
                 except httpx.HTTPError as e:
                     log.warning("skip %s: %s", src.url, e)
                     continue
-            kept, dropped = cards_for(src, text, llm, reviewed_at, args.country)
+            kept, dropped = cards_for(src, text, llm, reviewed_at, args.country, translations)
             for d in dropped:
                 log.warning("dropped %s", d)
-            log.info("%s: %d cards kept, %d dropped", src.url, len(kept), len(dropped))
+            log.info("%s%s: %d cards kept, %d dropped", src.url, f" ({src.focus})" if src.focus else "",
+                     len(kept), len(dropped))
             cards.extend(kept)
 
     cards = dedupe_ids(cards)

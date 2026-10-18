@@ -1,4 +1,5 @@
 """Offline guidance (migration 0008): grounding checks, draft → review → publish, public routes."""
+import json
 from datetime import datetime, timezone
 
 import psycopg
@@ -214,6 +215,50 @@ def test_translated_card_prompt_restates_the_format_after_the_page():
     kept, dropped = cards_for(ZH_SRC, ZH_PAGE, llm, "2026-10-18", "CN")
     assert "No summary, no headings, no prose." in llm.prompts[1].split(">>>")[-1]
     assert kept == [] and "starts 'A summary" in dropped[0]
+
+
+def test_cards_are_for_the_public_and_a_focus_narrows_the_page():
+    llm = ScriptedLLM(ZH_TRANSLATION, "[]")
+    focused = Source("storm", "China Meteorological Administration", ZH_SRC.url, "zh", "typhoon warning signals")
+    cards_for(focused, ZH_PAGE, llm, "2026-10-18", "CN")
+    assert "Leave out duties of government" in llm.prompts[1]
+    assert "Only write cards about typhoon warning signals." in llm.prompts[1]
+    llm = ScriptedLLM(ZH_TRANSLATION, "[]")
+    cards_for(ZH_SRC, ZH_PAGE, llm, "2026-10-18", "CN")
+    assert "Only write cards about" not in llm.prompts[1]
+
+
+def test_a_page_listed_with_several_focuses_is_translated_once():
+    shared: dict[str, list[str]] = {}
+    llm = ScriptedLLM(ZH_TRANSLATION, "[]", "[]")
+    for focus in ("typhoon warning signals", "rainstorm warning signals"):
+        cards_for(Source("storm", "CMA", ZH_SRC.url, "zh", focus), ZH_PAGE, llm, "2026-10-18", "CN", shared)
+    assert len(llm.prompts) == 3 and "into English" in llm.prompts[0] and "into English" not in llm.prompts[2]
+    assert shared[ZH_SRC.url][1].startswith("At home")
+
+
+def test_job_fetches_and_translates_a_shared_page_once(monkeypatch, capsys):
+    url = "https://www.gov.cn/gongbao/content/2008/content_912553.htm"
+    monkeypatch.setitem(job.SOURCES, "CN", [Source("storm", "CMA", url, "zh", "typhoon"),
+                                            Source("flood", "CMA", url, "zh", "rainstorm")])
+    fetched = []
+    monkeypatch.setattr(job, "fetch", lambda _client, u: fetched.append(u) or ZH_PAGE)
+    card = '[{"slug": "%s", "title": "Earthquake at home", "body": "Hide under sturdy furniture or in a corner or bathroom.", "lines": [2]}]'
+    llm = ScriptedLLM(ZH_TRANSLATION, card % "a", card % "b")
+    monkeypatch.setattr(job, "job_model", lambda _country: llm)
+    monkeypatch.setattr("sys.argv", ["guidance", "--country", "CN", "--dry-run"])
+    assert job.main() == 0
+    assert fetched == [url] and len(llm.prompts) == 3
+    assert [c["card_id"] for c in json.loads(capsys.readouterr().out)] == ["cn-storm-gov-a", "cn-flood-gov-b"]
+
+
+def test_sources_are_unique_and_a_shared_page_has_one_language():
+    for sources in job.SOURCES.values():
+        keys = [(s.url, s.focus) for s in sources]
+        assert len(keys) == len(set(keys))
+        langs: dict[str, str] = {}
+        for s in sources:
+            assert langs.setdefault(s.url, s.lang) == s.lang
 
 
 def test_english_pages_need_no_translation_call():
