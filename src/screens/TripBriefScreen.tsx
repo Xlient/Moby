@@ -64,7 +64,8 @@ function showDay(iso: string): string {
 }
 
 function pinLabel(lat: number, lon: number): string {
-  return `Dropped pin (${lat.toFixed(2)}, ${lon.toFixed(2)})`;
+  const country = countryName(countryAt(lat, lon));
+  return country ? `Dropped pin in ${country}` : 'Dropped pin';
 }
 
 function placeLabel(p: TripPlace): string {
