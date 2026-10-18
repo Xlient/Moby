@@ -30,6 +30,8 @@ import { SubscriptionsScreen } from '@/screens/SubscriptionsScreen';
 import { AlertPreferencesScreen } from '@/screens/AlertPreferencesScreen';
 import { PrivacyScreen } from '@/screens/PrivacyScreen';
 import { NearbyMeshScreen } from '@/screens/NearbyMeshScreen';
+import { OfflineAnswersScreen } from '@/screens/OfflineAnswersScreen';
+import { useModelState } from '@/ondevice/useModel';
 import { useMeshLifecycle } from '@/mesh/useMeshLifecycle';
 import { TrustReviewScreen } from '@/screens/TrustReviewScreen';
 import { AlertCardReviewScreen } from '@/screens/AlertCardReviewScreen';
@@ -52,6 +54,7 @@ type Screen =
   | { name: 'alert-preferences' }
   | { name: 'privacy' }
   | { name: 'nearby-mesh' }
+  | { name: 'offline-answers' }
   | { name: 'trust-review' }
   | { name: 'alert-card-review' };
 
@@ -74,6 +77,7 @@ function getActiveTab(screen: Screen): string {
     case 'alert-preferences':
     case 'privacy':
     case 'nearby-mesh':
+    case 'offline-answers':
     case 'about':
       return 'settings';
   }
@@ -91,7 +95,9 @@ export function App() {
   const screen = stack[stack.length - 1]!;
   const [onboarded, setOnboarded] = useState(hasSeenOnboarding);
 
-  const showAssistant = isEnabled('ask_moby') || isEnabled('on_device_assistant');
+  const modelState = useModelState();
+  // Offline the server's flags can't be fetched, so a downloaded offline model also keeps Ask Moby visible.
+  const showAssistant = isEnabled('ask_moby') || isEnabled('on_device_assistant') || modelState.kind === 'ready';
   useMeshLifecycle();
 
   const push = useCallback((next: Screen) => setStack((s) => [...s, next]), []);
@@ -230,6 +236,7 @@ export function App() {
             onAlertPreferences={() => push({ name: 'alert-preferences' })}
             onPrivacy={() => push({ name: 'privacy' })}
             onNearbyMesh={() => push({ name: 'nearby-mesh' })}
+            onOfflineAnswers={() => push({ name: 'offline-answers' })}
             onAbout={() => push({ name: 'about' })}
             onCardReview={() => push({ name: 'alert-card-review' })}
             onTrustReview={() => push({ name: 'trust-review' })}
@@ -254,6 +261,7 @@ export function App() {
         {screen.name === 'alert-preferences' && <AlertPreferencesScreen onBack={goBack} />}
         {screen.name === 'privacy' && <PrivacyScreen onBack={goBack} />}
         {screen.name === 'nearby-mesh' && <NearbyMeshScreen onBack={goBack} />}
+        {screen.name === 'offline-answers' && <OfflineAnswersScreen onBack={goBack} />}
         {screen.name === 'trust-review' && <TrustReviewScreen onBack={goBack} />}
         {screen.name === 'alert-card-review' && <AlertCardReviewScreen onBack={goBack} />}
       </View>
