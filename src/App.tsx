@@ -32,6 +32,7 @@ import { TrustReviewScreen } from '@/screens/TrustReviewScreen';
 import { AlertCardReviewScreen } from '@/screens/AlertCardReviewScreen';
 import { MyReportsScreen } from '@/screens/MyReportsScreen';
 import { AboutScreen } from '@/screens/AboutScreen';
+import { TripBriefScreen } from '@/screens/TripBriefScreen';
 import { OnboardingScreen, hasSeenOnboarding, resetOnboarding } from '@/screens/OnboardingScreen';
 
 type Screen =
@@ -50,7 +51,8 @@ type Screen =
   | { name: 'privacy' }
   | { name: 'nearby-mesh' }
   | { name: 'trust-review' }
-  | { name: 'alert-card-review' };
+  | { name: 'alert-card-review' }
+  | { name: 'trip'; point?: { lat: number; lon: number } };
 
 function getActiveTab(screen: Screen): string {
   switch (screen.name) {
@@ -63,6 +65,7 @@ function getActiveTab(screen: Screen): string {
     case 'map':
     case 'trust-review':
     case 'alert-card-review':
+    case 'trip':
       return 'home';
     case 'assistant':
       return 'assistant';
@@ -89,6 +92,7 @@ export function App() {
   const [onboarded, setOnboarded] = useState(hasSeenOnboarding);
 
   const showAssistant = isEnabled('ask_moby') || isEnabled('on_device_assistant');
+  const showTrip = isEnabled('trip_briefing');
   useMeshLifecycle();
 
   const push = useCallback((next: Screen) => setStack((s) => [...s, next]), []);
@@ -128,6 +132,10 @@ export function App() {
     if (isOnline) syncGuidance();
   }, [isOnline]);
   const openGuidance = useCallback((hazard?: HazardType) => push({ name: 'guidance', hazard }), [push]);
+  const openTrip = useCallback(
+    (point?: { lat: number; lon: number }) => push({ name: 'trip', point }),
+    [push],
+  );
 
   const handleTabChange = useCallback((tab: string) => {
     switch (tab) {
@@ -201,6 +209,7 @@ export function App() {
             onMapPress={() => push({ name: 'map' })}
             onGuidancePress={() => openGuidance()}
             onMyReportsPress={() => push({ name: 'my-reports' })}
+            onTripPress={showTrip ? () => openTrip() : undefined}
           />
         )}
         {screen.name === 'alerts' && (
@@ -211,11 +220,20 @@ export function App() {
         )}
         {screen.name === 'map' &&
           (mapEngine === 'maplibre' ? (
-            <MapLibreMapScreen onBack={goBack} onAlertDetail={navigateToAlert} />
+            <MapLibreMapScreen
+              onBack={goBack}
+              onAlertDetail={navigateToAlert}
+              onLongPressPoint={showTrip ? openTrip : undefined}
+            />
           ) : (
-            <MapScreen onBack={goBack} onAlertDetail={navigateToAlert} />
+            <MapScreen onBack={goBack} onAlertDetail={navigateToAlert} onLongPressPoint={showTrip ? openTrip : undefined} />
           ))}
-        {screen.name === 'assistant' && showAssistant && <AssistantScreen />}
+        {screen.name === 'assistant' && showAssistant && (
+          <AssistantScreen onTripPress={showTrip ? () => openTrip() : undefined} />
+        )}
+        {screen.name === 'trip' && (
+          <TripBriefScreen onBack={goBack} initialPoint={screen.point} onAlertPress={navigateToAlert} />
+        )}
         {screen.name === 'settings' && (
           <SettingsScreen
             onSubscriptions={() => push({ name: 'subscriptions' })}
