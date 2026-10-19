@@ -840,7 +840,7 @@ export interface paths {
         };
         /**
          * Situational brief for an event
-         * @description Generated asynchronously on Ultra after the fast alert has already been sent. Returns 202 with status "pending" while generation is in flight — clients should render the alert immediately and let the brief arrive behind it. Never block alert display on this endpoint.
+         * @description Generated asynchronously on Ultra after the fast alert has already been sent. Returns 202 with status "pending" while generation is in flight — clients should render the alert immediately and let the brief arrive behind it. Never block alert display on this endpoint. Opening an event asks for a brief when community reports arrived that the current brief doesn't cover: with no brief yet the response is 202; with one, the current brief is returned (200) and the rewrite follows.
          */
         get: {
             parameters: {
@@ -1907,6 +1907,30 @@ export interface components {
              * @description When the version that `changes` compares against was generated.
              */
             changes_since?: string;
+            /** @description Built from the database when the brief is read (not by the model), oldest first: the official warning (issued, updated, in force until) and one entry per thing people reported. after_brief marks what the brief doesn't cover yet. */
+            timeline?: {
+                /** Format: date-time */
+                at: string;
+                /**
+                 * Format: date-time
+                 * @description Last report of a community group
+                 */
+                until?: string;
+                /** @enum {string} */
+                kind: "official" | "community";
+                /** @enum {string} */
+                type: "issued" | "updated" | "expires" | "reports";
+                label: string;
+                /** @description The issuing agency (official entries) */
+                detail?: string;
+                /** @description Distinct people (community entries) */
+                reporters?: number;
+                /** @enum {string} */
+                severity?: "low" | "medium" | "high" | "critical";
+                /** @description When each report in the group was observed (up to 20) */
+                times?: string[];
+                after_brief: boolean;
+            }[];
         };
         CascadeAssessment: {
             region: components["schemas"]["RegionCode"];

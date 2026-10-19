@@ -223,3 +223,46 @@ def test_db_alerts_near_applies_preferences(db_url):
     assert set(marine) == {"quake", "flood", "heat", "boat"}
     # Earthquakes are filtered out here, but a critical one still gets through.
     assert floods_high == ["quake", "flood"]
+
+
+# ── Situational brief trigger (migration 0020; moby/graph/brief_queries.py) ───────────
+
+BRIEF = "SELECT brief_status, brief_requested_at IS NOT NULL FROM events"
+
+
+def test_db_new_critical_warning_asks_for_a_brief_others_dont(db_url):
+    async def scenario(conn):
+        await ingest(conn, [nws("X", severity="Extreme"), nws("M", severity="Severe", lat=40.0, ugc=("KSC001",))])
+        return dict(await fetch(conn, "SELECT external_id, brief_status FROM events"))
+    assert run(db_url, scenario) == {"X": "pending", "M": "not_requested"}
+
+
+def test_db_update_rebriefs_only_when_it_matters(db_url):
+    async def scenario(conn):
+        await ingest(conn, [nws("A", severity="Severe")])
+        out = [await fetch(conn, BRIEF)]
+        # A non-critical warning with no brief: an update doesn't ask for one.
+        await ingest(conn, [nws("B", sent=T0 + timedelta(minutes=30), refs=["A"], severity="Severe")])
+        out.append(await fetch(conn, BRIEF))
+        # Once it has a brief, a changed update asks for a rewrite (and starts attempts over).
+        await conn.execute("UPDATE events SET brief_status = 'ready', brief_attempts = 3")
+        await ingest(conn, [nws("C", sent=T0 + timedelta(hours=1), refs=["B"], severity="Severe")])
+        out.append(await fetch(conn, "SELECT brief_status, brief_attempts FROM events"))
+        # Re-polling the same message (no change) leaves it alone.
+        await conn.execute("UPDATE events SET brief_status = 'ready'")
+        await ingest(conn, [nws("C", sent=T0 + timedelta(hours=1), refs=["B"], severity="Severe")])
+        out.append(await fetch(conn, BRIEF))
+        return out
+    first, after_update, after_change, after_repoll = run(db_url, scenario)
+    assert first == [("not_requested", False)]
+    assert after_update == [("not_requested", False)]
+    assert after_change == [("pending", 0)]
+    assert after_repoll == [("ready", True)]
+
+
+def test_db_escalation_to_critical_asks_for_a_brief(db_url):
+    async def scenario(conn):
+        await ingest(conn, [nws("A", severity="Moderate")])
+        await ingest(conn, [nws("B", sent=T0 + timedelta(hours=1), refs=["A"], severity="Extreme")])
+        return await fetch(conn, BRIEF)
+    assert run(db_url, scenario) == [("pending", True)]

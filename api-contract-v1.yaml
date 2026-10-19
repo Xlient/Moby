@@ -1,11 +1,13 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.9.0
+  version: 0.9.1
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.9.1 — SituationalBrief.timeline (additive): official and community events over time,
+      built from the database when the brief is read.
     0.9.0 — "Before you go" trip briefing (additive):
       + POST /trips/brief (signed-in, 10 per hour): active official alerts whose area meets a
         circle around the destination, or a corridor along a route through 2-8 stops, and recent
@@ -488,7 +490,10 @@ paths:
         Generated asynchronously on Ultra after the fast alert has already been sent.
         Returns 202 with status "pending" while generation is in flight — clients
         should render the alert immediately and let the brief arrive behind it.
-        Never block alert display on this endpoint.
+        Never block alert display on this endpoint. Opening an event asks for a brief
+        when community reports arrived that the current brief doesn't cover: with no
+        brief yet the response is 202; with one, the current brief is returned (200)
+        and the rewrite follows.
       parameters:
         - name: event_id
           in: path
@@ -1479,6 +1484,29 @@ components:
           type: string
           format: date-time
           description: When the version that `changes` compares against was generated.
+        timeline:
+          type: array
+          description: >
+            Built from the database when the brief is read (not by the model), oldest first:
+            the official warning (issued, updated, in force until) and one entry per thing
+            people reported. after_brief marks what the brief doesn't cover yet.
+          items:
+            type: object
+            required: [at, kind, type, label, after_brief]
+            properties:
+              at: { type: string, format: date-time }
+              until: { type: string, format: date-time, description: Last report of a community group }
+              kind: { type: string, enum: [official, community] }
+              type: { type: string, enum: [issued, updated, expires, reports] }
+              label: { type: string }
+              detail: { type: string, description: The issuing agency (official entries) }
+              reporters: { type: integer, description: Distinct people (community entries) }
+              severity: { type: string, enum: [low, medium, high, critical] }
+              times:
+                type: array
+                description: When each report in the group was observed (up to 20)
+                items: { type: string, format: date-time }
+              after_brief: { type: boolean }
 
     CascadeAssessment:
       type: object

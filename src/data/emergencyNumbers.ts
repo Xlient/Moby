@@ -91,10 +91,11 @@ export function countryAt(lat: number, lon: number): string | undefined {
   }
   const hit = (y: number, x: number) =>
     Object.entries(OUTLINES).find(([, rings]) => rings.some((ring) => inRing(x, y, ring)))?.[0];
-  // Simplified coastlines cut corners, so coastal cities can fall just outside:
-  // look ~15 km around before giving up.
-  const d = 0.15;
-  for (const [dy, dx] of [[0, 0], [d, 0], [-d, 0], [0, d], [0, -d], [d, d], [d, -d], [-d, d], [-d, -d]]) {
+  // Simplified coastlines cut corners, so coastal places can fall just outside: look ~15 km
+  // around, then ~35 km (barrier islands like the Outer Banks sit ~20 km off the simplified US
+  // coast). Same rings as moby/geo.py on the server: keep the two in step.
+  const ring = (d: number) => [[d, 0], [-d, 0], [0, d], [0, -d], [d, d], [d, -d], [-d, d], [-d, -d]];
+  for (const [dy, dx] of [[0, 0], ...ring(0.15), ...ring(0.3)]) {
     const code = hit(lat + dy!, lon + dx!);
     if (code) return code;
   }

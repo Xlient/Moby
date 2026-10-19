@@ -38,6 +38,8 @@ COPY moby ./moby
 COPY scripts ./scripts
 COPY db ./db
 COPY legal ./legal
+# Country outlines shared with the app (moby/geo.py): one file, so both pick the same country.
+COPY src/data/countryOutlines.json ./src/data/countryOutlines.json
 COPY deploy/endpoint/start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/start.sh && useradd --system --uid 10001 --home /app moby
 

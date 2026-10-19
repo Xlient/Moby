@@ -1,0 +1,202 @@
+import asyncio
+import logging
+import re
+
+from moby.ai.budget import take_sync
+from moby.api.alerts import SOURCE_ATTRIBUTION
+from moby.llm import model_name
+
+from .brief_changes import describe, diff_facts, write_changes
+from .brief_checks import draft_problems, repair
+from .brief_queries import community_evidence, event_facts, previous_version
+from .brief_queries import save_brief as save_brief_row
+from .brief_research import plan_calls, search_web
+from .brief_writer import write_draft
+from .db import connection
+from .state import BriefState, EvidenceItem
+
+log = logging.getLogger("moby.graph.brief_nodes")
+
+# Most agency texts are under ~1,000 characters; NWS warnings with several products reach ~4,000,
+# and their PRECAUTIONARY/PREPAREDNESS ACTIONS come last. Cutting at 1,200 lost those (first real run).
+MAX_OFFICIAL_CHARS = 4000
+
+
+def _cut(text: str, limit: int) -> str:
+    """At most `limit` characters, ending at a sentence boundary when there is one."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    end = max(cut.rfind(". "), cut.rfind(".\n"))
+    return (cut[: end + 1] if end > limit // 2 else cut.rsplit(" ", 1)[0]) + " […]"
+
+
+def official_item(facts: dict) -> EvidenceItem:
+    """O1: the agency's own warning."""
+    agency = SOURCE_ATTRIBUTION.get(facts["source_feed"], facts["source_feed"])
+    parts = [facts["title"], facts.get("description") or ""]
+    if facts.get("expires_at"):
+        parts.append(f"In force until {facts['expires_at']}.")
+    if facts.get("area_km2"):
+        parts.append(f"Warning area about {facts['area_km2']} km².")
+    text = _cut(" ".join(p for p in parts if p), MAX_OFFICIAL_CHARS)
+    return EvidenceItem(id="O1", kind="official", title=f"{facts['title']} · {agency}", text=text)
+
+
+def community_item(n: int, group: dict) -> EvidenceItem:
+    """C<n>: one group of reports that saw the same thing."""
+    effect = group["effect"].replace("_", " ")
+    people = f"{group['reporters']} {'person' if group['reporters'] == 1 else 'people'}"
+    text = (f"{people} ({group['reports']} reports) saw {effect}, "
+            f"between {group['first_seen']} and {group['last_seen']}. "
+            f"Severity reported: {', '.join(group['severities'])}.")
+    if group["details"]:
+        text += f" Details they gave: {group['details']}."
+    return EvidenceItem(id=f"C{n}", kind="community", title=f"{effect.capitalize()} · {people}", text=text)
+
+
+def gather_evidence(state: BriefState) -> dict:
+    """Return the evidence for the brief: the official warning (O1, official events only)
+    and one item per group of community reports (C1, C2…), plus the raw facts and the
+    previous version for later steps."""
+    with connection() as conn:
+        facts = event_facts(conn, state["event_id"])
+        previous = previous_version(conn, state["event_id"])
+        community = community_evidence(conn, state["event_id"])
+
+    if facts is None:                      # the event was deleted: nothing to brief
+        log.info("event %s is gone; no brief", state["event_id"])
+        return {"evidence": []}
+
+    evidence: list[EvidenceItem] = []
+    if facts["source"] == "official":
+        evidence.append(official_item(facts))
+    for n, group in enumerate(community, start=1):     # C1, C2… biggest group first
+        evidence.append(community_item(n, group))
+
+    return {"facts": facts, "community": community, "previous": previous, "evidence": evidence}
+
+
+def _take_tavily_budget(units: int) -> int:
+    with connection() as conn:
+        return take_sync(conn, "tavily", units)
+
+
+async def research(state: BriefState) -> dict:
+    """Add web pages to the evidence as W1, W2… (after the O and C items): the country's official
+    sites and recent news, via Tavily. Only when the event has a place name to search for (official
+    warnings; community events have none). The web is optional context, so any problem (no key,
+    no budget, no place, a failed search) means no W items, never a failed brief."""
+    facts = state["facts"]
+    if not facts.get("country") or not facts.get("place"):
+        # "flood US" finds general pages about floods anywhere, not this event (seen on the first
+        # real run). Without the official area's name there's nothing specific to search for.
+        return {"web": []}
+    granted = await asyncio.to_thread(_take_tavily_budget, 2)
+    calls = plan_calls(facts, granted)
+    if not calls:
+        log.info("brief %s: no Tavily budget left today; no web sources", state["event_id"])
+        return {"web": []}
+    try:
+        found = await search_web(facts, calls=calls)
+    except Exception as e:  # noqa: BLE001 - web context is optional: brief from O and C items
+        log.warning("brief %s: web research failed (%s); no web sources", state["event_id"], type(e).__name__)
+        return {"web": []}
+    web = [EvidenceItem(id=f"W{n}", **item) for n, item in enumerate(found, start=1)]
+    return {"web": web, "evidence": state["evidence"] + web}
+
+
+def _take_brief_budget() -> bool:
+    with connection() as conn:
+        return take_sync(conn, "brief", 1) == 1
+
+
+async def write_brief(state: BriefState) -> dict:
+    """Ask Ultra for a brief written only from the evidence. Over today's cap: no draft (the
+    graph ends and the event is settled as failed; a later view with new reports asks again).
+    Model errors are NOT caught: the worker records them and retries the run once."""
+    if not await asyncio.to_thread(_take_brief_budget):
+        log.warning("brief %s: daily brief cap reached, not written", state["event_id"])
+        return {"draft": {}, "problems": ["daily brief cap reached"]}
+    attempts = state.get("attempts", 0)
+    # On a retry, Ultra is told what check_brief found wrong with its last draft.
+    fix = state.get("problems") if attempts else None
+    # No DB connection is held while Ultra writes (up to a minute): the pool is small.
+    draft = await write_draft(state["evidence"], hazard=state["facts"]["hazard_type"],
+                              official=state["facts"]["source"] == "official", searched_web=bool(state.get("web")),
+                              problems=fix)
+    return {"draft": draft.to_saved(), "attempts": attempts + 1}
+
+
+def check_brief(state: BriefState) -> dict:
+    """Code checks the draft before anything is saved: ids exist, basis matches the evidence
+    (nothing community passed off as official), no numbers the sources don't have."""
+    found = draft_problems(state["draft"], state["evidence"])
+    if found:
+        log.info("brief %s: draft %s has %d problem(s): %s", state["event_id"], state.get("attempts"),
+                 len(found), "; ".join(found)[:500])
+    return {"problems": found}
+
+
+def repair_brief(state: BriefState) -> dict:
+    """Still wrong after the retry: keep what passes (see brief_checks.repair). Nothing passes →
+    no draft, so nothing is saved and the event is settled as failed."""
+    fixed = repair(state["draft"], state["evidence"])
+    log.warning("brief %s: kept %s claim(s) after the retry", state["event_id"],
+                len(fixed["claims"]) if fixed else 0)
+    return {"draft": fixed or {}}
+
+
+_EVIDENCE_ID = re.compile(r"\b[OCW]\d+\b")
+
+
+def cited_ids(draft: dict) -> set[str]:
+    """Evidence ids the brief actually uses: its claims' citations, plus ids named in contradictions."""
+    ids = {i for c in draft.get("claims", []) for i in c.get("evidence", [])}
+    for text in draft.get("contradictions") or []:
+        ids |= set(_EVIDENCE_ID.findall(text))
+    return ids
+
+
+def _take_changes_budget() -> bool:
+    with connection() as conn:
+        return take_sync(conn, "brief_changes", 1) == 1
+
+
+async def explain_changes(state: BriefState) -> dict:
+    """'What changed' since the previous brief: code diffs the facts (brief_changes.diff_facts),
+    Super words it. First brief, or nothing meaningful changed → no "what changed". Over the
+    Super cap or on an error → the plain sentences, never a failed brief."""
+    previous = state.get("previous")
+    if not previous:
+        return {"changes": [], "changes_text": None}
+    changes = diff_facts(previous["facts"], state["facts"])
+    if not changes:
+        return {"changes": [], "changes_text": None}
+    text = describe(changes)
+    if await asyncio.to_thread(_take_changes_budget):
+        try:
+            text = await write_changes(changes)
+        except Exception as e:  # noqa: BLE001 - the plain sentences are a fine fallback
+            log.warning("brief %s: what-changed sentence failed (%s); plain text used", state["event_id"],
+                        type(e).__name__)
+    return {"changes": changes, "changes_text": text}
+
+
+def save_brief(state: BriefState) -> dict:
+    """Save the draft for the claimed request and mark the event 'ready', in one transaction.
+    Sources = only the evidence the brief cites (in evidence order), so the app never lists a
+    page the brief didn't use. Safe to repeat on a resumed run: the second time nothing is written."""
+    used = cited_ids(state["draft"])
+    citations = [{"id": e["id"], "title": e["title"], "kind": e["kind"],
+                  **({"url": e["url"]} if e.get("url") else {})} for e in state["evidence"] if e["id"] in used]
+    with connection() as conn:
+        previous = state.get("previous")
+        version = save_brief_row(conn, state["event_id"], state["requested_at"], brief=state["draft"],
+                                 citations=citations, facts=state["facts"], model=model_name("ultra"),
+                                 changes=state.get("changes_text"),
+                                 changes_since=previous["created_at"] if previous and state.get("changes_text") else None)
+    if version is None:
+        log.info("brief %s: request no longer pending; nothing saved", state["event_id"])
+    return {}
+
