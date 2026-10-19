@@ -13,7 +13,10 @@ from typing import Any, Literal
 
 import httpx
 
-BASE = "https://api.openrouteservice.org"
+# api.openrouteservice.org was deprecated on 2026-04-28 for api.heigit.org (same keys).
+# Directions live under /openrouteservice; place search (Pelias) moved to /pelias/v1.
+ROUTING_BASE = "https://api.heigit.org/openrouteservice"
+GEOCODE_BASE = "https://api.heigit.org/pelias/v1"
 Profile = Literal["driving-car", "foot-hiking"]
 TIMEOUT = httpx.Timeout(15.0, connect=5.0)
 
@@ -72,7 +75,7 @@ async def directions(
         body["options"] = {"avoid_polygons": avoid}
     try:
         resp = await client.post(
-            f"{BASE}/v2/directions/{profile}/geojson",
+            f"{ROUTING_BASE}/v2/directions/{profile}/geojson",
             json=body,
             headers={"Authorization": api_key, "Accept": "application/geo+json"},
             timeout=TIMEOUT,
@@ -99,7 +102,7 @@ async def search_places(
         params["focus.point.lat"], params["focus.point.lon"] = near
     try:
         resp = await client.get(
-            f"{BASE}/geocode/search", params=params, headers={"Authorization": api_key}, timeout=TIMEOUT,
+            f"{GEOCODE_BASE}/search", params=params, headers={"Authorization": api_key}, timeout=TIMEOUT,
         )
     except httpx.HTTPError as e:
         raise RoutingError("unreachable", str(e)) from e
