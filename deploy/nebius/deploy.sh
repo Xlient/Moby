@@ -108,6 +108,16 @@ cmd_setup() {
       echo "created secret $NAME-tavily" >&2
     fi
   fi
+  if [ -z "${ORS_SECRET:-}" ]; then
+    # OpenRouteService (the hazard route check, moby/routing). Optional, from .env.
+    local okey; okey="$(grep -E '^ORS_API_KEY=' "$ROOT/.env" 2>/dev/null | cut -d= -f2-)"
+    if [ -n "$okey" ]; then
+      "$NEBIUS" mysterybox secret create "${P[@]}" --name "$NAME-ors" \
+        --secret-version-payload "[{\"key\":\"ORS_API_KEY\",\"string_value\":\"$okey\"}]" >/dev/null
+      save ORS_SECRET "$NAME-ors"
+      echo "created secret $NAME-ors" >&2
+    fi
+  fi
   if [ -z "${BACKUP_BUCKET:-}" ]; then
     run "$NEBIUS" storage bucket create "${P[@]}" --name "$NAME-backups" >/dev/null
     save BACKUP_BUCKET "$NAME-backups"
@@ -170,6 +180,7 @@ cmd_endpoint() {
     ${FCM_SECRET:+--env-secret "FIREBASE_SERVICE_ACCOUNT_JSON=$FCM_SECRET"} \
     --env-secret "N_FACTORY_ACC_KEY=$TF_SECRET" \
     ${TAVILY_SECRET:+--env-secret "TAVILY_API_KEY=$TAVILY_SECRET"} \
+    ${ORS_SECRET:+--env-secret "ORS_API_KEY=$ORS_SECRET"} \
     --env "FIREBASE_PROJECT_ID=$fb_project" \
     --env "FIREBASE_PROJECT_NUMBER=$(firebase_project_number)" \
     --env "MOBY_APP_CHECK=${MOBY_APP_CHECK:-monitor}" \
