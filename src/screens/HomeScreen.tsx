@@ -28,6 +28,7 @@ interface HomeScreenProps {
   onEmergencyPress: (alertId: string) => void;
   onHelpPress: () => void;
   onSosCallsPress: () => void;
+  onRouteCheckPress: () => void;
 }
 
 const MAX_HOME_CARDS = 3;
@@ -126,8 +127,7 @@ function LoadingCards({ theme }: { theme: Theme }) {
 }
 
 export function HomeScreen({
-  onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress, onMyReportsPress, onEmergencyPress, onHelpPress,
-  onSosCallsPress, onTripPress,
+  onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress, onMyReportsPress, onEmergencyPress, onHelpPress, onSosCallsPress, onTripPress, onRouteCheckPress,
 }: HomeScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
@@ -319,6 +319,18 @@ export function HomeScreen({
             <View style={styles.guidanceText}>
               <Text variant="titleMedium" style={{ color: theme.text.primary }}>I need help</Text>
               <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>Your exact location and emergency numbers. Works without signal.</Text>
+            </View>
+          </Pressable>
+          <Pressable
+            onPress={onRouteCheckPress}
+            accessibilityRole="button"
+            accessibilityLabel="Check a route. See whether the way to somewhere crosses a known hazard."
+            style={[styles.guidanceRow, styles.rowGap, { backgroundColor: theme.bg.raised }]}
+          >
+            <Avatar.Icon size={40} icon="map-marker-path" style={{ backgroundColor: theme.bg.recessed }} color={theme.text.primary} />
+            <View style={styles.guidanceText}>
+              <Text variant="titleMedium" style={{ color: theme.text.primary }}>Check a route</Text>
+              <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>Does the way there cross a warning area or a reported hazard?</Text>
             </View>
           </Pressable>
           {onTripPress && (

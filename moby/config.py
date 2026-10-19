@@ -23,7 +23,11 @@ class Settings(BaseSettings):
     # it degrade gracefully without it. Never set in ordinary CI (model-evals only).
     tavily_api_key: SecretStr | None = Field(default=None, validation_alias="TAVILY_API_KEY")
 
-    @field_validator("token_factory_api_key", "tavily_api_key", mode="before")
+    # OpenRouteService (moby/routing/ors.py) for the hazard route check. Optional: without
+    # it, /v1/routes answers 503 and the app says route checks aren't available.
+    ors_api_key: SecretStr | None = Field(default=None, validation_alias="ORS_API_KEY")
+
+    @field_validator("token_factory_api_key", "tavily_api_key", "ors_api_key", mode="before")
     @classmethod
     def _blank_is_unset(cls, v):
         # .env.example ships `N_FACTORY_ACC_KEY=`: an empty key means "no AI features", not a key.

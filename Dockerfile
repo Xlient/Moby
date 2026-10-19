@@ -24,6 +24,8 @@ COPY moby ./moby
 COPY scripts ./scripts
 COPY db ./db
 COPY legal ./legal
+# Country outlines shared with the app (moby/geo.py): one file, so both pick the same country.
+COPY src/data/countryOutlines.json ./src/data/countryOutlines.json
 
 # Never run as root.
 RUN useradd --system --uid 10001 moby
