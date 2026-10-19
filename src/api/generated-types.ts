@@ -1516,7 +1516,7 @@ export interface components {
             };
         };
         /**
-         * @description Enabled regions. v1 ships US only; CN is reserved and rejected at runtime until its feed, coordinate-frame and push work lands.
+         * @description Enabled regions. v1 ships US only; CN is reserved and rejected at runtime until its feed, coordinate-frame and push work lands. Exception: guidance (/guidance/manifest, /guidance/cards) already serves CN bundles: English cards from Chinese agencies' pages, for people in China.
          * @enum {string}
          */
         RegionCode: "US" | "CN";
@@ -1948,7 +1948,7 @@ export interface components {
             body: string;
             /** @description Lower is more urgent. Drives static fallback ordering. */
             priority?: number;
-            /** @description e.g. FEMA */
+            /** @description The agency whose page the card is from, e.g. FEMA Ready.gov, National Weather Service, Ministry of Emergency Management (China). Cards are English even when the page is not. */
             source_name: string;
             source_url: string;
             /**

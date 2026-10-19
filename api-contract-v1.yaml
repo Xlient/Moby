@@ -954,7 +954,9 @@ components:
       type: string
       description: >
         Enabled regions. v1 ships US only; CN is reserved and rejected at runtime
-        until its feed, coordinate-frame and push work lands.
+        until its feed, coordinate-frame and push work lands. Exception: guidance
+        (/guidance/manifest, /guidance/cards) already serves CN bundles: English cards
+        from Chinese agencies' pages, for people in China.
       enum: [US, CN]
 
     CoordinateFrame:
@@ -1536,7 +1538,7 @@ components:
         priority:
           type: integer
           description: Lower is more urgent. Drives static fallback ordering.
-        source_name: { type: string, description: e.g. FEMA, American Red Cross, NWS }
+        source_name: { type: string, description: 'The agency whose page the card is from, e.g. FEMA Ready.gov, National Weather Service, Ministry of Emergency Management (China). Cards are English even when the page is not.' }
         source_url: { type: string }
         last_reviewed_at:
           type: string

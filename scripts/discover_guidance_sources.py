@@ -4,10 +4,10 @@
 
 Searches ONLY the country's official government and agency domains (moby/search/official.py) with
 Tavily, and prints candidates for a person to check. Nothing is added automatically: a
-page joins moby/jobs/guidance.py SOURCES only after someone has read it and confirmed
+page joins moby/jobs/guidance.py SOURCES[country] only after someone has read it and confirmed
 it's official, current, and allows automated reading.
 
-Cost: one Tavily search (1 credit) per hazard.
+Cost: one Tavily search (1 credit) per hazard, two where LOCAL_QUERIES has the country.
 """
 import argparse
 import sys
@@ -24,6 +24,18 @@ QUERIES = {
     "other": "volcano eruption tsunami safety what to do",
 }
 
+# Official pages in some countries are mostly in the local language, so search in it too.
+LOCAL_QUERIES = {
+    "CN": {
+        "earthquake": "地震 避险 自救 科普",
+        "flood": "暴雨 洪水 山洪 避险 科普",
+        "storm": "台风 雷电 预警信号 防御指南",
+        "fire": "森林火灾 山火 逃生 科普",
+        "landslide": "滑坡 泥石流 户外 避险",
+        "other": "自然灾害 自救 知识",
+    },
+}
+
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -37,9 +49,12 @@ def main() -> int:
 
     domains = OFFICIAL[args.country]
     print(f"# Candidate guidance sources: {args.country} (official domains: {', '.join(domains)})\n")
-    print("Check each page yourself before adding it to SOURCES in moby/jobs/guidance.py.\n")
+    print("Check each page yourself before adding it to SOURCES[country] in moby/jobs/guidance.py.\n")
     for hazard in args.hazard or list(QUERIES):
         results = tavily.search(QUERIES[hazard], include_domains=domains, max_results=5)
+        if local := LOCAL_QUERIES.get(args.country, {}).get(hazard):
+            seen = {r.url for r in results}
+            results += [r for r in tavily.search(local, include_domains=domains, max_results=5) if r.url not in seen]
         print(f"## {hazard}\n")
         if not results:
             print("_No results on official domains._\n")

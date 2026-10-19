@@ -3,15 +3,21 @@
 
     uv run pytest
 """
+import asyncio
 import json
 from datetime import timedelta
 from pathlib import Path
 
+import httpx
+import psycopg
 import pytest
+from psycopg_pool import AsyncConnectionPool
 
 from moby.feeds import eonet, gdacs, noaa, usgs
 from moby.feeds.geo import centroid, region_for
-from moby.feeds.poller import FEEDS, Watermark, conditional_headers
+from moby.feeds.poller import FEEDS, Watermark, conditional_headers, poll_feed
+
+from .test_chains_and_preferences import _test_db_url
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -98,6 +104,18 @@ def test_usgs_filters_small_quakes_and_keeps_worldwide_ones():
     assert_valid(r.events)
     assert {e.region for e in r.events} == {"US", "INTL"}   # travellers: worldwide since migration 0009
     assert all(e.hazard_type == "earthquake" for e in r.events)
+
+
+def test_usgs_quakes_expire_after_a_day_strong_ones_after_three():
+    # Without an expiry a quake stayed an "active" alert for good (coverage check, 2026-10-18).
+    r = usgs.normalize(load("usgs_quakes"))
+    assert all(e.expires_at == e.first_reported_at + usgs.quake_ttl(e.severity) for e in r.events)
+    assert usgs.quake_ttl("low") == usgs.quake_ttl("medium") == timedelta(hours=24)
+    assert usgs.quake_ttl("high") == usgs.quake_ttl("critical") == timedelta(hours=72)
+    payload = load("usgs_quakes")
+    payload["features"][0]["properties"].update(mag=6.8, alert=None)
+    strong = next(e for e in usgs.normalize(payload).events if e.external_id == payload["features"][0]["id"])
+    assert strong.severity == "high" and strong.expires_at == strong.first_reported_at + timedelta(hours=72)
 
 
 @pytest.mark.parametrize(
@@ -219,3 +237,35 @@ def test_default_url_is_the_steady_state_url():
     # poll_feed compares against spec.url(timedelta(0)) to decide whether validators apply.
     assert FEEDS["usgs"].url(timedelta(0)) == usgs.HOUR_URL
     assert FEEDS["noaa"].url(timedelta(0)) == noaa.URL
+
+
+# ── Snapshot feeds end what they stop listing ────────────────────────────────
+
+def test_gdacs_event_that_leaves_the_list_ends(monkeypatch):
+    # GDACS lists only current events (iscurrent is always "true" there) and drops ended
+    # ones without an end date, so before this a cyclone stayed "active" for good.
+    db_url = _test_db_url()
+    if db_url is None:
+        pytest.skip("Postgres not reachable (docker compose up -d)")
+    payload = load("gdacs_events")
+    for f in payload["features"]:
+        f["properties"]["iscurrent"] = "true"
+    bodies = [payload, {**payload, "features": payload["features"][1:]}]
+    gone = f"{payload['features'][0]['properties']['eventtype']}-{payload['features'][0]['properties']['eventid']}"
+
+    async def poll_twice():
+        async with AsyncConnectionPool(db_url, open=False) as pool:
+            for body in bodies:
+                transport = httpx.MockTransport(lambda _req, body=body: httpx.Response(200, json=body))
+                async with httpx.AsyncClient(transport=transport) as http:
+                    await poll_feed(FEEDS["gdacs"], pool, http, force=True)
+
+    with psycopg.connect(db_url, autocommit=True) as c:
+        c.execute("TRUNCATE events CASCADE")
+    asyncio.run(poll_twice())
+    with psycopg.connect(db_url) as c:
+        rows = dict(c.execute("SELECT external_id, coalesce(expires_at <= now(), false) FROM events "
+                              "WHERE source_feed = 'gdacs'").fetchall())
+    assert rows[gone] is True
+    assert len(rows) > 1 and not any(ended for ext, ended in rows.items() if ext != gone)
+    assert FEEDS["eonet"].snapshot

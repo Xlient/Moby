@@ -59,7 +59,8 @@ export function AssistantScreen({ onTripPress }: { onTripPress?: () => void } = 
   const [turns, setTurns] = useState<Turn[]>([]);
   const scroll = useRef<ScrollView>(null);
   const isOnline = useOnlineStatus();
-  const { cards } = useGuidance();
+  // Offline answers use the local agencies' cards first (only from a real fix, never the demo city).
+  const { cards } = useGuidance(center.source === 'device' ? country : undefined);
   const model = useModelState();
   const canAnswerOffline = model.kind === 'ready';
 
