@@ -155,3 +155,9 @@ def test_research_with_a_partial_budget_searches_official_sites_first(monkeypatc
     assert research_with(monkeypatch, granted=1)[1]["calls"] == ["official"]
     # A country without an official-domain list: news first.
     assert research_with(monkeypatch, granted=1, facts={**FACTS, "country": "HK"})[1]["calls"] == ["news"]
+
+
+def test_long_official_text_is_cut_at_a_sentence():
+    text = brief_nodes._cut("First sentence. " * 300, 4000)
+    assert len(text) <= 4000 + 4 and text.endswith(". […]")
+    assert brief_nodes._cut("short", 4000) == "short"

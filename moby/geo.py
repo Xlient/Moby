@@ -4,7 +4,7 @@ so server and app always pick the same country. Coordinates never leave the mach
 geocoding service is called (the country code is what goes into a web search).
 
 Covers the countries Moby has official sources and emergency numbers for (US, JP, PH, NP,
-…), plus Hong Kong and Macao. Approximate near borders (~10–15 km). Port of countryAt in
+…), plus Hong Kong and Macao. Approximate near borders and coasts (~15–35 km). Port of countryAt in
 src/data/emergencyNumbers.ts: keep the two in step.
 """
 import json
@@ -16,10 +16,13 @@ OUTLINES_FILE = Path(__file__).resolve().parents[1] / "src" / "data" / "countryO
 # [lon_min, lat_min, lon_max, lat_max]: too small for the outlines, checked first.
 SMALL = {"HK": (113.82, 22.15, 114.44, 22.57), "MO": (113.52, 22.1, 113.61, 22.22)}
 
-# Simplified coastlines cut corners, so coastal places can fall just outside: look ~15 km around.
-_NUDGE = 0.15
-_AROUND = [(0, 0), (_NUDGE, 0), (-_NUDGE, 0), (0, _NUDGE), (0, -_NUDGE),
-           (_NUDGE, _NUDGE), (_NUDGE, -_NUDGE), (-_NUDGE, _NUDGE), (-_NUDGE, -_NUDGE)]
+# Simplified coastlines cut corners, so coastal places can fall just outside: look ~15 km around,
+# then ~35 km (barrier islands like the Outer Banks sit ~20 km off the simplified US coast).
+def _ring(d: float) -> list[tuple[float, float]]:
+    return [(d, 0), (-d, 0), (0, d), (0, -d), (d, d), (d, -d), (-d, d), (-d, -d)]
+
+
+_AROUND = [(0.0, 0.0)] + _ring(0.15) + _ring(0.3)
 
 
 @cache
@@ -49,3 +52,7 @@ def country_at(lat: float, lon: float) -> str | None:
             if any(_in_ring(lon + dx, lat + dy, ring) for ring in rings):
                 return code
     return None
+
+
+# Feeds that only ever cover one country: exact, no geometry needed.
+FEED_COUNTRY = {"noaa": "US", "jma": "JP", "bipad": "NP"}

@@ -26,7 +26,7 @@ from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from moby.geo import country_at
+from moby.geo import FEED_COUNTRY, country_at
 
 DEBOUNCE = timedelta(minutes=30)  # min time between two briefs of one event
 LEASE = timedelta(minutes=5)      # a claim older than this is presumed dead and re-claimable
@@ -209,9 +209,11 @@ def event_facts(conn: Connection, event_id: str) -> dict[str, Any] | None:
         return None
     facts["place"] = _location_name(facts) if facts["source_feed"] else None
     del facts["raw_payload"]
-    if not facts["country"] and facts["lat"] is not None:
-        # Community events have no country: work it out locally from the position (moby/geo.py).
-        facts["country"] = country_at(facts["lat"], facts["lon"])
+    if not facts["country"]:
+        # Many feeds (and every community event) store no country: a one-country feed says it;
+        # otherwise work it out locally from the position (moby/geo.py).
+        facts["country"] = FEED_COUNTRY.get(facts["source_feed"] or "") or (
+            country_at(facts["lat"], facts["lon"]) if facts["lat"] is not None else None)
     return facts
 
 

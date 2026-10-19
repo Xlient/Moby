@@ -15,3 +15,7 @@ from moby.geo import country_at
 ])
 def test_country_at(lat, lon, code):
     assert country_at(lat, lon) == code
+
+
+def test_barrier_islands_off_the_simplified_coast():
+    assert country_at(35.5225, -75.5246) == "US"          # Hatteras Island, ~20 km off the outline

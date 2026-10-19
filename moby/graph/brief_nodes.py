@@ -14,7 +14,18 @@ from .state import BriefState, EvidenceItem
 
 log = logging.getLogger("moby.graph.brief_nodes")
 
-MAX_OFFICIAL_CHARS = 1200   # long agency texts are cut; the model doesn't need the boilerplate
+# Most agency texts are under ~1,000 characters; NWS warnings with several products reach ~4,000,
+# and their PRECAUTIONARY/PREPAREDNESS ACTIONS come last. Cutting at 1,200 lost those (first real run).
+MAX_OFFICIAL_CHARS = 4000
+
+
+def _cut(text: str, limit: int) -> str:
+    """At most `limit` characters, ending at a sentence boundary when there is one."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    end = max(cut.rfind(". "), cut.rfind(".\n"))
+    return (cut[: end + 1] if end > limit // 2 else cut.rsplit(" ", 1)[0]) + " […]"
 
 
 def official_item(facts: dict) -> EvidenceItem:
@@ -25,7 +36,7 @@ def official_item(facts: dict) -> EvidenceItem:
         parts.append(f"In force until {facts['expires_at']}.")
     if facts.get("area_km2"):
         parts.append(f"Warning area about {facts['area_km2']} km².")
-    text = " ".join(p for p in parts if p)[:MAX_OFFICIAL_CHARS]
+    text = _cut(" ".join(p for p in parts if p), MAX_OFFICIAL_CHARS)
     return EvidenceItem(id="O1", kind="official", title=f"{facts['title']} · {agency}", text=text)
 
 
