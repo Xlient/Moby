@@ -39,7 +39,10 @@ explains them in plain words with NVIDIA Nemotron, and tells you what to do, eve
 4. **Assistant tab (Ask Moby):** ask "What should I do if the road ahead is flooded?". The answer cites its
    sources (official alerts, guidance, official government websites found with Tavily). Ask something
    off-topic and Moby says it can't answer rather than guessing.
-5. **Settings → About → How Moby uses AI:** which model does what, and what AI never decides.
+5. **Before you go** (Home): pick a destination such as Phakding, Nepal, or a route (Lukla → Phakding → Namche
+   Bazaar), or long-press the map. Nemotron Ultra explains the alerts and reports along it with sources; save it for
+   offline with the emergency numbers.
+6. **Settings → About → How Moby uses AI:** which model does what, and what AI never decides.
 
 ## Why
 
@@ -64,7 +67,7 @@ urgent it is**. Those are deterministic rules (`moby/escalation/`).
 |---|---|---|
 | **Nemotron 3 Nano** | Translates non-English warnings (Japanese, Spanish, Nepali…) into English, on ingest. Fast and cheap, so it's used for the high-volume path. Also rewrites Ask Moby questions into generic search queries without personal details. | Every number in the original (times, levels, magnitudes) must survive, or the translation is discarded and the original is shown (`moby/feeds/translate.py`). |
 | **Nemotron 3 Super** | *What this means for you*: 2–3 plain sentences and up to 3 actions per official warning, cached per event and also put in the **push notification**. **Ask Moby**: answers with `[n]` citations. **In your language**: translates these into the phone's language (17 languages, reasoning off: 1–3 s). | Grounding checks (`moby/ai/grounding.py`): no number that isn't in the source, and the answer's words must come from the sources it cites; otherwise it's withheld. Ask Moby abstains when its sources don't cover the question. Translations must keep every number, citation and place name (`moby/ai/localize.py`), or the reader gets the English. |
-| **Nemotron 3 Ultra** | Writes the offline safety guidance cards from official pages (Ready.gov, NWS…), as a Serverless Job. | Every line must cite the line of the source page it came from (`moby/jobs/guidance.py`). |
+| **Nemotron 3 Ultra** | Writes the offline safety guidance cards from official pages (Ready.gov, NWS…), as a Serverless Job. **Before you go**: explains why the alerts and community reports around a trip destination matter, for a pack saved on the phone. | Guidance: every line must cite the line of the source page it came from (`moby/jobs/guidance.py`). Before you go: PostGIS picks every alert and report; each statement must cite them (or an official page found with Tavily), and its numbers, names and hazards must be in what it cites, or it's dropped (`moby/ai/trip.py`). |
 | **Qwen3-Embedding-8B** | Retrieval for Ask Moby over the guidance cards (pgvector), and event embeddings. | Similarity cut-offs measured on real questions. |
 
 **Why Token Factory:** an OpenAI-compatible API with the Nemotron Nano / Super / Ultra tiers. Moby uses

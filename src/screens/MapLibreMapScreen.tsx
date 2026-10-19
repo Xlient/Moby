@@ -40,6 +40,8 @@ LogManager.onLog(({ level, message }) => {
 interface Props {
   onBack: () => void;
   onAlertDetail: (alertId: string) => void;
+  /** Long-press: "Before you go" for that spot (feature flag trip_briefing). */
+  onLongPressPoint?: (point: { lat: number; lon: number }) => void;
 }
 
 
@@ -48,7 +50,7 @@ function mb(bytes: number): string {
   return `${(bytes / 1_048_576).toFixed(bytes < 10_485_760 ? 1 : 0)} MB`;
 }
 
-export function MapLibreMapScreen({ onBack, onAlertDetail }: Props) {
+export function MapLibreMapScreen({ onBack, onAlertDetail, onLongPressPoint }: Props) {
   const { theme, isDark } = useTheme();
   const { nearby, radiusKm, setRadiusKm, isOffline, center } = useNearbyAlerts();
   const camera = useRef<CameraRef>(null);
@@ -89,6 +91,11 @@ export function MapLibreMapScreen({ onBack, onAlertDetail }: Props) {
         mapStyle={basemap.mapStyle}
         onDidFailLoadingMap={() => setFailed(true)}
         onPress={() => setSelectedId(null)}
+        onLongPress={
+          onLongPressPoint
+            ? (e) => onLongPressPoint({ lat: e.nativeEvent.lngLat[1], lon: e.nativeEvent.lngLat[0] })
+            : undefined
+        }
         attributionPosition={{ bottom: 8, left: 8 }}
         logo={false}
         touchRotate={false}

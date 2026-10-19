@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { Button, Chip, Text, TextInput } from 'react-native-paper';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Button, Chip, Icon, Text, TextInput } from 'react-native-paper';
 import { useMutation } from '@tanstack/react-query';
 import { api, ApiRequestError } from '@/api/client';
 import type { AskAnswer } from '@/api/types';
@@ -20,7 +20,7 @@ import { countryAt } from '@/data/emergencyNumbers';
 import { useUserCenter } from '@/location/UserLocationContext';
 import { phoneLanguage } from '@/lib/language';
 import { useTheme } from '@/theme/ThemeContext';
-import { spacing, typography } from '@/theme/tokens';
+import { radius, spacing, typography } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useGuidance } from '@/guidance/guidanceStore';
@@ -49,7 +49,7 @@ type Turn = {
  * official websites, always with sources. When it can't ground an answer it says so
  * instead of guessing. Emergency numbers stay on screen the whole time.
  */
-export function AssistantScreen() {
+export function AssistantScreen({ onTripPress }: { onTripPress?: () => void } = {}) {
   const { theme } = useTheme();
   const r = useResponsive();
   const { user } = useAuth();
@@ -157,6 +157,23 @@ export function AssistantScreen() {
           </Text>
         )}
         <EmergencyNumbers country={country} />
+
+        {onTripPress && turns.length === 0 && (
+          <Pressable
+            onPress={onTripPress}
+            accessibilityRole="button"
+            accessibilityLabel="Before you go. Brief a destination and save it for offline."
+            style={[styles.trip, { backgroundColor: theme.bg.raised }]}
+          >
+            <Icon source="bag-personal-outline" size={24} color={theme.text.primary} />
+            <View style={styles.flex}>
+              <Text variant="titleMedium" style={{ color: theme.text.primary }}>Before you go</Text>
+              <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
+                Going somewhere? Get a briefing on its alerts and save it for when you lose signal.
+              </Text>
+            </View>
+          </Pressable>
+        )}
 
         {turns.length === 0 && (
           <View style={styles.suggestions}>
@@ -307,6 +324,14 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'flex-start' },
   gap: { marginTop: spacing.scale[2] },
   suggestions: { gap: spacing.scale[2] },
+  trip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.scale[3],
+    padding: spacing.scale[3],
+    borderRadius: radius.card,
+    minHeight: spacing.minTapTarget,
+  },
   alignStart: { alignSelf: 'flex-start' },
   card: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: spacing.scale[2], gap: spacing.scale[1] },
   composer: {

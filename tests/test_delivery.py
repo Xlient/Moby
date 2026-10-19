@@ -134,6 +134,21 @@ def test_brief_pending_ready_and_missing(client, db_url):
                   "(%s, 'nemotron-3-ultra', 'River cresting tonight.', 'Gauge data is 2 h old.', '[\"NWS\"]')", (eid,))
     b = client.get(f"/v1/events/{eid}/brief").json()
     assert b["summary"] == "River cresting tonight." and b["uncertainty"] and b["sources"] == ["NWS"]
+    assert b["version"] == 1 and "changes" not in b and "claims" not in b     # a first, older-style brief
+
+    # A rewritten brief carries citations, claims and what changed (contract 0.8.0).
+    with psycopg.connect(db_url, autocommit=True) as c:
+        c.execute("""UPDATE briefs SET version = 2, changes = 'The warning now covers two more districts.',
+                         changes_since = '2026-10-17T10:00:00Z',
+                         claims = '[{"text": "Flood warning until 18:00", "basis": "official", "evidence": ["O1"]}]',
+                         contradictions = '["Two reports disagree on whether the road is passable"]',
+                         citations = '[{"id": "O1", "title": "NWS Flood Warning", "kind": "official"}]'
+                     WHERE event_id = %s""", (eid,))
+    b = client.get(f"/v1/events/{eid}/brief").json()
+    assert b["version"] == 2 and b["changes"].startswith("The warning")
+    assert b["changes_since"].startswith("2026-10-17T10:00:00")
+    assert b["claims"][0]["basis"] == "official" and b["citations"][0]["id"] == "O1"
+    assert b["contradictions"] == ["Two reports disagree on whether the road is passable"]
 
 
 # ── Worker ───────────────────────────────────────────────────────────

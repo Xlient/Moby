@@ -37,6 +37,8 @@ import { TrustReviewScreen } from '@/screens/TrustReviewScreen';
 import { AlertCardReviewScreen } from '@/screens/AlertCardReviewScreen';
 import { MyReportsScreen } from '@/screens/MyReportsScreen';
 import { AboutScreen } from '@/screens/AboutScreen';
+import { TripBriefScreen } from '@/screens/TripBriefScreen';
+import { useTripPacks } from '@/trips/tripPacks';
 import { OnboardingScreen, hasSeenOnboarding, resetOnboarding } from '@/screens/OnboardingScreen';
 
 type Screen =
@@ -56,7 +58,8 @@ type Screen =
   | { name: 'nearby-mesh' }
   | { name: 'offline-answers' }
   | { name: 'trust-review' }
-  | { name: 'alert-card-review' };
+  | { name: 'alert-card-review' }
+  | { name: 'trip'; point?: { lat: number; lon: number } };
 
 function getActiveTab(screen: Screen): string {
   switch (screen.name) {
@@ -69,6 +72,7 @@ function getActiveTab(screen: Screen): string {
     case 'map':
     case 'trust-review':
     case 'alert-card-review':
+    case 'trip':
       return 'home';
     case 'assistant':
       return 'assistant';
@@ -98,6 +102,9 @@ export function App() {
   const modelState = useModelState();
   // Offline the server's flags can't be fetched, so a downloaded offline model also keeps Ask Moby visible.
   const showAssistant = isEnabled('ask_moby') || isEnabled('on_device_assistant') || modelState.kind === 'ready';
+  // Saved trip packs must open with no signal, when /config (and so the flag) can't load.
+  const tripPacks = useTripPacks();
+  const showTrip = isEnabled('trip_briefing') || tripPacks.length > 0;
   useMeshLifecycle();
 
   const push = useCallback((next: Screen) => setStack((s) => [...s, next]), []);
@@ -142,6 +149,10 @@ export function App() {
     if (isOnline) regions.split(',').forEach((r) => syncGuidance(r as RegionCode));
   }, [isOnline, regions]);
   const openGuidance = useCallback((hazard?: HazardType) => push({ name: 'guidance', hazard }), [push]);
+  const openTrip = useCallback(
+    (point?: { lat: number; lon: number }) => push({ name: 'trip', point }),
+    [push],
+  );
 
   const handleTabChange = useCallback((tab: string) => {
     switch (tab) {
@@ -215,6 +226,7 @@ export function App() {
             onMapPress={() => push({ name: 'map' })}
             onGuidancePress={() => openGuidance()}
             onMyReportsPress={() => push({ name: 'my-reports' })}
+            onTripPress={showTrip ? () => openTrip() : undefined}
           />
         )}
         {screen.name === 'alerts' && (
@@ -225,11 +237,20 @@ export function App() {
         )}
         {screen.name === 'map' &&
           (mapEngine === 'maplibre' ? (
-            <MapLibreMapScreen onBack={goBack} onAlertDetail={navigateToAlert} />
+            <MapLibreMapScreen
+              onBack={goBack}
+              onAlertDetail={navigateToAlert}
+              onLongPressPoint={showTrip ? openTrip : undefined}
+            />
           ) : (
-            <MapScreen onBack={goBack} onAlertDetail={navigateToAlert} />
+            <MapScreen onBack={goBack} onAlertDetail={navigateToAlert} onLongPressPoint={showTrip ? openTrip : undefined} />
           ))}
-        {screen.name === 'assistant' && showAssistant && <AssistantScreen />}
+        {screen.name === 'assistant' && showAssistant && (
+          <AssistantScreen onTripPress={showTrip ? () => openTrip() : undefined} />
+        )}
+        {screen.name === 'trip' && (
+          <TripBriefScreen onBack={goBack} initialPoint={screen.point} onAlertPress={navigateToAlert} />
+        )}
         {screen.name === 'settings' && (
           <SettingsScreen
             onSubscriptions={() => push({ name: 'subscriptions' })}

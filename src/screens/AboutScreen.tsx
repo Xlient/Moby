@@ -28,7 +28,7 @@ const SOURCES: { group: string; names: string }[] = [
 const AI_ROLES: { model: string; role: string }[] = [
   { model: 'NVIDIA Nemotron Nano', role: 'Translates warnings into English. Every number must survive the translation, or the original is shown instead.' },
   { model: 'NVIDIA Nemotron Super', role: '“What this means for you” on official warnings, and Ask Moby’s answers. Both use only the official text and are checked against it before you see them.' },
-  { model: 'NVIDIA Nemotron Ultra', role: 'Writes the offline safety guidance from official pages. Each line must cite the page it came from.' },
+  { model: 'NVIDIA Nemotron Ultra', role: 'Writes the offline safety guidance from official pages, and explains “Before you go” trip briefings. Each line must cite what it came from; Moby’s database, not the AI, decides which alerts and reports are included.' },
   { model: 'Qwen3 embeddings', role: 'Finds the guidance that answers your question in Ask Moby.' },
   { model: 'Tavily', role: 'When Moby’s guidance doesn’t cover a question, searches only official government websites for that country.' },
 ];
@@ -38,6 +38,7 @@ const FEATURES: { flag: keyof ClientConfig['flags']; label: string }[] = [
   { flag: 'situational_brief', label: 'AI situation briefs' },
   { flag: 'mesh_relay', label: 'Bluetooth relay between phones' },
   { flag: 'ask_moby', label: 'Ask Moby' },
+  { flag: 'trip_briefing', label: 'Before you go (trip briefings)' },
   { flag: 'on_device_assistant', label: 'On-device assistant' },
   { flag: 'proximity_confirmation', label: '“Can you confirm?” prompts' },
 ];

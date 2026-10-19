@@ -722,6 +722,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/trips/brief": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * "Before you go": a trip briefing for a destination, to save for offline
+         * @description Code decides, AI explains. PostGIS selects the active official alerts whose area (or point) is within radius_km of the destination and the community reports there from the last 72 hours. NVIDIA Nemotron Ultra then explains why each matters for the trip; every statement cites the rows (O1…, C1…) or official web pages (W1…, Tavily, restricted to the country's official domains) it rests on, and is dropped if its numbers, names or hazards aren't in them. Statements resting on community reports have basis community and are shown as unverified. Never changes tier, severity or delivery. The destination is snapped to 0.01° and isn't stored with the caller's identity; the AI part is cached per snapped point, radius, trip and day, and redone when an alert or report changes.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TripBriefRequest"];
+                };
+            };
+            responses: {
+                /** @description The briefing (always; ai_status says whether the AI part is included) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TripBrief"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                /** @description Invalid destination */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Too many briefings */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/{event_id}/confirm": {
         parameters: {
             query?: never;
@@ -1450,6 +1508,11 @@ export interface components {
                 proximity_confirmation: boolean;
                 /** @default false */
                 early_tier_opt_in: boolean;
+                /**
+                 * @description POST /trips/brief ("Before you go") is available
+                 * @default false
+                 */
+                trip_briefing: boolean;
             };
         };
         /**
@@ -1688,6 +1751,115 @@ export interface components {
             /** @description Language of the answer (ISO 639-1); 'en' unless translated by Moby */
             language?: string;
         };
+        /** @description A destination (lat + lon) or a route (stops), not both. */
+        TripBriefRequest: {
+            lat?: number;
+            lon?: number;
+            /** @description A route, in order. Checked as straight lines between the stops (not the actual trail), with radius_km on either side; at most 500 km in total. */
+            stops?: components["schemas"]["TripStop"][];
+            /** @default 25 */
+            radius_km: number;
+            /**
+             * Format: date
+             * @description Default today (UTC); yesterday to a year ahead
+             */
+            start_date?: string;
+            /**
+             * Format: date
+             * @description Default start_date + 3 days; at most 30 days after it
+             */
+            end_date?: string;
+            /** @description Picks the official websites to search; else taken from the alerts */
+            country?: string;
+            /** @description The place picked from the app's list (used in the web search and the text) */
+            place_name?: string;
+        };
+        TripStop: {
+            lat: number;
+            lon: number;
+            /** @description The place picked from the app's list */
+            name?: string;
+        };
+        TripBrief: {
+            /** Format: date-time */
+            generated_at: string;
+            destination: {
+                /** @description Snapped to 0.01° */
+                lat: number;
+                lon: number;
+                radius_km: number;
+                place_name?: string;
+                country?: string;
+            };
+            /** @description Present for a route; destination is then its last stop. */
+            route?: {
+                stops: components["schemas"]["TripStop"][];
+                /** @description Sum of the straight legs between stops */
+                length_km: number;
+            };
+            trip: {
+                /** Format: date */
+                start_date: string;
+                /** Format: date */
+                end_date: string;
+            };
+            /** @description Most severe first, then nearest. Every one is an agency's alert. */
+            official_alerts: (components["schemas"]["Alert"] & {
+                /** @description O1, O2… */
+                cite_id: string;
+                /** @description The alert expires before start_date */
+                ends_before_trip: boolean;
+                /** @description Routes only */
+                near_stop?: string;
+            })[];
+            /** @description Reports from people nearby (fused community events), last 72 hours. Never official: clients MUST show them as unverified and apart from official_alerts. */
+            community_reports: (components["schemas"]["Alert"] & {
+                /** @description C1, C2… */
+                cite_id: string;
+                /** @description Different people who reported it */
+                reporter_count: number;
+                /** Format: date-time */
+                last_report_at: string;
+                /** @description Routes only */
+                near_stop?: string;
+            })[];
+            /** @description Hazard types found (for matching offline guidance cards) */
+            hazards: components["schemas"]["HazardType"][];
+            web_sources: {
+                /** @description W1, W2… */
+                cite_id: string;
+                title: string;
+                url: string;
+                publisher: string;
+            }[];
+            searched_web: boolean;
+            /** @enum {string} */
+            web_status: "searched" | "no_official_sites" | "no_key" | "over_cap" | "failed";
+            /** @description Absent unless ai_status is ok or partial. */
+            explanation?: {
+                /** @description e.g. nvidia/Nemotron-3-Ultra-550b-a55b */
+                model: string;
+                claims: {
+                    text: string;
+                    /**
+                     * @description community when any cited source is a community report; show as unverified
+                     * @enum {string}
+                     */
+                    basis: "official" | "community";
+                    cites: string[];
+                }[];
+            };
+            /**
+             * @description ok / partial (some statements failed their checks and were dropped); withheld (none passed); over_cap (daily limit); unavailable (no model); nothing_to_explain (no rows). Without explanation, label the lists as not written by AI.
+             * @enum {string}
+             */
+            ai_status: "ok" | "partial" | "withheld" | "over_cap" | "unavailable" | "nothing_to_explain";
+            /** @description The AI part and web results came from the cache */
+            cached: boolean;
+            /** @description Required, never empty. What the briefing can't tell you, including that a saved copy goes stale. Clients MUST display it. */
+            uncertainty: string[];
+            language: string;
+        };
         SituationalBrief: {
             event_id: string;
             /** Format: date-time */
@@ -1709,6 +1881,32 @@ export interface components {
             /** @description Required. What the brief does not know and where it may be wrong. Clients MUST display this — never render a brief as certainty. */
             uncertainty: string;
             sources?: string[];
+            /** @description Increases each time the brief is rewritten for this event. */
+            version?: number;
+            /** @description The brief's statements, each tied to the citations it rests on. Clients label each by basis; a community claim is never shown as official. */
+            claims?: {
+                text: string;
+                /** @enum {string} */
+                basis: "official" | "community" | "news";
+                evidence: string[];
+            }[];
+            /** @description Where reports or sources disagree. */
+            contradictions?: string[];
+            citations?: {
+                /** @description O1… official, C1… community, W1… web */
+                id: string;
+                title: string;
+                url?: string;
+                /** @enum {string} */
+                kind: "official" | "community" | "news";
+            }[];
+            /** @description What changed since the previous version, in plain words. Absent on a first brief. Computed from a diff of the event's facts; the model only words it. */
+            changes?: string;
+            /**
+             * Format: date-time
+             * @description When the version that `changes` compares against was generated.
+             */
+            changes_since?: string;
         };
         CascadeAssessment: {
             region: components["schemas"]["RegionCode"];
