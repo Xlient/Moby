@@ -26,6 +26,8 @@ from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from moby.geo import country_at
+
 DEBOUNCE = timedelta(minutes=30)  # min time between two briefs of one event
 LEASE = timedelta(minutes=5)      # a claim older than this is presumed dead and re-claimable
 MAX_ATTEMPTS = 2                  # one retry, then brief_status = 'failed' (saves the daily cap)
@@ -198,8 +200,8 @@ ORDER BY version DESC LIMIT 1
 def event_facts(conn: Connection, event_id: str) -> dict[str, Any] | None:
     """The event as the brief sees it (official wording in English when translated), plus
     area in km², reporter counts and `place`: the official area's name as the app shows it
-    (e.g. "Solukhumbu"), or None for community events and feeds without one. None if the
-    event doesn't exist."""
+    (e.g. "Solukhumbu"), or None for community events and feeds without one. A missing
+    country is worked out from the position, offline. None if the event doesn't exist."""
     from moby.api.alerts import _location_name   # same place name the app shows
     with conn.cursor(row_factory=dict_row) as cur:
         facts = cur.execute(FACTS_SQL, {"event_id": event_id}).fetchone()
@@ -207,6 +209,9 @@ def event_facts(conn: Connection, event_id: str) -> dict[str, Any] | None:
         return None
     facts["place"] = _location_name(facts) if facts["source_feed"] else None
     del facts["raw_payload"]
+    if not facts["country"] and facts["lat"] is not None:
+        # Community events have no country: work it out locally from the position (moby/geo.py).
+        facts["country"] = country_at(facts["lat"], facts["lon"])
     return facts
 
 

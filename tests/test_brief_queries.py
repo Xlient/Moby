@@ -140,6 +140,7 @@ def test_evidence_for_a_corroborated_flood(conn):  # noqa: F811
     assert facts["event_id"] == eid and facts["source"] != "official"
     assert facts["reporters"] == 3 and facts["reports"] == 3
     assert isinstance(facts["lat"], float) and facts["area_km2"] is None   # community events have no area
+    assert facts["country"] == "US"                                         # worked out from the position
     json.dumps(facts)                                                       # JSON-ready snapshot
     groups = bq.community_evidence(conn, eid)
     assert sum(g["reporters"] for g in groups) >= 3 and all(g["first_seen"] <= g["last_seen"] for g in groups)
