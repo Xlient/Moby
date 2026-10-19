@@ -49,6 +49,14 @@ interface AuthContextValue {
   /** First name to greet the user with, if they gave one. */
   firstName: string | null;
   loading: boolean;
+  /**
+   * Who is signed in, for deciding what to show: the confirmed user, or, while Firebase
+   * is still checking a saved sign-in at launch, the saved one. Firebase reloads the
+   * account from Google before it reports the user, which can take many seconds on a
+   * slow or filtered connection; the app shouldn't wait on that. `user` stays null
+   * until it's confirmed; getIdToken waits for it.
+   */
+  sessionUid: string | null;
   isConfigured: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
@@ -115,6 +123,18 @@ function toFriendly(err: unknown): Error {
   return new Error(friendlyError((err as { code?: string })?.code ?? ''));
 }
 
+/** The uid of the sign-in Firebase saved on this phone (its persistence key), if any. */
+function savedSessionUid(): string | null {
+  if (!isFirebaseConfigured) return null;
+  try {
+    const saved = kv.get(`firebase:authUser:${env.firebase.apiKey}:[DEFAULT]`);
+    const uid = saved ? (JSON.parse(saved) as { uid?: unknown }).uid : null;
+    return typeof uid === 'string' && uid ? uid : null;
+  } catch {
+    return null;
+  }
+}
+
 function firstNameOf(name: string | null | undefined): string | null {
   const first = name?.trim().split(/\s+/)[0];
   return first || null;
@@ -123,7 +143,11 @@ function firstNameOf(name: string | null | undefined): string | null {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(isFirebaseConfigured);
+  // Read once, synchronously: with a saved sign-in the app shows at once.
+  const [savedUid] = useState(savedSessionUid);
+  const [authReady, setAuthReady] = useState(!isFirebaseConfigured);
+  const loading = !authReady && !savedUid;
+  const sessionUid = authReady ? (user?.uid ?? null) : savedUid;
   // Name typed on the sign-up form. onAuthStateChanged fires inside
   // createUserWithEmailAndPassword, before we can attach the name to the account,
   // so the profile effect reads it from here. One writer avoids a create race.
@@ -133,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      setLoading(false);
+      setAuthReady(true);
     });
     return unsubscribe;
   }, []);
@@ -278,8 +302,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const getIdToken = useCallback(async (): Promise<string | null> => {
-    if (!auth?.currentUser) return null;
-    return auth.currentUser.getIdToken();
+    if (!auth) return null;
+    // At launch, wait for Firebase to finish restoring the saved sign-in.
+    await auth.authStateReady();
+    return auth.currentUser ? auth.currentUser.getIdToken() : null;
   }, []);
 
   const firstName = firstNameOf(profile?.display_name ?? user?.displayName);
@@ -290,6 +316,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       firstName,
       loading,
+      sessionUid,
       isConfigured: isFirebaseConfigured,
       signIn,
       signUp,
@@ -301,7 +328,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       deleteAccount,
       getIdToken,
     }),
-    [user, profile, firstName, loading, signIn, signUp, googleSignIn, sendPasswordReset, updateName, signOutFn, deleteAccount, getIdToken],
+    [user, profile, firstName, loading, sessionUid, signIn, signUp, googleSignIn, sendPasswordReset, updateName, signOutFn, deleteAccount, getIdToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

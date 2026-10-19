@@ -52,7 +52,7 @@ type Turn = {
 export function AssistantScreen({ onTripPress }: { onTripPress?: () => void } = {}) {
   const { theme } = useTheme();
   const r = useResponsive();
-  const { user } = useAuth();
+  const { sessionUid } = useAuth();
   const center = useUserCenter();
   const country = countryAt(center.lat, center.lon);
   const [draft, setDraft] = useState('');
@@ -124,7 +124,7 @@ export function AssistantScreen({ onTripPress }: { onTripPress?: () => void } = 
     }
   }
 
-  if (!user && !env.useMock && !(canAnswerOffline && !isOnline)) {
+  if (!sessionUid && !env.useMock && !(canAnswerOffline && !isOnline)) {
     return (
       <View style={[styles.center, { padding: r.gutter }]}>
         <Text accessibilityRole="header" style={[r.heading, { color: theme.text.primary }]}>Ask Moby</Text>

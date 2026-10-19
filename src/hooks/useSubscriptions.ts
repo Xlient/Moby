@@ -55,7 +55,8 @@ export function useSubscriptions(): UseSubscriptionsResult {
   const listed = useQuery({
     queryKey: ['subscriptions', useServer ? user?.uid : 'mock'],
     queryFn: () => api.getSubscriptions(),
-    enabled: !useFirestore,
+    // Signed in but not confirmed yet (launch): wait, or this would ask without a token.
+    enabled: !useFirestore && (env.useMock || !!user),
     staleTime: 2 * 60_000,
   });
 

@@ -67,7 +67,8 @@
         {
           "enableOpenCLAndHexagon": false
         }
-      ]
+      ],
+      "./plugins/withSceneLifecycle"
     ]
   }
 }
