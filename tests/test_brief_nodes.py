@@ -52,7 +52,7 @@ FAKE = BriefDraft(reasoning="r", summary="People nearby report rising water.", u
 
 def test_routing():
     assert route_after_evidence({"evidence": []}) == END and route_after_evidence({"evidence": [{}]}) == "research"
-    assert route_after_draft({"draft": {}}) == END and route_after_draft({"draft": {"summary": "s"}}) == "save_brief"
+    assert route_after_draft({"draft": {}}) == END and route_after_draft({"draft": {"summary": "s"}}) == "check_brief"
 
 
 def test_message_numbers_the_evidence():
@@ -61,12 +61,17 @@ def test_message_numbers_the_evidence():
     assert "Hazard: flood" in msg and "no official warning" in msg and "[C1] (community) Rising water" in msg
 
 
-def run_brief(conn, monkeypatch, eid, draft=FAKE):  # noqa: F811
+def run_brief(conn, monkeypatch, eid, draft=FAKE, drafts=None, retries=None):  # noqa: F811
+    """Run the whole graph with fake Ultra and Tavily. `drafts`: one per write_brief call (to
+    exercise the retry loop); `retries` collects the problems Ultra was told about."""
     calls = []
+    queue = list(drafts or [])
 
-    async def fake_write_draft(evidence, *, hazard, official, searched_web=True):
+    async def fake_write_draft(evidence, *, hazard, official, searched_web=True, problems=None):
         calls.append(evidence)
-        return draft
+        if retries is not None and problems:
+            retries.append(problems)
+        return queue.pop(0) if queue else draft
 
     async def fake_search_web(facts, *, calls):
         return [{"kind": "official", "title": "Flood safety · weather.gov", "text": "Turn around.",
@@ -171,3 +176,64 @@ def test_long_official_text_is_cut_at_a_sentence():
     text = brief_nodes._cut("First sentence. " * 300, 4000)
     assert len(text) <= 4000 + 4 and text.endswith(". […]")
     assert brief_nodes._cut("short", 4000) == "short"
+
+
+
+# ── Step 5: checks, the retry loop and repair ────────────────────────────────────
+
+BAD = BriefDraft(reasoning="r", summary="People report rising water.", uncertainty="Unverified.", claims=[
+    {"text": "Officials confirm rising water.", "basis": "official", "evidence": ["C1"]},     # community as official
+    {"text": "Rising water reported.", "basis": "community", "evidence": ["C1"]}])
+
+
+def flood_event(conn):  # noqa: F811
+    reports = seeded(conn, "corroborated_flood")
+    eid = fuse_one(conn, reports[0])
+    for r in reports[1:]:
+        fuse_one(conn, r)
+    return eid
+
+
+def test_a_bad_draft_is_retried_with_its_problems_then_saved(conn, monkeypatch):  # noqa: F811
+    retries = []
+    calls = run_brief(conn, monkeypatch, flood_event(conn), drafts=[BAD, FAKE], retries=retries)
+    assert len(calls) == 2                                              # one retry
+    assert "is marked official but cites C1 (community)" in retries[0][0]
+    (claims,) = conn.execute("SELECT claims FROM briefs").fetchone()
+    assert claims == FAKE.to_saved()["claims"]
+
+
+def test_still_bad_after_the_retry_keeps_only_what_passes(conn, monkeypatch):  # noqa: F811
+    calls = run_brief(conn, monkeypatch, flood_event(conn), drafts=[BAD, BAD])
+    assert len(calls) == 2                                              # never a third paid call
+    (claims,) = conn.execute("SELECT claims FROM briefs").fetchone()
+    assert [c["text"] for c in claims] == ["Rising water reported."]
+
+
+def test_nothing_passing_saves_nothing(conn, monkeypatch):  # noqa: F811
+    all_bad = BriefDraft(reasoning="r", summary="s", uncertainty="u", claims=[
+        {"text": "Officials confirm it.", "basis": "official", "evidence": ["C1"]}])
+    run_brief(conn, monkeypatch, flood_event(conn), drafts=[all_bad, all_bad])
+    assert conn.execute("SELECT count(*) FROM briefs").fetchone()[0] == 0
+
+
+# ── Step 6: what changed ───────────────────────────────────────────────────────────
+
+def test_a_rewrite_says_what_changed(conn, monkeypatch):  # noqa: F811
+    eid = flood_event(conn)
+    run_brief(conn, monkeypatch, eid)                                    # version 1
+    # Two more people report it; the brief is older than the debounce.
+    conn.execute("UPDATE briefs SET generated_at = now() - interval '1 hour'")
+    conn.execute("UPDATE brief_versions SET facts = jsonb_set(facts, '{reporters}', '1')")
+
+    async def fake_write_changes(changes):
+        return "Two more people nearby reported it (unverified)."
+    monkeypatch.setattr(brief_nodes, "write_changes", fake_write_changes)
+    run_brief(conn, monkeypatch, eid)                                    # version 2
+    version, changes, since = conn.execute("SELECT version, changes, changes_since FROM briefs").fetchone()
+    assert version == 2 and changes == "Two more people nearby reported it (unverified)." and since is not None
+
+
+def test_first_brief_has_no_what_changed(conn, monkeypatch):  # noqa: F811
+    run_brief(conn, monkeypatch, flood_event(conn))
+    assert conn.execute("SELECT changes, changes_since FROM briefs").fetchone() == (None, None)

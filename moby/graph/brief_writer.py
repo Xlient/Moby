@@ -32,17 +32,23 @@ def format_evidence(evidence: list[EvidenceItem]) -> str:
     return "\n\n".join(f"[{e['id']}] ({e['kind']}) {e['title']}\n{e['text']}" for e in evidence)
 
 
-def brief_message(evidence: list[EvidenceItem], *, hazard: str, official: bool, searched_web: bool = True) -> str:
-    """The user message: a line of context, then the evidence."""
+def brief_message(evidence: list[EvidenceItem], *, hazard: str, official: bool, searched_web: bool = True,
+                  problems: list[str] | None = None) -> str:
+    """The user message: a line of context, the evidence, and on a retry what to fix."""
     who = "an official warning" if official else "reported by people nearby (no official warning)"
     web = "" if searched_web else " No web sources were found or searched."
-    return f"Hazard: {hazard}. Event: {who}.{web}\n\nEvidence:\n{format_evidence(evidence)}"
+    msg = f"Hazard: {hazard}. Event: {who}.{web}\n\nEvidence:\n{format_evidence(evidence)}"
+    if problems:
+        fixes = "\n".join(f"- {p}" for p in problems)
+        msg += f"\n\nYour previous draft had these problems. Write the brief again without them:\n{fixes}"
+    return msg
 
 
 async def write_draft(evidence: list[EvidenceItem], *, hazard: str, official: bool,
-                      searched_web: bool = True) -> BriefDraft:
+                      searched_web: bool = True, problems: list[str] | None = None) -> BriefDraft:
     """Ask Ultra for a brief written only from `evidence`. Raises on timeouts and API errors."""
     llm = chat_model("ultra", temperature=0, timeout=TIMEOUT_S, max_retries=1).with_structured_output(
         BriefDraft, method="function_calling")
-    message = brief_message(evidence, hazard=hazard, official=official, searched_web=searched_web)
+    message = brief_message(evidence, hazard=hazard, official=official, searched_web=searched_web,
+                            problems=problems)
     return await llm.ainvoke([("system", BRIEF_SYS_PROMPT), ("user", message)])

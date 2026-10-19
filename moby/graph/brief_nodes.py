@@ -6,6 +6,8 @@ from moby.ai.budget import take_sync
 from moby.api.alerts import SOURCE_ATTRIBUTION
 from moby.llm import model_name
 
+from .brief_changes import describe, diff_facts, write_changes
+from .brief_checks import draft_problems, repair
 from .brief_queries import community_evidence, event_facts, previous_version
 from .brief_queries import save_brief as save_brief_row
 from .brief_research import plan_calls, search_web
@@ -116,10 +118,33 @@ async def write_brief(state: BriefState) -> dict:
     if not await asyncio.to_thread(_take_brief_budget):
         log.warning("brief %s: daily brief cap reached, not written", state["event_id"])
         return {"draft": {}, "problems": ["daily brief cap reached"]}
+    attempts = state.get("attempts", 0)
+    # On a retry, Ultra is told what check_brief found wrong with its last draft.
+    fix = state.get("problems") if attempts else None
     # No DB connection is held while Ultra writes (up to a minute): the pool is small.
     draft = await write_draft(state["evidence"], hazard=state["facts"]["hazard_type"],
-                              official=state["facts"]["source"] == "official", searched_web=bool(state.get("web")))
-    return {"draft": draft.to_saved(), "attempts": state.get("attempts", 0) + 1}
+                              official=state["facts"]["source"] == "official", searched_web=bool(state.get("web")),
+                              problems=fix)
+    return {"draft": draft.to_saved(), "attempts": attempts + 1}
+
+
+def check_brief(state: BriefState) -> dict:
+    """Code checks the draft before anything is saved: ids exist, basis matches the evidence
+    (nothing community passed off as official), no numbers the sources don't have."""
+    found = draft_problems(state["draft"], state["evidence"])
+    if found:
+        log.info("brief %s: draft %s has %d problem(s): %s", state["event_id"], state.get("attempts"),
+                 len(found), "; ".join(found)[:500])
+    return {"problems": found}
+
+
+def repair_brief(state: BriefState) -> dict:
+    """Still wrong after the retry: keep what passes (see brief_checks.repair). Nothing passes →
+    no draft, so nothing is saved and the event is settled as failed."""
+    fixed = repair(state["draft"], state["evidence"])
+    log.warning("brief %s: kept %s claim(s) after the retry", state["event_id"],
+                len(fixed["claims"]) if fixed else 0)
+    return {"draft": fixed or {}}
 
 
 _EVIDENCE_ID = re.compile(r"\b[OCW]\d+\b")
@@ -133,6 +158,31 @@ def cited_ids(draft: dict) -> set[str]:
     return ids
 
 
+def _take_changes_budget() -> bool:
+    with connection() as conn:
+        return take_sync(conn, "brief_changes", 1) == 1
+
+
+async def explain_changes(state: BriefState) -> dict:
+    """'What changed' since the previous brief: code diffs the facts (brief_changes.diff_facts),
+    Super words it. First brief, or nothing meaningful changed → no "what changed". Over the
+    Super cap or on an error → the plain sentences, never a failed brief."""
+    previous = state.get("previous")
+    if not previous:
+        return {"changes": [], "changes_text": None}
+    changes = diff_facts(previous["facts"], state["facts"])
+    if not changes:
+        return {"changes": [], "changes_text": None}
+    text = describe(changes)
+    if await asyncio.to_thread(_take_changes_budget):
+        try:
+            text = await write_changes(changes)
+        except Exception as e:  # noqa: BLE001 - the plain sentences are a fine fallback
+            log.warning("brief %s: what-changed sentence failed (%s); plain text used", state["event_id"],
+                        type(e).__name__)
+    return {"changes": changes, "changes_text": text}
+
+
 def save_brief(state: BriefState) -> dict:
     """Save the draft for the claimed request and mark the event 'ready', in one transaction.
     Sources = only the evidence the brief cites (in evidence order), so the app never lists a
@@ -141,8 +191,11 @@ def save_brief(state: BriefState) -> dict:
     citations = [{"id": e["id"], "title": e["title"], "kind": e["kind"],
                   **({"url": e["url"]} if e.get("url") else {})} for e in state["evidence"] if e["id"] in used]
     with connection() as conn:
+        previous = state.get("previous")
         version = save_brief_row(conn, state["event_id"], state["requested_at"], brief=state["draft"],
-                                 citations=citations, facts=state["facts"], model=model_name("ultra"))
+                                 citations=citations, facts=state["facts"], model=model_name("ultra"),
+                                 changes=state.get("changes_text"),
+                                 changes_since=previous["created_at"] if previous and state.get("changes_text") else None)
     if version is None:
         log.info("brief %s: request no longer pending; nothing saved", state["event_id"])
     return {}
