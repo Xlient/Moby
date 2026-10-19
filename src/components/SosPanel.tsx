@@ -25,6 +25,7 @@ export function SosPanel({ at }: SosPanelProps) {
   const mesh = useMesh();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [saidSafe, setSaidSafe] = useState(false);
   const own = mesh.ownSos;
 
   if (!isMeshAvailable()) {
@@ -40,6 +41,7 @@ export function SosPanel({ at }: SosPanelProps) {
 
   async function send() {
     setBusy(true);
+    setSaidSafe(false);
     setProblem(null);
     let result = await sendSos(at);
     if (result === 'mesh_off') {
@@ -86,7 +88,11 @@ export function SosPanel({ at }: SosPanelProps) {
           mode="outlined"
           icon="check-circle-outline"
           disabled={!at}
-          onPress={() => at && void sendSafe(at)}
+          onPress={() => {
+            if (!at) return;
+            setSaidSafe(true);
+            void sendSafe(at);
+          }}
           style={styles.alignStart}
           textColor={theme.text.primary}
         >
@@ -98,6 +104,11 @@ export function SosPanel({ at }: SosPanelProps) {
 
   return (
     <View style={[styles.box, { backgroundColor: theme.bg.raised, borderColor: theme.line.hairline }]}>
+      {saidSafe && (
+        <Text variant="bodyMedium" style={{ color: theme.accent.calm }} accessibilityLiveRegion="polite">
+          You told nearby phones you’re safe. They stop passing on your SOS when they hear it.
+        </Text>
+      )}
       <Text variant="titleMedium" style={{ color: theme.text.primary }}>No signal?</Text>
       <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
         Send an SOS with your location to Moby phones nearby over Bluetooth. They pass it on until a phone with signal
