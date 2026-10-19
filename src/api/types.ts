@@ -23,6 +23,12 @@ export type AlertExplanation = components['schemas']['AlertExplanation'];
 export type AskRequest = components['schemas']['AskRequest'];
 export type AskAnswer = components['schemas']['AskAnswer'];
 export type CascadeAssessment = components['schemas']['CascadeAssessment'];
+export type TripBriefRequest = components['schemas']['TripBriefRequest'];
+export type TripBrief = components['schemas']['TripBrief'];
+export type TripStop = components['schemas']['TripStop'];
+export type TripOfficialAlert = TripBrief['official_alerts'][number];
+export type TripCommunityReport = TripBrief['community_reports'][number];
+export type TripClaim = NonNullable<TripBrief['explanation']>['claims'][number];
 
 // ── Guidance ─────────────────────────────────────────────────────────
 export type GuidanceCard = components['schemas']['GuidanceCard'];
@@ -41,6 +47,13 @@ export type ReportSummary = components['schemas']['ReportSummary'];
 
 // ── Subscriptions ────────────────────────────────────────────────────
 export type Subscription = components['schemas']['Subscription'];
+
+// ── Hazard route check ───────────────────────────────────────────────
+export type RouteCheck = components['schemas']['RouteCheck'];
+export type CheckedRoute = components['schemas']['CheckedRoute'];
+export type RouteHazard = components['schemas']['RouteHazard'];
+export type RouteCheckRequest = components['schemas']['RouteCheckRequest'];
+export type Place = components['schemas']['Place'];
 
 // ── Mesh relay ───────────────────────────────────────────────────────
 export type MeshRecord = components['schemas']['MeshRecord'];

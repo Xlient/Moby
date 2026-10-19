@@ -55,12 +55,12 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
   });
   const alert = listed ?? single.data;
 
-  const { state: briefState } = useBrief(alert?.event_id);
+  const { state: briefState, refetch: refetchBrief } = useBrief(alert?.event_id);
   // Official alerts come from agencies, not people nearby; only community alerts have reports.
   const fromCommunity = !!alert && alert.verification_label !== 'official_confirmed';
   const reports = useEventReports(alert?.event_id, fromCommunity);
   const explained = useExplanation(alert?.event_id, !!alert && !fromCommunity && !!alert.body);
-  const { cards } = useGuidance();
+  const { cards } = useGuidance(alert?.country ?? (center.source === 'device' ? countryAt(center.lat, center.lon) : undefined));
   const whatToDo = cardsForHazard(cards, alert?.hazard_type ?? 'other').slice(0, WHAT_TO_DO_CARDS);
 
   const raw = alert ? alertDistanceKm(alert, center, fetchCenter(center)) : undefined;
@@ -80,6 +80,8 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
         <ScrollView style={styles.container} contentContainerStyle={{ padding: r.gutter }}>
           <AlertCard alert={alert} distanceKm={distance} />
           {!fromCommunity && <ExplanationCard {...explained} />}
+          {/* Near the top on purpose: the brief puts the warning and the reports together. */}
+          {isEnabled('situational_brief') && <BriefPanel state={briefState} onRetry={refetchBrief} />}
           {alert.body ? (
             // The agency's message: what's happening and what to do.
             <Text variant="bodyLarge" style={[styles.body, { color: theme.text.primary }]}>
@@ -122,7 +124,6 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
               onRetry={reports.refetch}
             />
           )}
-          {isEnabled('situational_brief') && <BriefPanel state={briefState} />}
         </ScrollView>
       )}
     </View>

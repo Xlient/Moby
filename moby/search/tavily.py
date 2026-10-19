@@ -43,11 +43,14 @@ class Tavily:
                                   headers={"Authorization": f"Bearer {key}"})
 
     def search(self, query: str, *, include_domains: list[str] | None = None,
+               exclude_domains: list[str] | None = None,
                topic: Literal["general", "news"] = "general", time_range: str | None = None,
                max_results: int = 5, depth: Literal["basic", "advanced"] = "basic") -> list[SearchResult]:
         body = {"query": query, "topic": topic, "max_results": max_results, "search_depth": depth}
         if include_domains:
             body["include_domains"] = include_domains
+        if exclude_domains:
+            body["exclude_domains"] = exclude_domains
         if time_range:
             body["time_range"] = time_range
         resp = self._http.post("/search", json=body)

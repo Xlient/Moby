@@ -134,6 +134,55 @@ def test_brief_pending_ready_and_missing(client, db_url):
                   "(%s, 'nemotron-3-ultra', 'River cresting tonight.', 'Gauge data is 2 h old.', '[\"NWS\"]')", (eid,))
     b = client.get(f"/v1/events/{eid}/brief").json()
     assert b["summary"] == "River cresting tonight." and b["uncertainty"] and b["sources"] == ["NWS"]
+    assert b["version"] == 1 and "changes" not in b and "claims" not in b     # a first, older-style brief
+
+    # A rewritten brief carries citations, claims and what changed (contract 0.8.0).
+    with psycopg.connect(db_url, autocommit=True) as c:
+        c.execute("""UPDATE briefs SET version = 2, changes = 'The warning now covers two more districts.',
+                         changes_since = '2026-10-17T10:00:00Z',
+                         claims = '[{"text": "Flood warning until 18:00", "basis": "official", "evidence": ["O1"]}]',
+                         contradictions = '["Two reports disagree on whether the road is passable"]',
+                         citations = '[{"id": "O1", "title": "NWS Flood Warning", "kind": "official"}]'
+                     WHERE event_id = %s""", (eid,))
+    b = client.get(f"/v1/events/{eid}/brief").json()
+    assert b["version"] == 2 and b["changes"].startswith("The warning")
+    assert b["changes_since"].startswith("2026-10-17T10:00:00")
+    assert b["claims"][0]["basis"] == "official" and b["citations"][0]["id"] == "O1"
+    assert b["contradictions"] == ["Two reports disagree on whether the road is passable"]
+
+
+def test_brief_carries_a_timeline_of_official_and_community_events(client, db_url):
+    eid = add_event(db_url)
+    with psycopg.connect(db_url, autocommit=True) as c:
+        c.execute("UPDATE events SET expires_at = now() + interval '6 hours' WHERE event_id = %s", (eid,))
+        for i, (who, effect) in enumerate([("a", "rising_water"), ("b", "rising_water"), ("a", "blocked_road")]):
+            c.execute("INSERT INTO reports (client_event_id, reporter_hash, hazard_type, severity, location, "
+                      "observed_at, event_id, observed_effect) VALUES (%s, %s, 'flood', 'high', "
+                      "ST_SetSRID(ST_MakePoint(-122.27, 37.80), 4326)::geography, now() - %s, %s, %s)",
+                      (f"tl-{i}", who, timedelta(minutes=30 - i * 10), eid, effect))
+        c.execute("INSERT INTO briefs (event_id, generated_at, model, summary, uncertainty) "
+                  "VALUES (%s, now() - interval '15 minutes', 'm', 's', 'u')", (eid,))
+    tl = client.get(f"/v1/events/{eid}/brief").json()["timeline"]
+    kinds = [(e["kind"], e["type"]) for e in tl]
+    assert ("official", "issued") in kinds and kinds[-1] == ("official", "expires")   # people reported first
+    water = next(e for e in tl if e.get("label") == "Rising water")
+    assert water["reporters"] == 2 and len(water["times"]) == 2 and water["after_brief"] is False
+    road = next(e for e in tl if e.get("label") == "Blocked road")
+    assert road["after_brief"] is True                           # reported after the brief was written
+    assert [e["at"] for e in tl] == sorted(e["at"] for e in tl)
+
+
+def test_opening_an_event_with_new_reports_asks_for_a_brief(client, db_url):
+    eid = add_event(db_url)
+    assert client.get(f"/v1/events/{eid}/brief").status_code == 404     # nothing to explain yet
+    with psycopg.connect(db_url, autocommit=True) as c:
+        c.execute("INSERT INTO reports (client_event_id, reporter_hash, hazard_type, severity, location, "
+                  "observed_at, event_id) VALUES ('view-1', 'h', 'flood', 'high', "
+                  "ST_SetSRID(ST_MakePoint(-122.27, 37.80), 4326)::geography, now(), %s)", (eid,))
+    r = client.get(f"/v1/events/{eid}/brief")
+    assert r.status_code == 202 and r.json()["status"] == "pending"
+    with psycopg.connect(db_url, autocommit=True) as c:
+        assert c.execute("SELECT brief_status FROM events WHERE event_id = %s", (eid,)).fetchone()[0] == "pending"
 
 
 # ── Worker ───────────────────────────────────────────────────────────

@@ -62,6 +62,12 @@
       ],
       "@maplibre/maplibre-react-native",
       "./plugins/withRNFirebasePods",
+      [
+        "llama.rn",
+        {
+          "enableOpenCLAndHexagon": false
+        }
+      ],
       "./plugins/withSceneLifecycle"
     ]
   }

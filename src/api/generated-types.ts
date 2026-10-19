@@ -722,6 +722,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/trips/brief": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * "Before you go": a trip briefing for a destination, to save for offline
+         * @description Code decides, AI explains. PostGIS selects the active official alerts whose area (or point) is within radius_km of the destination and the community reports there from the last 72 hours. NVIDIA Nemotron Ultra then explains why each matters for the trip; every statement cites the rows (O1…, C1…) or official web pages (W1…, Tavily, restricted to the country's official domains) it rests on, and is dropped if its numbers, names or hazards aren't in them. Statements resting on community reports have basis community and are shown as unverified. Never changes tier, severity or delivery. The destination is snapped to 0.01° and isn't stored with the caller's identity; the AI part is cached per snapped point, radius, trip and day, and redone when an alert or report changes.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["TripBriefRequest"];
+                };
+            };
+            responses: {
+                /** @description The briefing (always; ai_status says whether the AI part is included) */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TripBrief"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                /** @description Invalid destination */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Too many briefings */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/{event_id}/confirm": {
         parameters: {
             query?: never;
@@ -782,7 +840,7 @@ export interface paths {
         };
         /**
          * Situational brief for an event
-         * @description Generated asynchronously on Ultra after the fast alert has already been sent. Returns 202 with status "pending" while generation is in flight — clients should render the alert immediately and let the brief arrive behind it. Never block alert display on this endpoint.
+         * @description Generated asynchronously on Ultra after the fast alert has already been sent. Returns 202 with status "pending" while generation is in flight — clients should render the alert immediately and let the brief arrive behind it. Never block alert display on this endpoint. Opening an event asks for a brief when community reports arrived that the current brief doesn't cover: with no brief yet the response is 202; with one, the current brief is returned (200) and the rewrite follows.
          */
         get: {
             parameters: {
@@ -1319,6 +1377,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/routes/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Does a route cross a hazard Moby knows about? And one that goes around
+         * @description The usual route from OpenRouteService (OpenStreetMap), the active hazards it crosses (official warnings with an area; community events from tier 1, as 500 m circles), and, when it crosses any, a route that avoids them, checked the same way. Never says a route is safe: only that it crosses no hazard Moby knows about. Only the two points go to OpenRouteService. Capped per day (429 daily_limit); 503 routing_unavailable when the server has no ORS key; 422 with no_route, point_not_routable or over_limits when ORS can't route these points.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RouteCheckRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RouteCheck"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/routes/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Place search for a route's destination */
+        get: {
+            parameters: {
+                query: {
+                    q: string;
+                    /** @description Bias results towards here */
+                    lat?: number;
+                    lon?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            places: components["schemas"]["Place"][];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/review/queue": {
         parameters: {
             query?: never;
@@ -1348,6 +1494,48 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["ReviewItem"][];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/review/sos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * SOS calls relayed over the Bluetooth mesh
+         * @description Reviewer role required. One row per sender (daily-rotating mesh id): their latest call for help, how many times they sent it, and when they said they're safe, if they did. Nobody has checked these, and Moby forwards them nowhere: the reviewer decides whether to contact emergency services. Kept 30 days.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    hours?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK, newest call first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SosSignal"][];
                     };
                 };
                 403: components["responses"]["Forbidden"];
@@ -1450,10 +1638,15 @@ export interface components {
                 proximity_confirmation: boolean;
                 /** @default false */
                 early_tier_opt_in: boolean;
+                /**
+                 * @description POST /trips/brief ("Before you go") is available
+                 * @default false
+                 */
+                trip_briefing: boolean;
             };
         };
         /**
-         * @description Enabled regions. v1 ships US only; CN is reserved and rejected at runtime until its feed, coordinate-frame and push work lands.
+         * @description Enabled regions. v1 ships US only; CN is reserved and rejected at runtime until its feed, coordinate-frame and push work lands. Exception: guidance (/guidance/manifest, /guidance/cards) already serves CN bundles: English cards from Chinese agencies' pages, for people in China.
          * @enum {string}
          */
         RegionCode: "US" | "CN";
@@ -1688,6 +1881,115 @@ export interface components {
             /** @description Language of the answer (ISO 639-1); 'en' unless translated by Moby */
             language?: string;
         };
+        /** @description A destination (lat + lon) or a route (stops), not both. */
+        TripBriefRequest: {
+            lat?: number;
+            lon?: number;
+            /** @description A route, in order. Checked as straight lines between the stops (not the actual trail), with radius_km on either side; at most 500 km in total. */
+            stops?: components["schemas"]["TripStop"][];
+            /** @default 25 */
+            radius_km: number;
+            /**
+             * Format: date
+             * @description Default today (UTC); yesterday to a year ahead
+             */
+            start_date?: string;
+            /**
+             * Format: date
+             * @description Default start_date + 3 days; at most 30 days after it
+             */
+            end_date?: string;
+            /** @description Picks the official websites to search; else taken from the alerts */
+            country?: string;
+            /** @description The place picked from the app's list (used in the web search and the text) */
+            place_name?: string;
+        };
+        TripStop: {
+            lat: number;
+            lon: number;
+            /** @description The place picked from the app's list */
+            name?: string;
+        };
+        TripBrief: {
+            /** Format: date-time */
+            generated_at: string;
+            destination: {
+                /** @description Snapped to 0.01° */
+                lat: number;
+                lon: number;
+                radius_km: number;
+                place_name?: string;
+                country?: string;
+            };
+            /** @description Present for a route; destination is then its last stop. */
+            route?: {
+                stops: components["schemas"]["TripStop"][];
+                /** @description Sum of the straight legs between stops */
+                length_km: number;
+            };
+            trip: {
+                /** Format: date */
+                start_date: string;
+                /** Format: date */
+                end_date: string;
+            };
+            /** @description Most severe first, then nearest. Every one is an agency's alert. */
+            official_alerts: (components["schemas"]["Alert"] & {
+                /** @description O1, O2… */
+                cite_id: string;
+                /** @description The alert expires before start_date */
+                ends_before_trip: boolean;
+                /** @description Routes only */
+                near_stop?: string;
+            })[];
+            /** @description Reports from people nearby (fused community events), last 72 hours. Never official: clients MUST show them as unverified and apart from official_alerts. */
+            community_reports: (components["schemas"]["Alert"] & {
+                /** @description C1, C2… */
+                cite_id: string;
+                /** @description Different people who reported it */
+                reporter_count: number;
+                /** Format: date-time */
+                last_report_at: string;
+                /** @description Routes only */
+                near_stop?: string;
+            })[];
+            /** @description Hazard types found (for matching offline guidance cards) */
+            hazards: components["schemas"]["HazardType"][];
+            web_sources: {
+                /** @description W1, W2… */
+                cite_id: string;
+                title: string;
+                url: string;
+                publisher: string;
+            }[];
+            searched_web: boolean;
+            /** @enum {string} */
+            web_status: "searched" | "no_official_sites" | "no_key" | "over_cap" | "failed";
+            /** @description Absent unless ai_status is ok or partial. */
+            explanation?: {
+                /** @description e.g. nvidia/Nemotron-3-Ultra-550b-a55b */
+                model: string;
+                claims: {
+                    text: string;
+                    /**
+                     * @description community when any cited source is a community report; show as unverified
+                     * @enum {string}
+                     */
+                    basis: "official" | "community";
+                    cites: string[];
+                }[];
+            };
+            /**
+             * @description ok / partial (some statements failed their checks and were dropped); withheld (none passed); over_cap (daily limit); unavailable (no model); nothing_to_explain (no rows). Without explanation, label the lists as not written by AI.
+             * @enum {string}
+             */
+            ai_status: "ok" | "partial" | "withheld" | "over_cap" | "unavailable" | "nothing_to_explain";
+            /** @description The AI part and web results came from the cache */
+            cached: boolean;
+            /** @description Required, never empty. What the briefing can't tell you, including that a saved copy goes stale. Clients MUST display it. */
+            uncertainty: string[];
+            language: string;
+        };
         SituationalBrief: {
             event_id: string;
             /** Format: date-time */
@@ -1709,6 +2011,56 @@ export interface components {
             /** @description Required. What the brief does not know and where it may be wrong. Clients MUST display this — never render a brief as certainty. */
             uncertainty: string;
             sources?: string[];
+            /** @description Increases each time the brief is rewritten for this event. */
+            version?: number;
+            /** @description The brief's statements, each tied to the citations it rests on. Clients label each by basis; a community claim is never shown as official. */
+            claims?: {
+                text: string;
+                /** @enum {string} */
+                basis: "official" | "community" | "news";
+                evidence: string[];
+            }[];
+            /** @description Where reports or sources disagree. */
+            contradictions?: string[];
+            citations?: {
+                /** @description O1… official, C1… community, W1… web */
+                id: string;
+                title: string;
+                url?: string;
+                /** @enum {string} */
+                kind: "official" | "community" | "news";
+            }[];
+            /** @description What changed since the previous version, in plain words. Absent on a first brief. Computed from a diff of the event's facts; the model only words it. */
+            changes?: string;
+            /**
+             * Format: date-time
+             * @description When the version that `changes` compares against was generated.
+             */
+            changes_since?: string;
+            /** @description Built from the database when the brief is read (not by the model), oldest first: the official warning (issued, updated, in force until) and one entry per thing people reported. after_brief marks what the brief doesn't cover yet. */
+            timeline?: {
+                /** Format: date-time */
+                at: string;
+                /**
+                 * Format: date-time
+                 * @description Last report of a community group
+                 */
+                until?: string;
+                /** @enum {string} */
+                kind: "official" | "community";
+                /** @enum {string} */
+                type: "issued" | "updated" | "expires" | "reports";
+                label: string;
+                /** @description The issuing agency (official entries) */
+                detail?: string;
+                /** @description Distinct people (community entries) */
+                reporters?: number;
+                /** @enum {string} */
+                severity?: "low" | "medium" | "high" | "critical";
+                /** @description When each report in the group was observed (up to 20) */
+                times?: string[];
+                after_brief: boolean;
+            }[];
         };
         CascadeAssessment: {
             region: components["schemas"]["RegionCode"];
@@ -1750,7 +2102,7 @@ export interface components {
             body: string;
             /** @description Lower is more urgent. Drives static fallback ordering. */
             priority?: number;
-            /** @description e.g. FEMA */
+            /** @description The agency whose page the card is from, e.g. FEMA Ready.gov, National Weather Service, Ministry of Emergency Management (China). Cards are English even when the page is not. */
             source_name: string;
             source_url: string;
             /**
@@ -1764,11 +2116,99 @@ export interface components {
              */
             is_critical_fallback: boolean;
         };
+        SosSignal: {
+            /** @description 8-byte mesh id of the latest call */
+            sos_id: string;
+            /** @description The sender's daily-rotating mesh id (not linked to an account) */
+            sender: string;
+            location: components["schemas"]["GeoPoint"];
+            /** Format: date-time */
+            sent_at: string;
+            /**
+             * Format: date-time
+             * @description When a phone with signal uploaded it
+             */
+            received_at: string;
+            /** @description Fewest phones it passed through to reach a phone with signal */
+            hop_count: number;
+            /** @description Phones that uploaded it */
+            relay_count: number;
+            /** @description Calls for help from this sender in the window */
+            help_count: number;
+            /**
+             * Format: date-time
+             * @description When the sender said they're safe
+             */
+            safe_at?: string | null;
+        };
+        RouteCheckRequest: {
+            origin: components["schemas"]["LatLon"];
+            destination: components["schemas"]["LatLon"];
+            /**
+             * @default driving-car
+             * @enum {string}
+             */
+            profile: "driving-car" | "foot-hiking";
+        };
+        LatLon: {
+            lat: number;
+            lon: number;
+        };
+        Place: {
+            label: string;
+            lat: number;
+            lon: number;
+        };
+        RouteCheck: {
+            /** @enum {string} */
+            profile: "driving-car" | "foot-hiking";
+            route: components["schemas"]["CheckedRoute"];
+            /** @description A route around the hazards the usual one crosses; null when it crosses none or none was found */
+            alternative?: components["schemas"]["CheckedRoute"] | null;
+            /**
+             * @description Why there's no alternative although the route crosses hazards
+             * @enum {string|null}
+             */
+            alternative_problem?: "cannot_avoid" | "no_route" | "over_limits" | "point_not_routable" | "rate_limited" | "not_configured" | "unreachable" | "routing_failed" | null;
+        };
+        CheckedRoute: {
+            geometry: {
+                /** @enum {string} */
+                type: "LineString";
+                /** @description [lon, lat] pairs */
+                coordinates: number[][];
+            };
+            distance_m: number;
+            duration_s: number;
+            /** @description Hazards the route crosses, in the order you'd reach them */
+            hazards: components["schemas"]["RouteHazard"][];
+        };
+        RouteHazard: {
+            event_id: string;
+            /** @description Opens the alert (GET /alerts/{alert_id}) */
+            alert_id: string;
+            hazard_type: components["schemas"]["HazardType"];
+            severity: components["schemas"]["Severity"];
+            /** @enum {string} */
+            verification: "official" | "community";
+            headline?: string | null;
+            /** @description How far along the route you'd reach it */
+            km_along: number;
+            /** @description The point on the route nearest the hazard */
+            at: components["schemas"]["LatLon"];
+            /** Format: date-time */
+            expires_at?: string | null;
+            /**
+             * @description Present when no route can avoid it (you start or end inside it, or it's too large to route around)
+             * @enum {string}
+             */
+            cannot_avoid?: "start_inside" | "end_inside" | "too_large";
+        };
         /** @description JSON mirror of the ~28-byte binary record relayed over BLE. The wire format is CBOR/packed-binary; this shape is only used at the gateway sync boundary. */
         MeshRecord: {
             /** @description 8 bytes, hex. Reports: sha256(client_event_id)[:8] */
             event_id: string;
-            /** @description Index into HazardType: 0 flood, 1 fire, 2 earthquake, 3 storm, 4 landslide, 5 other */
+            /** @description Index into HazardType: 0 flood, 1 fire, 2 earthquake, 3 storm, 4 landslide, 5 other. 6 is an SOS (severity 3 = needs help, 0 = safe now), stored apart from reports (see /review/sos) */
             hazard_type: number;
             /** @description Degrees times 1e6 (sent over the air rounded to 1e-4) */
             lat_e6: number;

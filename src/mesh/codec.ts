@@ -32,7 +32,9 @@ export const PACKET_BYTES = 24;
 export const MAX_HOPS = 8;
 
 // Order is the wire format: never reorder, only append (and the API must follow).
-export const HAZARDS = ['flood', 'fire', 'earthquake', 'storm', 'landslide', 'other'] as const;
+// 'sos' is not a hazard: it's a person asking for help (severity critical) or saying
+// they're safe now (severity low). Phones from before it was added drop it as unknown.
+export const HAZARDS = ['flood', 'fire', 'earthquake', 'storm', 'landslide', 'other', 'sos'] as const;
 export const SEVERITIES = ['low', 'medium', 'high', 'critical'] as const;
 export type MeshHazard = (typeof HAZARDS)[number];
 export type MeshSeverity = (typeof SEVERITIES)[number];
@@ -57,6 +59,16 @@ export interface MeshPacket {
 }
 
 export class MeshCodecError extends Error {}
+
+/** A call for help from the "I need help" screen. */
+export function isSosHelp(p: Pick<MeshPacket, 'hazard' | 'severity'>): boolean {
+  return p.hazard === 'sos' && p.severity === 'critical';
+}
+
+/** "I'm safe now", from the same sender (same daily reporter id) as their call for help. */
+export function isSosSafe(p: Pick<MeshPacket, 'hazard' | 'severity'>): boolean {
+  return p.hazard === 'sos' && p.severity === 'low';
+}
 
 /** The 8-byte mesh id of a report, from the hex sha256 of its client_event_id. */
 export function meshKeyFromDigest(sha256Hex: string): string {

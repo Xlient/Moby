@@ -3,7 +3,7 @@ import { api } from '@/api/client';
 import type { ClientConfig } from '@/api/types';
 
 const DEFAULT_FLAGS: ClientConfig['flags'] = {
-  situational_brief: false,
+  situational_brief: true,
   cascade_analysis: false,
   offline_guidance_cards: false,
   on_device_assistant: false,
@@ -11,6 +11,7 @@ const DEFAULT_FLAGS: ClientConfig['flags'] = {
   mesh_relay: false,
   proximity_confirmation: false,
   early_tier_opt_in: false,
+  trip_briefing: false,
 };
 
 const DEFAULT_CONFIG: ClientConfig = {

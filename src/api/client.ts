@@ -14,10 +14,15 @@ import type {
   ReportSubmission,
   SituationalBrief,
   Subscription,
+  TripBrief,
+  TripBriefRequest,
   User,
   Event,
   EventReports,
   HazardType,
+  Place,
+  RouteCheck,
+  RouteCheckRequest,
 } from './types';
 import {
   getMockAlerts,
@@ -29,6 +34,9 @@ import {
   getMockGuidanceCards,
   getMockSubscriptions,
   getMockEventReports,
+  getMockPlaces,
+  getMockRouteCheck,
+  getMockTripBrief,
 } from './fixtures';
 import { env } from '@/config/env';
 import { appCheckToken } from '@/lib/appCheck';
@@ -277,6 +285,22 @@ export class ApiClient {
     return this.request<Alert>('GET', `/alerts/${encodeURIComponent(alertId)}`);
   }
 
+  // ── Hazard route check ───────────────────────────────────────────
+
+  /** The usual route, the hazards it crosses, and one around them (moby/routing). */
+  async checkRoute(body: RouteCheckRequest): Promise<RouteCheck> {
+    if (USE_MOCK) return getMockRouteCheck(body);
+    return this.request<RouteCheck>('POST', '/routes/check', { body });
+  }
+
+  async searchPlaces(q: string, near?: { lat: number; lon: number }): Promise<Place[]> {
+    if (USE_MOCK) return getMockPlaces(q);
+    const res = await this.request<{ places: Place[] }>('GET', '/routes/places', {
+      query: { q, lat: near?.lat, lon: near?.lon },
+    });
+    return res.places;
+  }
+
   // ── Events ───────────────────────────────────────────────────────
 
   async getEvent(eventId: string): Promise<Event> {
@@ -329,10 +353,24 @@ export class ApiClient {
     return this.request<AskAnswer>('POST', '/ask', { body });
   }
 
+  // ── "Before you go" trip briefing (PostGIS + Nemotron Ultra) ────────
+
+  async tripBrief(body: TripBriefRequest): Promise<TripBrief> {
+    if (USE_MOCK) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      return getMockTripBrief(body);
+    }
+    return this.request<TripBrief>('POST', '/trips/brief', { body });
+  }
+
   // ── Situational brief ────────────────────────────────────────────
 
   async getEventBrief(eventId: string): Promise<SituationalBrief | BriefPending> {
-    if (USE_MOCK) return getMockBrief(eventId);
+    if (USE_MOCK) {
+      const mock = getMockBrief(eventId);
+      if (!mock) throw new ApiRequestError(404, 'not_found', 'no brief for this event');
+      return mock;
+    }
     // The server returns 200 for ready, 202 for pending.
     // Both are valid JSON — we return the parsed body and let the caller
     // check `'status' in result` to distinguish the two shapes.

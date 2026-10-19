@@ -7,6 +7,8 @@ import { emergencyFor, type EmergencyNumbers as Numbers } from '@/data/emergency
 interface Props {
   /** ISO country code (the alert's, or where the phone is). */
   country: string | undefined;
+  /** A saved copy (trip packs) instead of the bundled list. */
+  numbers?: Numbers;
 }
 
 function call(number: string, label: string) {
@@ -37,9 +39,9 @@ function lines(n: Numbers): { label: string; number: string }[] {
 }
 
 /** Local emergency numbers, offline, with tap-to-call (confirmed). Renders nothing for unknown countries. */
-export function EmergencyNumbers({ country }: Props) {
+export function EmergencyNumbers({ country, numbers }: Props) {
   const { theme } = useTheme();
-  const n = emergencyFor(country);
+  const n = numbers ?? emergencyFor(country);
   if (!n) return null;
   return (
     <View
