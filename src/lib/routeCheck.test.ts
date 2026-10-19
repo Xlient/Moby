@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import type { CheckedRoute, RouteCheck, RouteHazard } from '@/api/types';
 import {
   alternativeProblemCopy, detourCost, formatDistance, formatDuration, googleMapsUrl, hazardLine, headlineFor,
-  verdict, waypoints,
+  verdict, detourWaypoints,
 } from './routeCheck';
 
 const hazard = (over: Partial<RouteHazard> = {}): RouteHazard => ({
@@ -56,19 +56,25 @@ test('no way around: the reason in plain words', () => {
   assert.equal(alternativeProblemCopy(null), null);
 });
 
-test('waypoints are spread along the route, never the ends', () => {
-  const coords = Array.from({ length: 101 }, (_, i) => [-122.3 + i * 0.001, 37.8]);
-  const pts = waypoints(coords, 4);
-  assert.equal(pts.length, 4);
-  assert.ok(pts.every((p) => p.lon > -122.3 && p.lon < -122.2));
-  assert.ok(pts[0]!.lon < pts[3]!.lon);
-  assert.deepEqual(waypoints([[0, 0], [1, 1]]), []);
+test('stops go in the middle of each detour, nowhere else', () => {
+  // Straight east along 37.80; the way around bulges north between -122.26 and -122.24.
+  const usual = Array.from({ length: 11 }, (_, i) => [-122.3 + i * 0.01, 37.8]);
+  const around = usual.map(([lon, lat]) => [lon!, lon! > -122.265 && lon! < -122.235 ? 37.81 : lat!]);
+  const pts = detourWaypoints(around, usual);
+  assert.equal(pts.length, 1);
+  assert.equal(pts[0]!.lat, 37.81);
+  assert.ok(Math.abs(pts[0]!.lon - -122.25) < 0.011);
+  assert.deepEqual(detourWaypoints(usual, usual), [], 'no detour, no stops');
 });
 
-test('the Google Maps link carries the way around as waypoints', () => {
-  const url = googleMapsUrl(line(STRAIGHT), { lat: 37.8, lon: -122.3 }, { lat: 37.8, lon: -122.2 }, 'foot-hiking');
+test('the Google Maps link carries the detours as stops', () => {
+  const usual = Array.from({ length: 11 }, (_, i) => [-122.3 + i * 0.01, 37.8]);
+  const around = usual.map(([lon, lat]) => [lon!, lon! > -122.265 && lon! < -122.235 ? 37.81 : lat!]);
+  const c: RouteCheck = { ...check(line(usual, [hazard()]), line(around)), profile: 'foot-hiking' };
+  const url = googleMapsUrl(c, { lat: 37.8, lon: -122.3 }, { lat: 37.8, lon: -122.2 });
   assert.match(url, /^https:\/\/www\.google\.com\/maps\/dir\/\?api=1&/);
   assert.match(url, /origin=37\.80000,-122\.30000/);
   assert.match(url, /travelmode=walking/);
-  assert.match(url, /waypoints=37\.80000,-122\.25000/);
+  assert.match(url, /waypoints=37\.81000,-122\.25000$/);
+  assert.doesNotMatch(googleMapsUrl(check(line(usual)), { lat: 37.8, lon: -122.3 }, { lat: 37.8, lon: -122.2 }), /waypoints/);
 });

@@ -94,47 +94,57 @@ export function alternativeProblemCopy(reason: RouteCheck['alternative_problem']
   }
 }
 
+/** Further than this from the usual route, the way around has left it (km). */
+const DIVERGES_KM = 0.15;
+
+function nearestKm(lon: number, lat: number, line: number[][]): number {
+  let best = Infinity;
+  for (const [lon2, lat2] of line) best = Math.min(best, distanceKm(lat, lon, lat2!, lon2!));
+  return best;
+}
+
 /**
- * Up to `max` points spread evenly (by distance) along a route, start and end excluded.
- * Handed to a navigation app as waypoints so it follows roughly the same way.
+ * Where the way around leaves the usual route: one point in the middle of each stretch
+ * that's off it (up to `max`). Handed to a navigation app as stops, so it takes the
+ * detours and otherwise follows its own roads. Start and end are never stops.
  */
-export function waypoints(coords: number[][], max = 8): { lat: number; lon: number }[] {
-  if (coords.length < 3 || max <= 0) return [];
-  const cumulative = [0];
-  for (let i = 1; i < coords.length; i++) {
-    const [lon1, lat1] = coords[i - 1]!;
-    const [lon2, lat2] = coords[i]!;
-    cumulative.push(cumulative[i - 1]! + distanceKm(lat1!, lon1!, lat2!, lon2!));
-  }
-  const total = cumulative[cumulative.length - 1]!;
-  if (total === 0) return [];
-  const out: { lat: number; lon: number }[] = [];
-  let j = 1;
-  for (let k = 1; k <= max; k++) {
-    const target = (total * k) / (max + 1);
-    while (j < coords.length - 1 && cumulative[j]! < target) j++;
-    if (j >= coords.length - 1) break;
-    const [lon, lat] = coords[j]!;
-    const last = out[out.length - 1];
-    if (!last || last.lat !== lat || last.lon !== lon) out.push({ lat: lat!, lon: lon! });
-  }
-  return out;
+export function detourWaypoints(around: number[][], usual: number[][], max = 3): { lat: number; lon: number }[] {
+  const off = around.map(([lon, lat], i) =>
+    i > 0 && i < around.length - 1 && nearestKm(lon!, lat!, usual) > DIVERGES_KM);
+  const runs: number[][] = [];
+  off.forEach((isOff, i) => {
+    if (!isOff) return;
+    const last = runs[runs.length - 1];
+    if (last && last[last.length - 1] === i - 1) last.push(i);
+    else runs.push([i]);
+  });
+  // Longest detours first if there are more than `max`, then back in route order.
+  return runs
+    .sort((a, b) => b.length - a.length)
+    .slice(0, max)
+    .sort((a, b) => a[0]! - b[0]!)
+    .map((run) => {
+      const [lon, lat] = around[run[Math.floor(run.length / 2)]!]!;
+      return { lat: lat!, lon: lon! };
+    });
 }
 
 const fmt = (p: { lat: number; lon: number }) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`;
 
 /**
- * Opens the route in Google Maps (a plain link, not Google's API) with waypoints along
- * Moby's route, so it follows roughly the same way. Between waypoints Google picks its
+ * Opens the trip in Google Maps (a plain link, not Google's API). For a way around, the
+ * middle of each detour goes in as a stop so Google takes it; elsewhere Google picks its
  * own roads, which the app says.
  */
 export function googleMapsUrl(
-  route: CheckedRoute,
+  check: RouteCheck,
   origin: { lat: number; lon: number },
   destination: { lat: number; lon: number },
-  profile: RouteCheck['profile'],
 ): string {
-  const via = waypoints(route.geometry.coordinates);
+  const via = check.alternative
+    ? detourWaypoints(check.alternative.geometry.coordinates, check.route.geometry.coordinates)
+    : [];
+  const profile = check.profile;
   const params = [
     'api=1',
     `origin=${fmt(origin)}`,

@@ -270,12 +270,14 @@ function Result({ saved, onAlertPress, stale }: { saved: Saved; onAlertPress: (i
           <Button
             mode="contained"
             icon="navigation-variant"
-            onPress={() => Linking.openURL(googleMapsUrl(follow, saved.origin, saved.destination, check.profile)).catch(() => {})}
+            onPress={() => Linking.openURL(googleMapsUrl(check, saved.origin, saved.destination)).catch(() => {})}
           >
             {v === 'around' ? 'Navigate the way around' : 'Navigate'}
           </Button>
           <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
-            Opens Google Maps with points along this route. Between them, Google picks its own roads.
+            {v === 'around'
+              ? 'Opens Google Maps with a stop on each detour. Elsewhere Google picks its own roads, which may differ from this map.'
+              : 'Opens Google Maps. It picks its own roads, which may differ from this map.'}
           </Text>
         </View>
       )}
