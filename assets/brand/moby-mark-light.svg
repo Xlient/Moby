@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Moby mark for light backgrounds: the outer arc deepens to gold so it holds on white. -->
+  <g fill="none" stroke-linecap="round" stroke-width="60">
+    <path d="M246.1 603.9 A270 270 0 1 1 777.9 603.9" stroke="#F2B705"/>
+    <path d="M335 588.5 A180 180 0 1 1 689 588.5" stroke="#0B7A70"/>
+  </g>
+  <circle cx="512" cy="527" r="71" fill="#0B1F33"/>
+  <path d="M384.5 767 Q384.5 632 512 632 Q639.5 632 639.5 767 Z" fill="#0B1F33"/>
+</svg>
