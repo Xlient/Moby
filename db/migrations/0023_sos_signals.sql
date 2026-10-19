@@ -9,7 +9,7 @@
 -- Kept apart from `reports` on purpose: an SOS is a person, not a hazard, so it must
 -- never be fused into a hazard event or pushed as an alert.
 --
--- 0020 is taken by the situation-brief branch (sprint-7-nano); this is 0021 so the two never collide.
+-- 0020-0022 are taken on main (brief versions, trip briefs, quake expiry); this is 0023.
 CREATE TABLE sos_signals (
     sos_id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     -- The 8-byte id on the air (hex); a retry or another relay path merges into one row.

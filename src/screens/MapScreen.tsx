@@ -21,6 +21,8 @@ import type { NearbyAlert } from '@/hooks/useNearbyAlerts';
 interface MapScreenProps {
   onBack: () => void;
   onAlertDetail: (alertId: string) => void;
+  /** Long-press: "Before you go" for that spot (feature flag trip_briefing). */
+  onLongPressPoint?: (point: { lat: number; lon: number }) => void;
 }
 
 export function PinSheet({
@@ -50,7 +52,7 @@ export function PinSheet({
   );
 }
 
-export function MapScreen({ onBack, onAlertDetail }: MapScreenProps) {
+export function MapScreen({ onBack, onAlertDetail, onLongPressPoint }: MapScreenProps) {
   const { theme, isDark } = useTheme();
   // Same source as the home list, so the pins always match it for the same radius.
   const { nearby, radiusKm, setRadiusKm, isOffline, center } = useNearbyAlerts();
@@ -108,6 +110,11 @@ export function MapScreen({ onBack, onAlertDetail }: MapScreenProps) {
           // Taps on markers also reach the map; only clear on taps elsewhere.
           if (e.nativeEvent.action !== 'marker-press') setSelectedId(null);
         }}
+        onLongPress={
+          onLongPressPoint
+            ? (e) => onLongPressPoint({ lat: e.nativeEvent.coordinate.latitude, lon: e.nativeEvent.coordinate.longitude })
+            : undefined
+        }
       >
         {/* Gently dim everything outside the radius. */}
         <Polygon
