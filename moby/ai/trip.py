@@ -497,11 +497,13 @@ async def explain(pool: AsyncConnectionPool, context: str, sources: list[Cited])
                 continue
             break
         kept, problems = check_all(out, sources, context)
+        if problems:      # which check dropped which statement (no user data: model text and source ids)
+            log.warning("trip brief attempt %d: kept %d, rejected %d: %s", attempt + 1, len(kept), len(problems),
+                        problems)
         if len(kept) > len(best):
             best, best_problems = kept, problems
         if kept and len(problems) <= len(kept):
             break
-        log.info("trip brief attempt %d: kept %d, rejected %d: %s", attempt + 1, len(kept), len(problems), problems)
     if not best:
         return None, "withheld"
     return {"model": model, "claims": best}, "partial" if best_problems else "ok"
