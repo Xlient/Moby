@@ -84,7 +84,8 @@ export function BottomTabs({ activeTab, onTabChange, showAssistant = true }: Bot
     >
       {visibleTabs.map((tab) => {
         const active = activeTab === tab.id;
-        const color = active ? theme.text.primary : theme.text.faint;
+        // Faint fails contrast for an icon you need to find; secondary passes AA in both themes.
+        const color = active ? theme.text.primary : theme.text.secondary;
         return (
           <Pressable
             key={tab.id}
@@ -94,7 +95,10 @@ export function BottomTabs({ activeTab, onTabChange, showAssistant = true }: Bot
             accessibilityLabel={tab.label}
             onPress={() => onTabChange(tab.id)}
           >
-            {tab.icon(color)}
+            {/* The active tab sits on a sunbeam pill, so it reads by shape as well as colour. */}
+            <View style={[styles.iconPill, active && { backgroundColor: theme.brand.pop }]}>
+              {tab.icon(active ? theme.brand.onPop : color)}
+            </View>
             <Text style={[styles.label, { color }]}>{tab.label}</Text>
           </Pressable>
         );
@@ -117,6 +121,11 @@ const styles = StyleSheet.create({
     minHeight: spacing.minTapTarget + 8,
     paddingVertical: spacing.scale[1],
     gap: 2,
+  },
+  iconPill: {
+    paddingHorizontal: spacing.scale[3],
+    paddingVertical: 2,
+    borderRadius: 16, // not 999: Android draws an oversized radius square
   },
   label: {
     fontSize: 11,

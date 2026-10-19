@@ -34,8 +34,8 @@ const fonts = configureFonts({
 
 function buildColors(t: typeof lightTheme, isDark: boolean) {
   return {
-    primary: t.accent.calm,
-    primaryContainer: t.bg.recessed,
+    primary: t.brand.primary,
+    primaryContainer: t.brand.soft,
     secondary: t.text.secondary,
     secondaryContainer: t.bg.recessed,
     tertiary: t.text.secondary,
@@ -46,8 +46,8 @@ function buildColors(t: typeof lightTheme, isDark: boolean) {
     background: t.bg.base,
     error: t.text.secondary,
     errorContainer: t.bg.recessed,
-    onPrimary: isDark ? t.bg.base : '#FFFFFF',
-    onPrimaryContainer: t.text.primary,
+    onPrimary: t.brand.onPrimary,
+    onPrimaryContainer: t.brand.onSoft,
     onSecondary: isDark ? t.bg.base : '#FFFFFF',
     onSecondaryContainer: t.text.primary,
     onTertiary: isDark ? t.bg.base : '#FFFFFF',
@@ -62,7 +62,7 @@ function buildColors(t: typeof lightTheme, isDark: boolean) {
     outlineVariant: t.line.hairline,
     inverseSurface: isDark ? lightTheme.bg.raised : darkTheme.bg.raised,
     inverseOnSurface: isDark ? lightTheme.text.primary : darkTheme.text.primary,
-    inversePrimary: isDark ? lightTheme.accent.calm : darkTheme.accent.calm,
+    inversePrimary: isDark ? lightTheme.brand.primary : darkTheme.brand.primary,
     shadow: isDark ? '#000000' : '#000000',
     scrim: '#000000',
     backdrop: 'rgba(0, 0, 0, 0.4)',
