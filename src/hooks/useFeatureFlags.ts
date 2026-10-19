@@ -11,6 +11,7 @@ const DEFAULT_FLAGS: ClientConfig['flags'] = {
   mesh_relay: false,
   proximity_confirmation: false,
   early_tier_opt_in: false,
+  trip_briefing: false,
 };
 
 const DEFAULT_CONFIG: ClientConfig = {
