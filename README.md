@@ -8,6 +8,7 @@ explains them in plain words with NVIDIA Nemotron, and tells you what to do, eve
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 ![Android](https://img.shields.io/badge/Android-Expo%20%2F%20React%20Native-3DDC84)
+![iOS](https://img.shields.io/badge/iOS-Simulator%20build-000000?logo=apple)
 ![Models](https://img.shields.io/badge/Models-NVIDIA%20Nemotron%20on%20Nebius%20Token%20Factory-76B900)
 ![Runs on](https://img.shields.io/badge/Runs%20on-Nebius%20AI%20Cloud-0B1F33)
 [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-db61a2?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/Xlient)
@@ -24,8 +25,10 @@ explains them in plain words with NVIDIA Nemotron, and tells you what to do, eve
 | | How |
 |---|---|
 | **Android app (live backend)** | Join the closed test: TODO_PLAY_OPT_IN_LINK, or install the signed APK from [Releases](https://github.com/Xlient/Moby/releases) |
-| **Sign in** | With any Google account, or the test account in the Devpost testing instructions |
-| **No Android phone?** | Run the app in a browser with demo data in about 2 minutes: [Run it locally → A](#a-the-app-with-demo-data-2-minutes) |
+| **Android emulator** | Drag `Moby-<version>.apk` from [Releases](https://github.com/Xlient/Moby/releases) onto a running emulator: [Run it on a phone or emulator → Android](#android) |
+| **iPhone / iOS Simulator (Mac)** | Install `Moby-simulator.zip` from [Releases](https://github.com/Xlient/Moby/releases) on the iOS Simulator: [Run it on a phone or emulator → iOS](#ios) |
+| **Sign in** | With any Google account (Android), or the test account in the Devpost testing instructions (Android and iOS) |
+| **No phone or emulator?** | Run the app in a browser with demo data in about 2 minutes: [Run it locally → A](#a-the-app-with-demo-data-2-minutes) |
 | **Everything on your machine** | Backend, database, live feeds and app: [Run it locally → B](#b-the-full-stack) |
 
 **A five-minute tour**
@@ -129,6 +132,76 @@ flowchart LR
 - **Data:** Postgres 17 with PostGIS (where things are) and pgvector (what they're about).
 - **App** (`src/`): Expo / React Native, Firebase Auth and Firestore for accounts, FCM for push, App Check.
 - **API contract:** [`api-contract-v1.yaml`](api-contract-v1.yaml) (OpenAPI); app types are generated from it.
+
+## Run it on a phone or emulator
+
+The ready-made builds on [Releases](https://github.com/Xlient/Moby/releases) talk to the live backend on Nebius,
+so you see real alerts and can sign in. Building from source works too. Without a `.env`, the app runs on
+built-in demo data, with no backend or keys needed.
+
+### Android
+
+**Ready-made APK (no tools beyond the emulator).**
+
+1. Install [Android Studio](https://developer.android.com/studio). Open **Device Manager**, create a
+   phone (any Pixel, a recent Google APIs image) and start it.
+2. Download `Moby-<version>.apk` from [Releases](https://github.com/Xlient/Moby/releases) and drag it onto the
+   emulator window, or run `adb install Moby-<version>.apk`. On a real phone, open the file and allow installing
+   from your browser.
+3. Open **Moby** from the app drawer. Allow location, or leave it off to see alerts around San Francisco.
+
+**From source.** Needs Node.js 20+, Android Studio and **JDK 17** (React Native's native build fails on
+newer JDKs). Start an emulator first, then:
+
+```bash
+git clone https://github.com/Xlient/Moby.git && cd Moby
+npm ci
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)   # macOS; elsewhere point JAVA_HOME at JDK 17
+export ANDROID_HOME=$HOME/Library/Android/sdk      # Linux: ~/Android/Sdk
+npx expo run:android --variant release
+```
+
+The first build takes 5–10 minutes. `--variant release` builds a standalone app with the JavaScript
+bundled in, so nothing else needs to keep running. It's signed with a debug key, which is fine for an
+emulator or your own phone.
+
+### iOS
+
+Device installs, TestFlight and the App Store all need a paid Apple Developer Program membership, so
+Moby for iOS is shared as an **iOS Simulator build**. It needs a Mac with Xcode, but no Apple account.
+
+**Ready-made Simulator build.**
+
+1. Install Xcode from the Mac App Store, open it once, and accept the iOS Simulator download it offers
+   (or run `xcodebuild -downloadPlatform iOS`).
+2. Download `Moby-simulator.zip` from [Releases](https://github.com/Xlient/Moby/releases) and unzip it.
+   You get `Moby.app`.
+3. Start a simulator and install the app:
+
+```bash
+open -a Simulator
+xcrun simctl install booted Moby.app
+xcrun simctl launch booted com.xlient.moby
+```
+
+Dragging `Moby.app` onto the Simulator window also installs it. To set a location, use Simulator's
+**Features → Location** menu.
+
+**From source.** Needs Node.js 20+, Xcode with an iOS Simulator runtime, and CocoaPods
+(`brew install cocoapods`):
+
+```bash
+git clone https://github.com/Xlient/Moby.git && cd Moby
+npm ci
+MOBY_PREBUILD_PLATFORM=ios npx expo run:ios --configuration Release
+```
+
+The first build takes about 10 minutes (CocoaPods downloads React Native's prebuilt core).
+**On your own iPhone:** run `npx expo run:ios --device --configuration Release` with the phone plugged in, and sign in
+to Xcode with any Apple ID (free) when it asks for a team. Apple's free signing keeps the app working for 7 days.
+
+**Sign-in on iOS:** Google Sign-In isn't set up for iOS yet. Use email and password (the test account in the
+Devpost testing instructions). Push notifications need an Apple Developer membership, so they're Android-only for now.
 
 ## Run it locally
 
