@@ -125,6 +125,31 @@ def brief_failed(conn: Connection, event_id: str, error: str) -> bool:
     return bool(row and row[0])
 
 
+# A claimed request whose graph run already reached END (its checkpoint says so) but is still
+# 'pending': settle it from what's in the database instead of running (and paying) again.
+# A brief saved for this request → 'ready'; none → 'failed' with a note. Only this request:
+# a newer request (different brief_requested_at) is left alone.
+SETTLE_SQL = """
+UPDATE events e
+SET brief_status = CASE WHEN b.generated_at >= e.brief_requested_at THEN 'ready' ELSE 'failed' END,
+    brief_error  = CASE WHEN b.generated_at >= e.brief_requested_at THEN NULL
+                        ELSE 'run finished without saving a brief' END,
+    brief_claimed_at = NULL, brief_claimed_by = NULL
+FROM events e0 LEFT JOIN briefs b ON b.event_id = e0.event_id
+WHERE e.event_id = %(event_id)s AND e0.event_id = e.event_id
+  AND e.brief_status = 'pending' AND e.brief_requested_at = %(requested_at)s::timestamptz
+RETURNING e.brief_status
+"""
+
+
+def settle_finished_run(conn: Connection, event_id: str, requested_at: str) -> str | None:
+    """The worker found this request's run already finished: mark the event 'ready' if a brief
+    was saved for the request, else 'failed'. Returns the new status, or None if the event isn't
+    pending for that request any more (nothing to do)."""
+    row = conn.execute(SETTLE_SQL, {"event_id": event_id, "requested_at": requested_at}).fetchone()
+    return row[0] if row else None
+
+
 # ── Evidence for a brief (Step 2: gather_evidence) ───────────────────────────────────────
 #
 # What the brief may say comes only from these rows. No reporter notes or identities: the

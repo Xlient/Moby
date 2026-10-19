@@ -21,7 +21,7 @@ class PipelineState(TypedDict, total=False):
 
 class EvidenceItem(TypedDict, total=False):
     """One numbered thing a brief may cite (built by gather_evidence; web items in Step 4)."""
-    id: str                                            # "O1", "C2", "W1": what claims cite
+    id: str                                            # "O1", "C1", "W1": what claims cite
     kind: Literal["official", "community", "news"]
     title: str                                         # shown in the app's source list
     text: str                                          # what the model reads

@@ -168,3 +168,31 @@ def test_requested_at_identifies_the_request_not_the_attempt(conn):  # noqa: F81
     bq.request_brief(conn, eid)
     (new,) = bq.claim_brief_events(conn, "w", limit=5)
     assert new["brief_requested_at"] != first["brief_requested_at"]              # new request → fresh run
+
+
+# ── A finished run that didn't update the status ────────────────────────────
+
+def test_settle_marks_ready_when_this_request_has_a_brief(conn):  # noqa: F811
+    eid = make_event(conn)
+    bq.request_brief(conn, eid)
+    (claimed,) = bq.claim_brief_events(conn, "w", limit=5)
+    add_brief(conn, eid, timedelta(0))                                 # saved, then the worker died
+    assert bq.settle_finished_run(conn, eid, claimed["brief_requested_at"]) == "ready"
+    assert bq.settle_finished_run(conn, eid, claimed["brief_requested_at"]) is None   # already settled
+
+
+def test_settle_marks_failed_without_a_brief_for_this_request(conn):  # noqa: F811
+    eid = make_event(conn)
+    add_brief(conn, eid, timedelta(hours=2))                           # an OLD brief doesn't count
+    bq.request_brief(conn, eid)
+    (claimed,) = bq.claim_brief_events(conn, "w", limit=5)
+    requested_at = claimed["brief_requested_at"]
+    assert bq.settle_finished_run(conn, eid, requested_at) == "failed"
+    assert conn.execute("SELECT brief_error FROM events").fetchone()[0] == "run finished without saving a brief"
+
+
+def test_settle_leaves_a_newer_request_alone(conn):  # noqa: F811
+    eid = make_event(conn)
+    bq.request_brief(conn, eid)
+    assert bq.settle_finished_run(conn, eid, "2000-01-01 00:00:00+00") is None
+    assert status(conn, eid) == "pending"
