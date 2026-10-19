@@ -196,3 +196,54 @@ def test_settle_leaves_a_newer_request_alone(conn):  # noqa: F811
     bq.request_brief(conn, eid)
     assert bq.settle_finished_run(conn, eid, "2000-01-01 00:00:00+00") is None
     assert status(conn, eid) == "pending"
+
+
+# ── Saving a brief (Step 3) ─────────────────────────────────────────────────
+
+BRIEF = {"summary": "People report rising water.", "uncertainty": "Unverified; 3 people.",
+         "claims": [{"text": "Rising water reported.", "basis": "community", "evidence": ["C1"]}],
+         "contradictions": [], "likely_progression": None, "official_guidance": None}
+CITATIONS = [{"id": "C1", "title": "Rising water · 3 people", "kind": "community"}]
+
+
+def claimed_request(conn, eid):  # noqa: F811
+    bq.request_brief(conn, eid)
+    (ev,) = bq.claim_brief_events(conn, "w", limit=5)
+    return ev["brief_requested_at"], bq.event_facts(conn, eid)
+
+
+def test_save_writes_brief_version_and_ready_together(conn):  # noqa: F811
+    eid = make_event(conn)
+    requested_at, facts = claimed_request(conn, eid)
+    assert bq.save_brief(conn, eid, requested_at, brief=BRIEF, citations=CITATIONS, facts=facts, model="ultra") == 1
+    assert status(conn, eid) == "ready"
+    summary, claims, citations, sources, generated = conn.execute(
+        "SELECT summary, claims, citations, sources, generated_at::text FROM briefs").fetchone()
+    assert summary == BRIEF["summary"] and claims == BRIEF["claims"] and citations == CITATIONS
+    assert sources == ["Rising water · 3 people"]
+    assert generated == facts["evidence_as_of"]                    # as of when the evidence was read
+    assert bq.previous_version(conn, eid)["facts"]["event_id"] == eid
+
+
+def test_save_is_safe_to_repeat_and_versions_count_up(conn):  # noqa: F811
+    eid = make_event(conn)
+    requested_at, facts = claimed_request(conn, eid)
+    bq.save_brief(conn, eid, requested_at, brief=BRIEF, citations=CITATIONS, facts=facts, model="ultra")
+    # A resumed run repeats save_brief: nothing more is written.
+    assert bq.save_brief(conn, eid, requested_at, brief=BRIEF, citations=CITATIONS, facts=facts, model="ultra") is None
+    assert conn.execute("SELECT count(*) FROM brief_versions").fetchone()[0] == 1
+    # A new request makes version 2, and the route's current brief is replaced.
+    conn.execute("UPDATE briefs SET generated_at = now() - interval '1 hour'")
+    requested_at, facts = claimed_request(conn, eid)
+    assert bq.save_brief(conn, eid, requested_at, brief={**BRIEF, "summary": "v2"}, citations=CITATIONS,
+                         facts=facts, model="ultra", changes="Two more people reported.") == 2
+    assert conn.execute("SELECT version, summary, changes FROM briefs").fetchone() == (2, "v2", "Two more people reported.")
+
+
+def test_a_saved_brief_settles_ready(conn):  # noqa: F811
+    eid = make_event(conn)
+    requested_at, facts = claimed_request(conn, eid)
+    conn.execute("UPDATE events SET brief_status = 'pending'")      # as if READY never landed
+    conn.execute("INSERT INTO briefs (event_id, generated_at, model, summary, uncertainty) "
+                 "VALUES (%s, %s, 'm', 's', 'u')", (eid, facts["evidence_as_of"]))
+    assert bq.settle_finished_run(conn, eid, requested_at) == "ready"

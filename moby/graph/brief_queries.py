@@ -24,6 +24,7 @@ from typing import Any
 
 from psycopg import Connection
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 DEBOUNCE = timedelta(minutes=30)  # min time between two briefs of one event
 LEASE = timedelta(minutes=5)      # a claim older than this is presumed dead and re-claimable
@@ -158,7 +159,8 @@ def settle_finished_run(conn: Connection, event_id: str, requested_at: str) -> s
 # that the next brief diffs against for "what changed", so every value is JSON-ready.
 
 FACTS_SQL = """
-SELECT e.event_id::text, e.source, e.source_feed, e.hazard_type, e.product, e.severity, e.tier,
+SELECT now()::text AS evidence_as_of,          -- when this evidence was read (see save_brief); not a fact to diff
+       e.event_id::text, e.source, e.source_feed, e.hazard_type, e.product, e.severity, e.tier,
        e.country, e.region,
        COALESCE(e.title_en, e.title) AS title, COALESCE(e.description_en, e.description) AS description,
        e.first_reported_at::text, e.last_updated_at::text, e.expires_at::text,
@@ -210,3 +212,83 @@ def previous_version(conn: Connection, event_id: str) -> dict[str, Any] | None:
     """The latest saved brief and the facts it was written from, or None for a first brief."""
     with conn.cursor(row_factory=dict_row) as cur:
         return cur.execute(PREVIOUS_SQL, {"event_id": event_id}).fetchone()
+
+
+
+# ── Saving a brief (Step 3: save_brief) ──────────────────────────────────────────────────
+#
+# One transaction: the brief, its version (with the facts snapshot "what changed" diffs next
+# time) and brief_status = 'ready' are written together or not at all, so a crash can never
+# leave a saved brief on a 'pending' event (or a 'ready' event without its brief).
+#
+# Only for the request that was claimed: if the event isn't pending for `requested_at` any
+# more (already saved by an earlier attempt, or settled), nothing is written and None comes
+# back. That makes the node safe to repeat when a run resumes after a crash.
+#
+# generated_at is set to when the evidence was READ, not when the model finished: a report
+# that arrives while Ultra is writing isn't in this brief, and the view rule (reports newer
+# than generated_at) then correctly asks for a rewrite.
+
+LOCK_REQUEST_SQL = """
+SELECT 1 FROM events
+WHERE event_id = %(event_id)s AND brief_status = 'pending' AND brief_requested_at = %(requested_at)s::timestamptz
+FOR UPDATE
+"""
+
+NEXT_VERSION_SQL = "SELECT COALESCE(max(version), 0) + 1 FROM brief_versions WHERE event_id = %(event_id)s"
+
+UPSERT_BRIEF_SQL = """
+INSERT INTO briefs (event_id, generated_at, model, summary, likely_progression, official_guidance,
+                    uncertainty, sources, version, claims, contradictions, citations, changes, changes_since)
+VALUES (%(event_id)s, %(generated_at)s::timestamptz, %(model)s, %(summary)s, %(likely_progression)s,
+        %(official_guidance)s, %(uncertainty)s, %(sources)s, %(version)s, %(claims)s, %(contradictions)s,
+        %(citations)s, %(changes)s, %(changes_since)s::timestamptz)
+ON CONFLICT (event_id) DO UPDATE SET
+    generated_at = EXCLUDED.generated_at, model = EXCLUDED.model, summary = EXCLUDED.summary,
+    likely_progression = EXCLUDED.likely_progression, official_guidance = EXCLUDED.official_guidance,
+    uncertainty = EXCLUDED.uncertainty, sources = EXCLUDED.sources, version = EXCLUDED.version,
+    claims = EXCLUDED.claims, contradictions = EXCLUDED.contradictions, citations = EXCLUDED.citations,
+    changes = EXCLUDED.changes, changes_since = EXCLUDED.changes_since
+"""
+
+INSERT_VERSION_SQL = """
+INSERT INTO brief_versions (event_id, version, facts, brief)
+VALUES (%(event_id)s, %(version)s, %(facts)s, %(brief)s)
+"""
+
+READY_SQL = """
+UPDATE events SET brief_status = 'ready', brief_error = NULL, brief_claimed_at = NULL, brief_claimed_by = NULL
+WHERE event_id = %(event_id)s
+"""
+
+
+def save_brief(conn: Connection, event_id: str, requested_at: str, *, brief: dict[str, Any],
+               citations: list[dict[str, Any]], facts: dict[str, Any], model: str,
+               changes: str | None = None, changes_since: str | None = None) -> int | None:
+    """Save a brief for the claimed request and mark the event 'ready', all in one transaction.
+
+    brief:     BriefDraft.to_saved() (summary, claims, contradictions, likely_progression,
+               official_guidance, uncertainty)
+    citations: the evidence items the brief may cite, as the app shows them: [{id, title, kind, url?}]
+    facts:     event_facts() as gathered for this brief (its evidence_as_of becomes generated_at)
+    Returns the new version number, or None if the request isn't pending any more (nothing written).
+    """
+    with conn.transaction():
+        if conn.execute(LOCK_REQUEST_SQL, {"event_id": event_id, "requested_at": requested_at}).fetchone() is None:
+            return None
+        (version,) = conn.execute(NEXT_VERSION_SQL, {"event_id": event_id}).fetchone()
+        sources = [c.get("url") or c["title"] for c in citations]
+        conn.execute(UPSERT_BRIEF_SQL, {
+            "event_id": event_id, "generated_at": facts["evidence_as_of"], "model": model,
+            "summary": brief["summary"], "likely_progression": brief.get("likely_progression"),
+            "official_guidance": brief.get("official_guidance"), "uncertainty": brief["uncertainty"],
+            "sources": Jsonb(sources), "version": version, "claims": Jsonb(brief["claims"]),
+            "contradictions": Jsonb(brief.get("contradictions") or []), "citations": Jsonb(citations),
+            "changes": changes, "changes_since": changes_since,
+        })
+        conn.execute(INSERT_VERSION_SQL, {
+            "event_id": event_id, "version": version, "facts": Jsonb(facts),
+            "brief": Jsonb({**brief, "citations": citations, "model": model, "changes": changes}),
+        })
+        conn.execute(READY_SQL, {"event_id": event_id})
+    return version
