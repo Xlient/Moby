@@ -51,7 +51,7 @@ FAKE = BriefDraft(reasoning="r", summary="People nearby report rising water.", u
 
 
 def test_routing():
-    assert route_after_evidence({"evidence": []}) == END and route_after_evidence({"evidence": [{}]}) == "write_brief"
+    assert route_after_evidence({"evidence": []}) == END and route_after_evidence({"evidence": [{}]}) == "research"
     assert route_after_draft({"draft": {}}) == END and route_after_draft({"draft": {"summary": "s"}}) == "save_brief"
 
 
@@ -64,10 +64,15 @@ def test_message_numbers_the_evidence():
 def run_brief(conn, monkeypatch, eid):  # noqa: F811
     calls = []
 
-    async def fake_write_draft(evidence, *, hazard, official):
+    async def fake_write_draft(evidence, *, hazard, official, searched_web=True):
         calls.append(evidence)
         return FAKE
+
+    async def fake_search_web(facts, *, calls):
+        return [{"kind": "official", "title": "Flood safety · weather.gov", "text": "Turn around.",
+                 "url": "https://www.weather.gov/safety/flood"}]
     monkeypatch.setattr(brief_nodes, "write_draft", fake_write_draft)
+    monkeypatch.setattr(brief_nodes, "search_web", fake_search_web)      # never the real Tavily in tests
     conn.execute("TRUNCATE ai_usage")
     bq.request_brief(conn, eid)
     (ev,) = bq.claim_brief_events(conn, "w", limit=5)
@@ -83,10 +88,12 @@ def test_graph_writes_and_saves_a_brief(conn, monkeypatch):  # noqa: F811
     for r in reports[1:]:
         fuse_one(conn, r)
     calls = run_brief(conn, monkeypatch, eid)
-    assert len(calls) == 1 and calls[0][0]["id"] == "C1"
+    assert len(calls) == 1 and [e["id"] for e in calls[0]][0] == "C1" and calls[0][-1]["id"] == "W1"
     status, summary, citations = conn.execute(
         "SELECT e.brief_status, b.summary, b.citations FROM events e JOIN briefs b USING (event_id)").fetchone()
     assert status == "ready" and summary == FAKE.summary and citations[0]["id"] == "C1"
+    assert citations[-1] == {"id": "W1", "title": "Flood safety · weather.gov", "kind": "official",
+                             "url": "https://www.weather.gov/safety/flood"}
 
 
 def test_over_the_cap_no_model_call_nothing_saved(conn, monkeypatch):  # noqa: F811
@@ -95,3 +102,45 @@ def test_over_the_cap_no_model_call_nothing_saved(conn, monkeypatch):  # noqa: F
     assert budget.cap("brief") == 0
     assert run_brief(conn, monkeypatch, eid) == []
     assert conn.execute("SELECT count(*) FROM briefs").fetchone()[0] == 0
+
+
+
+# ── research: the web is optional, so it never fails a brief ─────────────────────
+
+FACTS = {"hazard_type": "flood", "product": None, "place": "Sonoma", "country": "US"}
+EVIDENCE = [{"id": "C1", "kind": "community", "title": "t", "text": "x"}]
+
+
+def research_with(monkeypatch, *, facts=FACTS, granted=3, found=None, error=None):
+    asked = {}
+
+    async def fake_search_web(f, *, calls):
+        asked["calls"] = calls
+        if error:
+            raise error
+        return found or []
+    monkeypatch.setattr(brief_nodes, "search_web", fake_search_web)
+    monkeypatch.setattr(brief_nodes, "_take_tavily_budget", lambda units: granted)
+    out = asyncio.run(brief_nodes.research({"event_id": "e", "facts": facts, "evidence": EVIDENCE}))
+    return out, asked
+
+
+def test_research_numbers_web_sources_after_the_rest(monkeypatch):
+    found = [{"kind": "official", "title": "a", "text": "1", "url": "https://weather.gov/a"},
+             {"kind": "news", "title": "b", "text": "2", "url": "https://reuters.com/b"}]
+    out, asked = research_with(monkeypatch, found=found)
+    assert asked["calls"] == ["official", "news", "extract"]
+    assert [e["id"] for e in out["evidence"]] == ["C1", "W1", "W2"] and out["web"][1]["kind"] == "news"
+
+
+def test_research_without_country_budget_or_luck_adds_nothing(monkeypatch):
+    assert research_with(monkeypatch, facts={**FACTS, "country": None})[0] == {"web": []}
+    out, asked = research_with(monkeypatch, granted=0)
+    assert out == {"web": []} and "calls" not in asked                       # no Tavily call at all
+    assert research_with(monkeypatch, error=RuntimeError("down"))[0] == {"web": []}
+
+
+def test_research_with_a_partial_budget_searches_official_sites_first(monkeypatch):
+    assert research_with(monkeypatch, granted=1)[1]["calls"] == ["official"]
+    # A country without an official-domain list: news first.
+    assert research_with(monkeypatch, granted=1, facts={**FACTS, "country": "HK"})[1]["calls"] == ["news"]

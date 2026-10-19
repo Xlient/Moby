@@ -7,6 +7,7 @@ from moby.llm import model_name
 
 from .brief_queries import community_evidence, event_facts, previous_version
 from .brief_queries import save_brief as save_brief_row
+from .brief_research import plan_calls, search_web
 from .brief_writer import write_draft
 from .db import connection
 from .state import BriefState, EvidenceItem
@@ -62,6 +63,32 @@ def gather_evidence(state: BriefState) -> dict:
     return {"facts": facts, "community": community, "previous": previous, "evidence": evidence}
 
 
+def _take_tavily_budget(units: int) -> int:
+    with connection() as conn:
+        return take_sync(conn, "tavily", units)
+
+
+async def research(state: BriefState) -> dict:
+    """Add web pages to the evidence as W1, W2… (after the O and C items): the country's official
+    sites and recent news, via Tavily. The web is optional context, so any problem (no key, no
+    budget, no country, a failed search) means no W items, never a failed brief."""
+    facts = state["facts"]
+    if not facts.get("country"):
+        return {"web": []}                    # nowhere sensible to search
+    granted = await asyncio.to_thread(_take_tavily_budget, 3)
+    calls = plan_calls(facts, granted)
+    if not calls:
+        log.info("brief %s: no Tavily budget left today; no web sources", state["event_id"])
+        return {"web": []}
+    try:
+        found = await search_web(facts, calls=calls)
+    except Exception as e:  # noqa: BLE001 - web context is optional: brief from O and C items
+        log.warning("brief %s: web research failed (%s); no web sources", state["event_id"], type(e).__name__)
+        return {"web": []}
+    web = [EvidenceItem(id=f"W{n}", **item) for n, item in enumerate(found, start=1)]
+    return {"web": web, "evidence": state["evidence"] + web}
+
+
 def _take_brief_budget() -> bool:
     with connection() as conn:
         return take_sync(conn, "brief", 1) == 1
@@ -76,7 +103,7 @@ async def write_brief(state: BriefState) -> dict:
         return {"draft": {}, "problems": ["daily brief cap reached"]}
     # No DB connection is held while Ultra writes (up to a minute): the pool is small.
     draft = await write_draft(state["evidence"], hazard=state["facts"]["hazard_type"],
-                              official=state["facts"]["source"] == "official")
+                              official=state["facts"]["source"] == "official", searched_web=bool(state.get("web")))
     return {"draft": draft.to_saved(), "attempts": state.get("attempts", 0) + 1}
 
 

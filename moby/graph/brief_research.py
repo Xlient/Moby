@@ -1,0 +1,75 @@
+"""Web research for the situational brief (Tavily). No database, no graph state: the event's
+facts in, web pages out, so it can be tested and evaluated on its own (the `research` node in
+brief_nodes.py is the glue: budget, numbering, failure handling).
+
+What it searches, in order of value (a smaller budget stops earlier):
+  1. the country's official sites (OFFICIAL[country]), last week;
+  2. news, last day, never social media (SOCIAL_DOMAINS);
+  3. then reads the best pages in full (extract); without budget for that, the search
+     snippets are used instead.
+
+Privacy: the query is built from structured fields only (hazard, the official area's name,
+country), never from a reporter's note or exact position.
+"""
+import asyncio
+from typing import Any
+
+from moby.search.official import OFFICIAL, SOCIAL_DOMAINS, canonical_url, site_name, web_source_kind
+from moby.search.tavily import SearchResult, Tavily
+
+MAX_WEB_ITEMS = 3          # W items per brief: enough context, short enough prompt
+MAX_PAGE_CHARS = 1500      # per page, like Ask Moby's sources
+RESULTS_PER_SEARCH = 5
+TIMEOUT_S = 15
+
+
+def build_query(facts: dict[str, Any]) -> str:
+    """e.g. "Flash Flood Warning Sonoma US" or "flood PH". The agency's product name is the best
+    search term when there is one; otherwise the hazard type."""
+    what = facts.get("product") or facts["hazard_type"].replace("_", " ")
+    return " ".join(p for p in (what, facts.get("place"), facts.get("country")) if p)
+
+
+def plan_calls(facts: dict[str, Any], granted: int) -> list[str]:
+    """Which Tavily calls `granted` units buy, most valuable first: official sites (only if the
+    country has a list), news, then reading the pages."""
+    calls = (["official"] if OFFICIAL.get(facts.get("country") or "") else []) + ["news", "extract"]
+    return calls[:granted]
+
+
+def _pick(results: list[tuple[str, SearchResult]]) -> list[tuple[str, SearchResult]]:
+    """Drop social media and duplicate pages; official pages first, then by Tavily's score."""
+    seen, kept = set(), []
+    for _, r in results:
+        kind, key = web_source_kind(r.url), canonical_url(r.url)
+        if kind is None or key in seen or not r.content:
+            continue
+        seen.add(key)
+        kept.append((kind, r))
+    kept.sort(key=lambda kr: (kr[0] != "official", -kr[1].score))
+    return kept[:MAX_WEB_ITEMS]
+
+
+async def search_web(facts: dict[str, Any], *, calls: list[str]) -> list[dict[str, Any]]:
+    """Run the planned calls and return web sources (without ids):
+    [{kind: 'official' | 'news', title, text, url}]. Raises on Tavily errors."""
+    tavily = Tavily(timeout=TIMEOUT_S)
+    query = build_query(facts)
+    searches = []
+    if "official" in calls:
+        searches.append(asyncio.to_thread(tavily.search, query, include_domains=OFFICIAL[facts["country"]],
+                                          time_range="week", max_results=RESULTS_PER_SEARCH))
+    if "news" in calls:
+        searches.append(asyncio.to_thread(tavily.search, query, topic="news", time_range="day",
+                                          exclude_domains=SOCIAL_DOMAINS, max_results=RESULTS_PER_SEARCH))
+    results = [("", r) for batch in await asyncio.gather(*searches) for r in batch]   # both searches at once
+    picked = _pick(results)
+    pages = {}
+    if picked and "extract" in calls:
+        pages = await asyncio.to_thread(tavily.extract, [r.url for _, r in picked])
+    return [{
+        "kind": kind,
+        "title": f"{(r.title or site_name(r.url)).strip()[:90]} · {site_name(r.url)}",
+        "text": (pages.get(r.url) or r.content).strip()[:MAX_PAGE_CHARS],
+        "url": r.url,
+    } for kind, r in picked]

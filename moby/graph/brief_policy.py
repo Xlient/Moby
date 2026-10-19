@@ -5,7 +5,7 @@ from langgraph.graph import END
 
 def route_after_evidence(state: dict) -> str:
     """Nothing to cite (the event was deleted): stop before paying for a model call."""
-    return "write_brief" if state.get("evidence") else END
+    return "research" if state.get("evidence") else END
 
 
 def route_after_draft(state: dict) -> str:

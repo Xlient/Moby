@@ -30,15 +30,17 @@ def format_evidence(evidence: list[EvidenceItem]) -> str:
     return "\n\n".join(f"[{e['id']}] ({e['kind']}) {e['title']}\n{e['text']}" for e in evidence)
 
 
-def brief_message(evidence: list[EvidenceItem], *, hazard: str, official: bool) -> str:
+def brief_message(evidence: list[EvidenceItem], *, hazard: str, official: bool, searched_web: bool = True) -> str:
     """The user message: a line of context, then the evidence."""
     who = "an official warning" if official else "reported by people nearby (no official warning)"
-    return f"Hazard: {hazard}. Event: {who}.\n\nEvidence:\n{format_evidence(evidence)}"
+    web = "" if searched_web else " No web sources were found or searched."
+    return f"Hazard: {hazard}. Event: {who}.{web}\n\nEvidence:\n{format_evidence(evidence)}"
 
 
-async def write_draft(evidence: list[EvidenceItem], *, hazard: str, official: bool) -> BriefDraft:
+async def write_draft(evidence: list[EvidenceItem], *, hazard: str, official: bool,
+                      searched_web: bool = True) -> BriefDraft:
     """Ask Ultra for a brief written only from `evidence`. Raises on timeouts and API errors."""
     llm = chat_model("ultra", temperature=0, timeout=TIMEOUT_S, max_retries=1).with_structured_output(
         BriefDraft, method="function_calling")
-    return await llm.ainvoke([("system", BRIEF_SYS_PROMPT),
-                              ("user", brief_message(evidence, hazard=hazard, official=official))])
+    message = brief_message(evidence, hazard=hazard, official=official, searched_web=searched_web)
+    return await llm.ainvoke([("system", BRIEF_SYS_PROMPT), ("user", message)])
