@@ -115,7 +115,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     gap: spacing.scale[1],
   },
-  coords: { fontWeight: '700', fontVariant: ['tabular-nums'] },
+  // Big enough to read aloud to a dispatcher without squinting.
+  coords: { fontWeight: '700', fontSize: 30, lineHeight: 38, fontVariant: ['tabular-nums'] },
   alignStart: { alignSelf: 'flex-start' },
   bigButton: { borderRadius: radius.card },
   bigButtonContent: { minHeight: 64 },
