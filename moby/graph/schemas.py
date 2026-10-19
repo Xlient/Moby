@@ -64,8 +64,9 @@ class BriefClaim(BaseModel):
 
     text: str = Field(description="One short, plain-language sentence. No citation markers in the text.")
     basis: Literal["official", "community", "news"] = Field(
-        description="Who says so: 'official' ONLY if it rests on an O item (an agency's warning); 'community' "
-        "if on C items (people's unverified reports); 'news' if on W items (web pages).",
+        description="Who says so: 'official' ONLY if it rests on an O item (the agency's warning) or a W item "
+        "marked (official) (a government website); 'community' if on C items (people's unverified reports); "
+        "'news' if on W items marked (news) (a news outlet's report, not official).",
     )
     evidence: list[str] = Field(
         min_length=1,
@@ -107,8 +108,8 @@ class BriefDraft(BaseModel):
     )
     official_guidance: str | None = Field(
         default=None,
-        description="What the issuing agency tells people to do, from O items only, attributed to the agency. "
-        "Null if there is no O item or it gives no instructions.",
+        description="What the agency tells people to do, from O items or (official) W items only, attributed to "
+        "the agency. Never from (news) or C items. Null if none of them gives instructions.",
     )
     uncertainty: str = Field(
         min_length=1,

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Animated, Easing, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Icon, IconButton, Text } from 'react-native-paper';
 import type { SituationalBrief } from '@/api/types';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
@@ -16,7 +16,7 @@ import { BriefTimeline } from './BriefTimeline';
 type Claim = NonNullable<SituationalBrief['claims']>[number];
 type Citation = NonNullable<SituationalBrief['citations']>[number];
 
-const BASIS_LABEL = { official: 'Official', community: 'Unverified · people nearby', news: 'Web' } as const;
+const BASIS_LABEL = { official: 'Official', community: 'Unverified · people nearby', news: 'News report · not official' } as const;
 
 export function modelName(model: string): string {
   return /ultra/i.test(model) ? 'NVIDIA Nemotron Ultra' : /super/i.test(model) ? 'NVIDIA Nemotron Super' : 'NVIDIA Nemotron';
@@ -239,12 +239,21 @@ function ClaimRow({ claim, citations }: { claim: Claim; citations: Citation[] })
 function SourceRow({ citation }: { citation: Citation }) {
   const { theme } = useTheme();
   const c = useTone(citation.kind === 'official' ? 'official' : citation.kind === 'community' ? 'community' : 'neutral');
+  const url = citation.url;
   return (
     <View style={styles.source}>
       <View style={[styles.ref, { backgroundColor: c.bg }]}>
         <Text style={[typography.label, { color: c.fg }]}>{citation.id}</Text>
       </View>
-      <Text style={[typography.meta, styles.flex, { color: theme.text.primary }]}>{citation.title}</Text>
+      <Text
+        style={[typography.meta, styles.flex, { color: url ? c.fg : theme.text.primary }]}
+        onPress={url ? () => Linking.openURL(url) : undefined}
+        accessibilityRole={url ? 'link' : undefined}
+      >
+        {citation.title}
+        {citation.kind === 'news' ? <Text style={{ color: theme.text.faint }}> · news report</Text> : null}
+        {url ? <Text style={{ color: theme.text.faint }}> ↗</Text> : null}
+      </Text>
     </View>
   );
 }

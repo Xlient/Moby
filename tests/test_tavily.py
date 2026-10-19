@@ -53,3 +53,36 @@ def test_guidance_fetcher_uses_tavily_text(monkeypatch):
     monkeypatch.setattr(tavily_mod, "Tavily", lambda *a, **k: Tavily("tvly-test", transport=transport(seen)))
     texts = guidance.tavily_texts(["https://www.ready.gov/floods", "https://blocked.gov/y"])
     assert texts == {"https://www.ready.gov/floods": "Page text for https://www.ready.gov/floods\nLine two"}
+
+
+# ── Web sources in a brief (moby/search/official.py) ──────────────────────────
+
+from moby.search.official import canonical_url, web_source_kind  # noqa: E402
+
+
+@pytest.mark.parametrize("url, kind", [
+    ("https://www.weather.gov/safety/flood", "official"),          # OFFICIAL list
+    ("https://pagasa.dost.gov.ph/bulletin", "official"),           # a subdomain of a listed one
+    ("https://www.dhm.gov.np/warning", "official"),                # government-only domain, not listed
+    ("https://www.jma.go.jp/bosai", "official"),
+    ("https://www.reuters.com/world/flood", "news"),
+    ("https://kathmandupost.com/national/flood", "news"),
+    ("https://www.facebook.com/somepage/posts/1", None),           # social media: left out
+    ("https://m.youtube.com/watch?v=x", None),
+    ("https://notgov.com/x", "news"),                              # "gov" inside a word isn't government
+])
+def test_web_source_kind(url, kind):
+    assert web_source_kind(url) == kind
+
+
+def test_canonical_url_merges_the_same_page():
+    a = canonical_url("https://www.weather.gov/safety/flood-watch-warning")
+    assert a == canonical_url("http://weather.gov/safety/flood-watch-warning/") == canonical_url(
+        "https://weather.gov/safety/flood-watch-warning#top")
+    assert a != canonical_url("https://weather.gov/safety/other")
+
+
+def test_search_sends_exclude_domains():
+    seen = []
+    Tavily("k", transport=transport(seen)).search("q", exclude_domains=["facebook.com"])
+    assert seen[0][2]["exclude_domains"] == ["facebook.com"]
