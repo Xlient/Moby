@@ -88,6 +88,7 @@
     <button data-mode="events" aria-pressed="true">Events</button>
     <button data-mode="guidance" aria-pressed="false">Guidance</button>
     <button data-mode="pipeline" aria-pressed="false">Pipeline</button>
+    <button data-mode="sos" aria-pressed="false">SOS</button>
   </div>
   <span class="muted num" id="count" aria-live="polite"></span>
   <span class="spacer"></span>
@@ -126,7 +127,8 @@ let getToken = async () => null;
 let signedIn = false;
 let items = [];
 let selected = 0;
-let mode = 'events';          // 'events' | 'guidance' | 'pipeline'
+let mode = 'events';          // 'events' | 'guidance' | 'pipeline' | 'sos'
+let sosList = [];             // GET /v1/review/sos
 let pipe = null;              // GET /v1/review/pipeline
 let bundles = [];
 let bundle = null;            // the selected bundle with its cards
@@ -134,6 +136,7 @@ const HINTS = {
   events: $('#hint').innerHTML,
   guidance: 'Read every card against its source lines. Drop anything wrong, then publish.',
   pipeline: 'Read-only: where community reports are in the fusion pipeline. Refreshes every 30 s.',
+  sos: 'Calls for help sent over Bluetooth from phones with no signal (last 24 h). Nobody has checked them, and Moby forwards them nowhere: you decide whether to call emergency services. Refreshes every 30 s.',
 };
 
 function toast(msg) {
@@ -227,6 +230,7 @@ function renderDetail() {
 function render() {
   if (mode === 'guidance') return renderGuidance();
   if (mode === 'pipeline') return renderPipeline();
+  if (mode === 'sos') return renderSos();
   selected = Math.max(0, Math.min(selected, items.length - 1));
   renderList();
   renderDetail();
@@ -297,6 +301,46 @@ async function loadPipeline() {
   renderPipeline();
 }
 
+// ── SOS (read-only) ────────────────────────────────────────────────
+const fmtCoords = (l) => `${l.lat.toFixed(5)}, ${l.lon.toFixed(5)}`;
+
+function renderSos() {
+  selected = Math.max(0, Math.min(selected, sosList.length - 1));
+  const open = sosList.filter((s) => !s.safe_at).length;
+  $('#count').textContent = `${open} open`;
+  $('#list').innerHTML = sosList.map((s, i) => `<li role="option" tabindex="-1" data-i="${i}" aria-selected="${i === selected}">
+      <div class="row"><span class="grow"><b>${s.safe_at ? 'Said they’re safe' : 'Asked for help'}</b></span><span class="sev ${s.safe_at ? 'low' : 'critical'}">${s.safe_at ? 'safe' : 'SOS'}</span></div>
+      <div class="row muted num"><span class="grow">${esc(fmtCoords(s.location))}</span><span>${ago(s.sent_at)}</span></div>
+    </li>`).join('');
+  const s = sosList[selected];
+  if (!s) { $('#detail').innerHTML = `<div class="empty">No calls for help in the last 24 hours.</div>`; return; }
+  const osm = `https://www.openstreetmap.org/?mlat=${s.location.lat}&mlon=${s.location.lon}#map=16/${s.location.lat}/${s.location.lon}`;
+  $('#detail').innerHTML = `
+    <h2>${s.safe_at ? 'Said they’re safe' : 'Someone asked for help'}</h2>
+    <div class="muted">Sent from Moby’s “I need help” screen and relayed phone to phone over Bluetooth. Unverified: a phone said its owner needs help, nothing more.</div>
+    <section><h3>Where and when</h3>
+      <div class="facts num">
+        <div class="fact">Location<b>${esc(fmtCoords(s.location))}</b><span class="faint">±${Math.round(s.location.accuracy_m ?? 11)} m · <a href="${osm}" target="_blank" rel="noopener">map</a></span></div>
+        <div class="fact">Sent<b>${ago(s.sent_at)}</b><span class="faint">${esc(new Date(s.sent_at).toISOString().slice(11, 16))} UTC</span></div>
+        <div class="fact">Reached the internet<b>${ago(s.received_at)}</b><span class="faint">after ${plural(s.hop_count, 'hop')}</span></div>
+        <div class="fact">Calls from this sender<b>${s.help_count}</b><span class="faint">${plural(s.relay_count, 'phone')} uploaded it</span></div>
+        ${s.safe_at ? `<div class="fact">Said they’re safe<b>${ago(s.safe_at)}</b></div>` : ''}
+      </div>
+    </section>
+    <section><h3>Sender</h3><div class="muted num">Mesh id ${esc(s.sender)} (changes daily, not linked to an account)</div></section>`;
+}
+
+async function loadSos() {
+  try {
+    sosList = await api('/v1/review/sos');
+  } catch (err) {
+    if (err.status === 403) return showSignin('This account doesn’t have the reviewer role.');
+    toast(`Couldn’t load SOS calls: ${err.message}`);
+    return;
+  }
+  if (mode === 'sos') renderSos();
+}
+
 // ── Guidance bundles ───────────────────────────────────────────────
 function renderGuidance() {
   selected = Math.max(0, Math.min(selected, bundles.length - 1));
@@ -355,8 +399,8 @@ function setMode(next) {
   selected = 0;
   document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
   $('#hint').innerHTML = HINTS[mode];
-  $('#list').setAttribute('aria-label', { events: 'Review queue', guidance: 'Guidance bundles', pipeline: 'Community events' }[mode]);
-  ({ events: load, guidance: loadGuidance, pipeline: loadPipeline })[mode]();
+  $('#list').setAttribute('aria-label', { events: 'Review queue', guidance: 'Guidance bundles', pipeline: 'Community events', sos: 'SOS calls' }[mode]);
+  ({ events: load, guidance: loadGuidance, pipeline: loadPipeline, sos: loadSos })[mode]();
 }
 
 async function load() {
@@ -464,7 +508,7 @@ async function start() {
     $('#app').hidden = false;
     load();
   }
-  setInterval(() => { if (signedIn) (mode === 'pipeline' ? loadPipeline() : load()); }, 30000);
+  setInterval(() => { if (signedIn) (mode === 'pipeline' ? loadPipeline() : mode === 'sos' ? loadSos() : load()); }, 30000);
 }
 
 start();

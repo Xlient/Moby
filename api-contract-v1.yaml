@@ -810,6 +810,29 @@ paths:
                 items: { $ref: '#/components/schemas/ReviewItem' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /review/sos:
+    get:
+      tags: [review]
+      summary: SOS calls relayed over the Bluetooth mesh
+      description: >
+        Reviewer role required. One row per sender (daily-rotating mesh id): their latest
+        call for help, how many times they sent it, and when they said they're safe, if
+        they did. Nobody has checked these, and Moby forwards them nowhere: the reviewer
+        decides whether to contact emergency services. Kept 30 days.
+      parameters:
+        - name: hours
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 72, default: 24 }
+      responses:
+        '200':
+          description: OK, newest call first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SosSignal' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /review/{event_id}/decision:
     post:
       tags: [review]
@@ -1328,6 +1351,20 @@ components:
             Included in the hard-coded, model-independent fallback set. These render
             even if retrieval or the on-device model is unavailable.
 
+    SosSignal:
+      type: object
+      required: [sos_id, sender, location, sent_at, received_at, hop_count, relay_count, help_count]
+      properties:
+        sos_id: { type: string, description: 8-byte mesh id of the latest call, hex }
+        sender: { type: string, description: The sender's daily-rotating mesh id (not linked to an account) }
+        location: { $ref: '#/components/schemas/GeoPoint' }
+        sent_at: { type: string, format: date-time }
+        received_at: { type: string, format: date-time, description: When a phone with signal uploaded it }
+        hop_count: { type: integer, description: Fewest phones it passed through to reach a phone with signal }
+        relay_count: { type: integer, description: Phones that uploaded it }
+        help_count: { type: integer, description: Calls for help from this sender in the window }
+        safe_at: { type: [string, 'null'], format: date-time, description: When the sender said they're safe, if they did }
+
     MeshRecord:
       type: object
       description: >
@@ -1336,7 +1373,7 @@ components:
       required: [event_id, hazard_type, lat_e6, lon_e6, severity, hop_count, timestamp, reporter_hash]
       properties:
         event_id: { type: string, description: '8 bytes, hex. Reports: sha256(client_event_id)[:8]' }
-        hazard_type: { type: integer, minimum: 0, maximum: 255, description: 'Index into HazardType: 0 flood, 1 fire, 2 earthquake, 3 storm, 4 landslide, 5 other' }
+        hazard_type: { type: integer, minimum: 0, maximum: 255, description: 'Index into HazardType: 0 flood, 1 fire, 2 earthquake, 3 storm, 4 landslide, 5 other. 6 is an SOS (severity 3 = needs help, 0 = safe now), stored apart from reports (see /review/sos)' }
         lat_e6: { type: integer, description: Degrees times 1e6 (sent over the air rounded to 1e-4) }
         lon_e6: { type: integer, description: Degrees times 1e6 (sent over the air rounded to 1e-4) }
         severity: { type: integer, minimum: 0, maximum: 255, description: 'Index into Severity: 0 low, 1 medium, 2 high, 3 critical' }

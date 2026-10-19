@@ -4,6 +4,7 @@
               embedding removed; location rounded to ~1 km. The event they formed stays.
   deliveries  deleted after DELIVERY_DAYS (only needed to avoid double pushes).
   devices     deleted after DEVICE_DAYS without re-registration (app uninstalled).
+  sos_signals deleted after SOS_DAYS: an exact location of a person, useful only while it's current.
 
 Run by the delivery worker every few hours; safe to run any time, any number of times.
 """
@@ -16,6 +17,7 @@ log = logging.getLogger("moby.privacy.retention")
 REPORT_DAYS = 90
 DELIVERY_DAYS = 30
 DEVICE_DAYS = 180
+SOS_DAYS = 30
 
 # A unique placeholder per report keeps distinct-reporter counts of old events intact
 # without being linkable to a person (or to other reports from the same person).
@@ -40,7 +42,10 @@ async def apply_retention(conn: AsyncConnection) -> dict[str, int]:
             "DELETE FROM deliveries WHERE sent_at < now() - make_interval(days => %s)", (DELIVERY_DAYS,))).rowcount
         devices = (await conn.execute(
             "DELETE FROM devices WHERE updated_at < now() - make_interval(days => %s)", (DEVICE_DAYS,))).rowcount
-    counts = {"reports_anonymised": reports, "deliveries_deleted": deliveries, "devices_deleted": devices}
+        sos = (await conn.execute(
+            "DELETE FROM sos_signals WHERE received_at < now() - make_interval(days => %s)", (SOS_DAYS,))).rowcount
+    counts = {"reports_anonymised": reports, "deliveries_deleted": deliveries, "devices_deleted": devices,
+              "sos_deleted": sos}
     if any(counts.values()):
         log.info("retention: %s", counts)
     return counts

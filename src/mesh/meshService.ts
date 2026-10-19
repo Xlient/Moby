@@ -12,6 +12,7 @@
 // the connection coming back) as well as by timers.
 
 import NetInfo from '@react-native-community/netinfo';
+import * as Notifications from 'expo-notifications';
 import * as Crypto from 'expo-crypto';
 import { AppState, PermissionsAndroid, Platform } from 'react-native';
 import { MobyMesh, type RadioState } from '../../modules/moby-mesh';
@@ -19,7 +20,7 @@ import { api } from '@/api/client';
 import type { MeshRecord } from '@/api/types';
 import { kv } from '@/lib/storage';
 import {
-  decodePacket, encodePacket, fromAlertRecord, meshKeyFromDigest, roundCoord, toSyncRecord, type MeshPacket,
+  decodePacket, encodePacket, fromAlertRecord, isSosHelp, meshKeyFromDigest, roundCoord, toSyncRecord, type MeshPacket,
 } from './codec';
 import { MeshRelay, type MeshEntry, type ReceiveResult } from './relay';
 
@@ -56,6 +57,11 @@ export interface MeshSnapshot {
   uploaded: number;
   /** Official alerts received from nearby phones (or fetched by us as a gateway). */
   alerts: { entry: MeshEntry; headline?: string }[];
+  /** Calls for help heard from nearby phones, one per sender, newest first. Unverified. */
+  sosCalls: { entry: MeshEntry; safe: boolean }[];
+  /** Our own call for help while it's going out. `heardCount` > 0 means a nearby phone
+   *  repeated it back to us: proof it reached at least one phone, not that a person saw it. */
+  ownSos?: MeshEntry;
   lastHeardAt?: number;
   lastError?: string;
   log: string[];
@@ -146,6 +152,8 @@ export function getMeshSnapshot(): MeshSnapshot {
     waitingToUpload: relay.pendingUploads().length,
     uploaded: uploadedCount,
     alerts: relay.alerts().map((entry) => ({ entry, headline: headlines[entry.packet.id] })),
+    sosCalls: relay.sosCalls(),
+    ownSos: relay.ownSos(),
     lastHeardAt,
     lastError,
     log: [...log],
@@ -231,6 +239,67 @@ export async function originateReport(r: {
   emit();
 }
 
+// ── SOS ──────────────────────────────────────────────────────────────
+
+export type SosResult = 'sent' | 'mesh_off' | 'no_location';
+
+async function randomMeshId(): Promise<string> {
+  const digest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, Crypto.randomUUID());
+  return meshKeyFromDigest(digest);
+}
+
+async function originateSos(severity: 'critical' | 'low', at: { lat: number; lon: number }): Promise<void> {
+  relay.addOwn({
+    kind: 'report',
+    id: await randomMeshId(),
+    hazard: 'sos',
+    severity,
+    lat: roundCoord(at.lat),
+    lon: roundCoord(at.lon),
+    time: Math.floor(Date.now() / 60_000) * 60,
+    reporter: await reporterId(),
+    hops: 0,
+  });
+  scheduleSave();
+  syncBroadcast();
+  // With signal, this phone is its own gateway: the call reaches reviewers at once.
+  void gatewayPass();
+  emit();
+}
+
+/**
+ * Broadcasts a call for help to nearby Moby phones, who pass it on until a phone with
+ * signal uploads it for reviewers. Only from the "I need help" screen, after the person
+ * confirms. Nothing here can tell whether anyone saw it, and the screen must never say so.
+ */
+export async function sendSos(at: { lat: number; lon: number } | null): Promise<SosResult> {
+  if (status !== 'running') return 'mesh_off';
+  if (!at) return 'no_location';
+  await originateSos('critical', at);
+  note('your call for help is on the mesh');
+  return 'sent';
+}
+
+/** "I'm safe now": nearby phones mark the call answered and stop repeating it. */
+export async function sendSafe(at: { lat: number; lon: number }): Promise<void> {
+  if (status !== 'running') return;
+  await originateSos('low', at);
+  note('told nearby phones you are safe');
+}
+
+/** A new call for help from someone nearby: worth interrupting for, labelled for what it is. */
+function notifySos(packet: MeshPacket): void {
+  if (Platform.OS !== 'android') return;
+  Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Someone nearby asked for help',
+      body: 'A Moby phone with no signal sent an SOS. Nobody has checked it. Open Moby for the location.',
+      data: { sos_id: packet.id },
+    },
+    trigger: { channelId: 'alerts' },
+  }).catch(() => {});
+}
+
 // ── Radio ────────────────────────────────────────────────────────────
 
 async function requestPermissions(): Promise<boolean> {
@@ -252,6 +321,7 @@ function onPacket(bytes: number[]): void {
   const result: ReceiveResult = relay.receive(packet);
   if (result === 'new') {
     note(`heard ${packet.kind} ${packet.hazard}/${packet.severity}, ${packet.hops} hop${packet.hops === 1 ? '' : 's'}`);
+    if (isSosHelp(packet)) notifySos(packet);
     scheduleSave();
     syncBroadcast();
     // Timers don't run in the background, so a new report is also the cue to upload it.

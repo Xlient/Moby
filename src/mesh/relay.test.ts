@@ -157,3 +157,79 @@ test('broadcast set for the radio: priorities, hop + 1, nothing past the limit',
   assert.deepEqual(set.map((p) => p.hops), [0, 0, 1, 3]);
   assert.equal(relay.broadcastSet(2).length, 2);
 });
+
+// ── SOS ──────────────────────────────────────────────────────────────
+
+const help = (over: Partial<MeshPacket> = {}) => packet({ hazard: 'sos', severity: 'critical', reporter: '5050aaaa', ...over });
+const safe = (over: Partial<MeshPacket> = {}) => packet({ hazard: 'sos', severity: 'low', reporter: '5050aaaa', ...over });
+
+test('an SOS travels on the air like any packet', () => {
+  const p = help({ hops: 3 });
+  assert.deepEqual(decodePacket(encodePacket(p)), p);
+});
+
+test('calls for help go on the air before alerts and reports', () => {
+  const relay = new MeshRelay({ now: clock().now });
+  relay.receive(packet());
+  relay.addAlert(packet({ kind: 'alert', reporter: '00000000' }));
+  relay.receive(help({ hops: 1 }));
+  const set = relay.broadcastSet();
+  assert.equal(set[0]!.hazard, 'sos');
+  assert.equal(set[1]!.kind, 'alert');
+});
+
+test('"I\'m safe" marks the call answered, and phones stop repeating the call', () => {
+  const c = clock();
+  const relay = new MeshRelay({ now: c.now });
+  relay.receive(help({ hops: 1 }));
+  assert.deepEqual(relay.sosCalls().map((s) => s.safe), [false]);
+  c.advance(10 * 60_000);
+  relay.receive(safe({ time: c.now() / 1000, hops: 1 }));
+  assert.deepEqual(relay.sosCalls().map((s) => s.safe), [true]);
+  const onAir = relay.broadcastSet();
+  assert.equal(onAir.filter((p) => p.severity === 'critical').length, 0);
+  assert.equal(onAir.filter((p) => p.severity === 'low').length, 1, 'the "safe" keeps spreading');
+});
+
+test('a new call after "I\'m safe" counts again', () => {
+  const c = clock();
+  const relay = new MeshRelay({ now: c.now });
+  relay.receive(safe({ time: c.now() / 1000 }));
+  c.advance(5 * 60_000);
+  relay.receive(help({ time: c.now() / 1000 }));
+  assert.deepEqual(relay.sosCalls().map((s) => s.safe), [false]);
+});
+
+test('one entry per sender: their latest call', () => {
+  const c = clock();
+  const relay = new MeshRelay({ now: c.now });
+  relay.receive(help());
+  c.advance(60_000);
+  relay.receive(help({ time: c.now() / 1000 }));
+  relay.receive(help({ reporter: '0badf00d' }));
+  const calls = relay.sosCalls();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0]!.entry.packet.reporter, '5050aaaa');
+});
+
+test('our own call is not listed as someone else\'s, and stops once we say safe', () => {
+  const c = clock();
+  const relay = new MeshRelay({ now: c.now });
+  relay.addOwn(help());
+  assert.equal(relay.sosCalls().length, 0);
+  assert.ok(relay.ownSos());
+  c.advance(60_000);
+  relay.addOwn(safe({ time: c.now() / 1000 }));
+  assert.equal(relay.ownSos(), undefined);
+});
+
+test('an SOS expires after 6 hours, sooner than a report', () => {
+  const c = clock();
+  const relay = new MeshRelay({ now: c.now });
+  relay.receive(help());
+  relay.receive(packet());
+  c.advance(6 * HOUR + 60_000);
+  assert.equal(relay.sosCalls().length, 0);
+  relay.prune();
+  assert.equal(relay.all().length, 1);
+});

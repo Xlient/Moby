@@ -10,7 +10,7 @@
 //
 // Time is injected (`now`) so the tests can fast-forward. See docs/mesh-guide.md.
 
-import { MAX_HOPS, type MeshPacket } from './codec';
+import { MAX_HOPS, isSosHelp, isSosSafe, type MeshPacket } from './codec';
 
 export type ReceiveResult = 'new' | 'duplicate' | 'stale' | 'too_many_hops' | 'rate_limited';
 
@@ -29,9 +29,10 @@ export interface MeshEntry {
 
 export interface RelayOptions {
   now?: () => number;
-  /** How long we keep repeating a report / an alert, from when it was made. */
+  /** How long we keep repeating a report / an alert / an SOS, from when it was made. */
   reportTtlMs?: number;
   alertTtlMs?: number;
+  sosTtlMs?: number;
   /** Most packets one phone keeps; oldest, already-uploaded ones go first. */
   maxEntries?: number;
   /** Most new reports we accept per reporter id per hour (flood protection). */
@@ -45,6 +46,7 @@ export class MeshRelay {
   private readonly now: () => number;
   private readonly reportTtlMs: number;
   private readonly alertTtlMs: number;
+  private readonly sosTtlMs: number;
   private readonly maxEntries: number;
   private readonly perReporterPerHour: number;
 
@@ -52,12 +54,46 @@ export class MeshRelay {
     this.now = opts.now ?? Date.now;
     this.reportTtlMs = opts.reportTtlMs ?? 24 * HOUR;
     this.alertTtlMs = opts.alertTtlMs ?? 12 * HOUR;
+    // Long enough for someone hurt to be found; short enough that an old call doesn't
+    // send people looking for someone who was rescued hours ago.
+    this.sosTtlMs = opts.sosTtlMs ?? 6 * HOUR;
     this.maxEntries = opts.maxEntries ?? 200;
     this.perReporterPerHour = opts.perReporterPerHour ?? 10;
   }
 
   private ttl(p: MeshPacket): number {
+    if (p.hazard === 'sos') return this.sosTtlMs;
     return p.kind === 'alert' ? this.alertTtlMs : this.reportTtlMs;
+  }
+
+  /** When this sender last said they're safe (unix s), if we've heard it. */
+  private safeSince(reporter: string): number | undefined {
+    let latest: number | undefined;
+    for (const e of this.entries.values()) {
+      if (isSosSafe(e.packet) && e.packet.reporter === reporter && this.isLive(e.packet)) {
+        latest = Math.max(latest ?? 0, e.packet.time);
+      }
+    }
+    return latest;
+  }
+
+  /** A call for help that its sender has since cancelled ("I'm safe"). */
+  private isAnswered(p: MeshPacket): boolean {
+    if (!isSosHelp(p)) return false;
+    const safe = this.safeSince(p.reporter);
+    return safe !== undefined && safe >= p.time;
+  }
+
+  /** What goes on the air first: calls for help, then official alerts, then our own, then the rest. */
+  private rank(e: MeshEntry): number {
+    if (e.packet.hazard === 'sos') return 0;
+    if (e.packet.kind === 'alert') return 1;
+    return e.own ? 2 : 3;
+  }
+
+  /** Worth repeating: live, hops left, and not a call for help its sender has cancelled. */
+  private repeatable(e: MeshEntry): boolean {
+    return this.isLive(e.packet) && (e.own || e.packet.hops + 1 <= MAX_HOPS) && !this.isAnswered(e.packet);
   }
 
   private isLive(p: MeshPacket): boolean {
@@ -138,12 +174,9 @@ export class MeshRelay {
    */
   nextBroadcast(): MeshPacket | null {
     this.prune();
-    const candidates = [...this.entries.values()].filter(
-      (e) => this.isLive(e.packet) && (e.own || e.packet.hops + 1 <= MAX_HOPS),
-    );
+    const candidates = [...this.entries.values()].filter((e) => this.repeatable(e));
     if (candidates.length === 0) return null;
-    const rank = (e: MeshEntry) => (e.packet.kind === 'alert' ? 0 : e.own ? 1 : 2);
-    candidates.sort((a, b) => a.sentCount - b.sentCount || rank(a) - rank(b) || a.firstHeardAt - b.firstHeardAt);
+    candidates.sort((a, b) => a.sentCount - b.sentCount || this.rank(a) - this.rank(b) || a.firstHeardAt - b.firstHeardAt);
     const pick = candidates[0]!;
     pick.sentCount += 1;
     return { ...pick.packet, hops: pick.own ? 0 : pick.packet.hops + 1 };
@@ -152,15 +185,14 @@ export class MeshRelay {
   /**
    * Everything worth repeating right now, ready to hand to the radio, which rotates
    * through it on its own (so it keeps going while the app is in the background, when
-   * JavaScript timers are paused). Alerts first, then our own reports, then the newest.
-   * Hop counts are already + 1 (0 for our own).
+   * JavaScript timers are paused). Calls for help first, then alerts, then our own
+   * reports, then the newest. Hop counts are already + 1 (0 for our own).
    */
   broadcastSet(limit = 20): MeshPacket[] {
     this.prune();
-    const rank = (e: MeshEntry) => (e.packet.kind === 'alert' ? 0 : e.own ? 1 : 2);
     return [...this.entries.values()]
-      .filter((e) => this.isLive(e.packet) && (e.own || e.packet.hops + 1 <= MAX_HOPS))
-      .sort((a, b) => rank(a) - rank(b) || b.firstHeardAt - a.firstHeardAt)
+      .filter((e) => this.repeatable(e))
+      .sort((a, b) => this.rank(a) - this.rank(b) || b.firstHeardAt - a.firstHeardAt)
       .slice(0, limit)
       .map((e) => ({ ...e.packet, hops: e.own ? 0 : e.packet.hops + 1 }));
   }
@@ -185,6 +217,29 @@ export class MeshRelay {
     return [...this.entries.values()]
       .filter((e) => e.packet.kind === 'alert' && this.isLive(e.packet))
       .sort((a, b) => b.packet.time - a.packet.time);
+  }
+
+  /**
+   * Calls for help from other phones, one per sender (their latest), newest first.
+   * `safe` is set once the sender said they're safe. Nobody has checked any of them.
+   */
+  sosCalls(): { entry: MeshEntry; safe: boolean }[] {
+    const latest = new Map<string, MeshEntry>();
+    for (const e of this.entries.values()) {
+      if (e.own || !isSosHelp(e.packet) || !this.isLive(e.packet)) continue;
+      const seen = latest.get(e.packet.reporter);
+      if (!seen || e.packet.time > seen.packet.time) latest.set(e.packet.reporter, e);
+    }
+    return [...latest.values()]
+      .sort((a, b) => b.packet.time - a.packet.time)
+      .map((entry) => ({ entry, safe: this.isAnswered(entry.packet) }));
+  }
+
+  /** Our own call for help while it's still going out (not cancelled, not expired). */
+  ownSos(): MeshEntry | undefined {
+    return [...this.entries.values()]
+      .filter((e) => e.own && isSosHelp(e.packet) && this.isLive(e.packet) && !this.isAnswered(e.packet))
+      .sort((a, b) => b.packet.time - a.packet.time)[0];
   }
 
   /** Everything this phone is carrying, for the debug screen. */
