@@ -31,6 +31,7 @@ class EvidenceItem(TypedDict, total=False):
 class BriefState(TypedDict, total=False):
     """State of the brief graph for one event (docs/situation-brief-plan.md)."""
     event_id: str
+    requested_at: str                                  # the claimed request (brief_requested_at): save_brief writes only for it
     facts: dict[str, Any]                              # brief_queries.event_facts: also the snapshot "what changed" diffs
     community: list[dict[str, Any]]                    # brief_queries.community_evidence: one group per effect
     previous: dict[str, Any] | None                    # brief_queries.previous_version: None on a first brief

@@ -6,6 +6,7 @@
     uv run --env-file .env python -m moby.graph.run --resume <uuid> --decision approve
     uv run --env-file .env python -m moby.graph.run --brief-list            # events a brief could cover
     uv run --env-file .env python -m moby.graph.run --brief <event_id>      # run the BRIEF graph on one event
+    uv run --env-file .env python -m moby.graph.run --brief <event_id> --request   # …as a new request (saves a brief)
     uv run --env-file .env python -m moby.graph.run --brief <event_id> --postgres   # …with checkpoints that survive a crash
 
 Not the production worker (claiming reports with SKIP LOCKED, the loop, resuming decided
@@ -86,13 +87,24 @@ LIMIT 30
 """
 
 
-def brief_thread_id(event_id: str) -> str:
+def brief_request(event_id: str, *, request: bool) -> str | None:
+    """The event's current brief request (brief_requested_at as text, as the worker's claim
+    returns it), asking for a new one first with --request. None if nobody asked."""
+    from moby.graph.brief_queries import request_brief
+    with psycopg.connect(db_url(), autocommit=True) as conn:
+        if request:
+            request_brief(conn, event_id)
+        row = conn.execute("SELECT brief_requested_at FROM events WHERE event_id = %s", (event_id,)).fetchone()
+    return json.loads(json.dumps(row[0], default=str)) if row and row[0] else None
+
+
+def brief_thread_id(event_id: str, requested_at: str | None = None) -> str:
     """The brief worker's thread id: the event plus the REQUEST (brief_requested_at), so
     re-running the same request resumes its checkpoint and a new request starts fresh.
     An event nobody asked about gets "manual"."""
-    with psycopg.connect(db_url()) as conn:
-        row = conn.execute("SELECT brief_requested_at FROM events WHERE event_id = %s", (event_id,)).fetchone()
-    return f"brief-{event_id}-{row[0] if row and row[0] else 'manual'}"
+    if requested_at is None:
+        requested_at = brief_request(event_id, request=False)
+    return f"brief-{event_id}-{requested_at or 'manual'}"
 
 
 def list_brief_events() -> None:
@@ -167,6 +179,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--postgres", action="store_true", help="persistent Postgres checkpointer (milestone 4)")
     p.add_argument("--show-state", action="store_true", help="print the final state")
     p.add_argument("--thread-id", help="with --brief: use this checkpointer thread instead of brief-<event>-<requested_at>")
+    p.add_argument("--request", action="store_true",
+                   help="with --brief: ask for a brief first (request_brief), so save_brief has a request to save for")
     p.add_argument("--resume-run", action="store_true",
                    help="with --brief --postgres: continue the thread from its last checkpoint (input None)")
     args = p.parse_args(argv)
@@ -179,10 +193,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.brief:
         builder = load_builder(BRIEF_GRAPH if args.graph == GRAPH else args.graph)
-        thread_id = args.thread_id or brief_thread_id(args.brief)
+        requested_at = brief_request(args.brief, request=args.request)
+        if requested_at is None:
+            print("nobody has asked for a brief of this event: save_brief won't write (add --request)")
+        thread_id = args.thread_id or brief_thread_id(args.brief, requested_at)
         # --resume-run: input None continues the thread from its last checkpoint (what the worker
         # does after a crash) instead of starting over. Only useful with --postgres.
-        final = asyncio.run(run(builder, state=None if args.resume_run else {"event_id": args.brief},
+        state = {"event_id": args.brief, "requested_at": requested_at or ""}
+        final = asyncio.run(run(builder, state=None if args.resume_run else state,
                                 thread_id=thread_id, postgres=args.postgres))
         if args.show_state:
             print(json.dumps(final, indent=2, default=str))
