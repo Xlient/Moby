@@ -1,4 +1,4 @@
-# iOS Simulator build: no Apple Developer account needed (unsigned, simulator only).
+# iOS Simulator build: no Apple Developer account needed (ad-hoc signed, simulator only).
 # Proves iOS still builds and gives a .app you can drag onto a simulator. On version
 # tags it's attached to the GitHub Release (next to the Android APK) for judges and testers.
 #
@@ -67,9 +67,11 @@ jobs:
           WORKSPACE=$(ls -d ios/*.xcworkspace | head -1)
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
           # Full log to a file (uploaded below); on failure show only the error lines.
+          # Ad-hoc signed ("-"), not unsigned: unsigned apps get no keychain access in the
+          # Simulator, which breaks Google Sign-In (GIDSignIn "keychain error").
           if ! xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release \
               -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
-              -derivedDataPath build CODE_SIGNING_ALLOWED=NO > xcodebuild.log 2>&1; then
+              -derivedDataPath build CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= > xcodebuild.log 2>&1; then
             grep -nE "error:|fatal|\*\* BUILD FAILED" xcodebuild.log | head -60
             exit 1
           fi
