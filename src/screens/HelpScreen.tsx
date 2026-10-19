@@ -34,7 +34,8 @@ interface HelpScreenProps {
 export function HelpScreen({ onBack }: HelpScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
-  const { status, fix, retry } = useDeviceLocation(true);
+  // Any position beats none when asking for help; an old one is labelled "last known".
+  const { status, fix, retry } = useDeviceLocation(true, { lastKnownMaxAgeMs: 24 * 60 * 60_000 });
   const fresh = isFresh(fix);
   // No fix yet: the numbers still show, for the last place the phone was seen.
   const lastSeen = useUserCenterPassive();

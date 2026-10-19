@@ -104,7 +104,7 @@ const SHOW_TABS: Set<string> = new Set(['home', 'assistant', 'settings']);
 export function App() {
   const { theme } = useTheme();
   const { maxContent } = useResponsive();
-  const { user, loading: authLoading, getIdToken, isConfigured: authConfigured } = useAuth();
+  const { sessionUid, loading: authLoading, getIdToken, isConfigured: authConfigured } = useAuth();
   const { isEnabled } = useFeatureFlags();
   // A small stack: tabs reset it, stacked screens push onto it, Back pops.
   const [stack, setStack] = useState<Screen[]>([{ name: 'home' }]);
@@ -133,13 +133,14 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    api.setTokenProvider(user ? getIdToken : null);
-  }, [user, getIdToken]);
+    // While a saved sign-in is still being confirmed, getIdToken waits for it.
+    api.setTokenProvider(sessionUid ? getIdToken : null);
+  }, [sessionUid, getIdToken]);
 
   // Signing out (or in as someone else) starts fresh on Home.
   useEffect(() => {
     setStack([{ name: 'home' }]);
-  }, [user?.uid]);
+  }, [sessionUid]);
 
   const navigateToAlert = useCallback(
     (alertId: string) => push({ name: 'alert-detail', alertId }),
@@ -209,7 +210,7 @@ export function App() {
     );
   }
 
-  if (authConfigured && !user) {
+  if (authConfigured && !sessionUid) {
     return (
       <View style={shellStyle}>
         <AuthScreen />

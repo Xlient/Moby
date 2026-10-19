@@ -1,5 +1,6 @@
-# iOS Simulator build: no Apple Developer account needed (unsigned, simulator only).
-# Proves iOS still builds and gives a .app you can drag onto a simulator.
+# iOS Simulator build: no Apple Developer account needed (ad-hoc signed, simulator only).
+# Proves iOS still builds and gives a .app you can drag onto a simulator. On version
+# tags it's attached to the GitHub Release (next to the Android APK) for judges and testers.
 #
 # macOS runners use Actions minutes 10x faster than Linux, so this runs on release
 # tags, weekly, and on demand — not on every pull request.
@@ -15,7 +16,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # attach the build to the GitHub Release on tags
 
 jobs:
   build:
@@ -41,19 +42,36 @@ jobs:
         run: npm ci
 
       - name: Prebuild (generate ios/ and install pods)
+        env:
+          # Registers the URL scheme Google Sign-In returns to (reversed iOS client ID).
+          GOOGLE_IOS_URL_SCHEME: ${{ vars.GOOGLE_IOS_URL_SCHEME }}
         run: |
           npx expo prebuild --platform ios --clean
           # prebuild reports a failed `pod install` but still exits 0: fail here instead.
           ls -d ios/*.xcworkspace >/dev/null 2>&1 || { echo "::error::pod install failed (no .xcworkspace)"; exit 1; }
 
       - name: Build for the simulator
+        env:
+          # Inlined into the JS bundle: the live backend and email sign-in (same values as
+          # android-release.yml). Without them the build runs on demo data.
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_FIREBASE_API_KEY: ${{ vars.EXPO_PUBLIC_FIREBASE_API_KEY }}
+          EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ vars.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+          EXPO_PUBLIC_FIREBASE_PROJECT_ID: ${{ vars.EXPO_PUBLIC_FIREBASE_PROJECT_ID }}
+          EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ vars.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+          EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+          EXPO_PUBLIC_FIREBASE_APP_ID: ${{ vars.EXPO_PUBLIC_FIREBASE_APP_ID }}
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
+          EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID }}
         run: |
           WORKSPACE=$(ls -d ios/*.xcworkspace | head -1)
           SCHEME=$(basename "$WORKSPACE" .xcworkspace)
           # Full log to a file (uploaded below); on failure show only the error lines.
+          # Ad-hoc signed ("-"), not unsigned: unsigned apps get no keychain access in the
+          # Simulator, which breaks Google Sign-In (GIDSignIn "keychain error").
           if ! xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release \
               -sdk iphonesimulator -destination "generic/platform=iOS Simulator" \
-              -derivedDataPath build CODE_SIGNING_ALLOWED=NO > xcodebuild.log 2>&1; then
+              -derivedDataPath build CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= > xcodebuild.log 2>&1; then
             grep -nE "error:|fatal|\*\* BUILD FAILED" xcodebuild.log | head -60
             exit 1
           fi
@@ -73,3 +91,10 @@ jobs:
           name: moby-ios-simulator
           path: dist/Moby-simulator.zip
           retention-days: 14
+
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/Moby-simulator.zip
+          prerelease: ${{ contains(github.ref_name, '-') }}

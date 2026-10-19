@@ -5,6 +5,7 @@ import { env } from '@/config/env';
 import { USER_CENTER } from '@/lib/geo';
 import { kv } from '@/lib/storage';
 import { useTryMoby } from '@/lib/tryMoby';
+import { ensureForegroundLocation } from './permission';
 
 export type CenterSource =
   /** A fix from this device (possibly the last known one). */
@@ -60,11 +61,14 @@ export function UserLocationProvider({ children }: { children: ReactNode }) {
   const [center, setCenter] = useState<UserCenter>(initial);
   const started = useRef(false);
 
-  const refresh = useCallback(async () => {
-    if (env.useMock) return;
+  const busy = useRef(false);
+
+  // `ask: false` on returning to the app: asking there loops (see ensureForegroundLocation).
+  const refresh = useCallback(async ({ ask = true }: { ask?: boolean } = {}) => {
+    if (env.useMock || busy.current) return;
+    busy.current = true;
     try {
-      const perm = await Location.requestForegroundPermissionsAsync();
-      if (perm.status !== 'granted') {
+      if (!(await ensureForegroundLocation({ ask }))) {
         setCenter((c) => ({ ...c, problem: 'denied' }));
         return;
       }
@@ -87,6 +91,8 @@ export function UserLocationProvider({ children }: { children: ReactNode }) {
     } catch {
       // Location services off or no fix: keep whatever we had, and say why.
       setCenter((c) => ({ ...c, problem: 'unavailable' }));
+    } finally {
+      busy.current = false;
     }
   }, []);
 
@@ -98,7 +104,7 @@ export function UserLocationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active' && started.current) refresh();
+      if (s === 'active' && started.current) refresh({ ask: false });
     });
     return () => sub.remove();
   }, [refresh]);

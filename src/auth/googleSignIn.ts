@@ -5,6 +5,7 @@ import {
   statusCodes,
 } from '@react-native-google-signin/google-signin';
 import { GoogleAuthProvider, signInWithCredential, type Auth } from 'firebase/auth';
+import { Platform } from 'react-native';
 import { env } from '@/config/env';
 
 // Native (Android/iOS): the Google account picker returns an ID token issued for
@@ -15,11 +16,17 @@ let configured = false;
 
 function ensureConfigured(): void {
   if (configured) return;
-  GoogleSignin.configure({ webClientId: env.googleWebClientId });
+  GoogleSignin.configure({
+    webClientId: env.googleWebClientId,
+    iosClientId: env.googleIosClientId || undefined,
+  });
   configured = true;
 }
 
-export const isGoogleSignInAvailable = !!env.googleWebClientId;
+// iOS also needs an iOS OAuth client (and its URL scheme, GOOGLE_IOS_URL_SCHEME in
+// app.config.ts): without one the Google SDK throws a native exception and the app crashes.
+export const isGoogleSignInAvailable =
+  !!env.googleWebClientId && (Platform.OS !== 'ios' || !!env.googleIosClientId);
 
 /** Resolves false when the user closes the picker. Throws a friendly Error otherwise. */
 export async function signInWithGoogle(auth: Auth): Promise<boolean> {
