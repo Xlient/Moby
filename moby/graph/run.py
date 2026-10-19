@@ -4,6 +4,10 @@
     uv run --env-file .env python -m moby.graph.run --once          # oldest pending report
     uv run --env-file .env python -m moby.graph.run --once --report-id <uuid>
     uv run --env-file .env python -m moby.graph.run --resume <uuid> --decision approve
+    uv run --env-file .env python -m moby.graph.run --brief-list            # events a brief could cover
+    uv run --env-file .env python -m moby.graph.run --brief <event_id>      # run the BRIEF graph on one event
+    uv run --env-file .env python -m moby.graph.run --brief <event_id> --request   # …as a new request (saves a brief)
+    uv run --env-file .env python -m moby.graph.run --brief <event_id> --postgres   # …with checkpoints that survive a crash
 
 Not the production worker (claiming reports with SKIP LOCKED, the loop, resuming decided
 review_queue rows): that's yours to build. This only makes each step easy to try.
@@ -31,6 +35,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 GRAPH = "moby.graph.pipeline:build_graph"
+BRIEF_GRAPH = "moby.graph.brief_pipeline:build_brief_graph"   # build_brief_graph(checkpointer), input {"event_id"}
 DEFAULT_DB = "postgresql://moby:moby@localhost:5432/moby"
 
 REPORT_SQL = """
@@ -69,6 +74,47 @@ def list_pending() -> None:
         who = r["reporter_hash"][:12]
         print(f"{r['report_id']}  {r['client_event_id'][:28]:28}  {r['hazard_type']:10} {r['severity']:8} "
               f"{r['source']:6} by {who}  ({r['lat']:.4f}, {r['lon']:.4f})")
+
+
+BRIEF_EVENTS_SQL = """
+SELECT e.event_id::text, e.source, e.hazard_type, e.severity, e.tier, e.brief_status,
+       count(r.report_id)::int AS reports, left(COALESCE(e.title_en, e.title, e.alert_headline, ''), 50) AS title
+FROM events e LEFT JOIN reports r ON r.event_id = e.event_id
+WHERE e.brief_status = 'pending' OR r.report_id IS NOT NULL
+GROUP BY e.event_id
+ORDER BY (e.brief_status = 'pending') DESC, count(r.report_id) DESC, e.last_updated_at DESC
+LIMIT 30
+"""
+
+
+def brief_request(event_id: str, *, request: bool) -> str | None:
+    """The event's current brief request (brief_requested_at as text, as the worker's claim
+    returns it), asking for a new one first with --request. None if nobody asked."""
+    from moby.graph.brief_queries import request_brief
+    with psycopg.connect(db_url(), autocommit=True) as conn:
+        if request:
+            request_brief(conn, event_id)
+        row = conn.execute("SELECT brief_requested_at FROM events WHERE event_id = %s", (event_id,)).fetchone()
+    return json.loads(json.dumps(row[0], default=str)) if row and row[0] else None
+
+
+def brief_thread_id(event_id: str, requested_at: str | None = None) -> str:
+    """The brief worker's thread id: the event plus the REQUEST (brief_requested_at), so
+    re-running the same request resumes its checkpoint and a new request starts fresh.
+    An event nobody asked about gets "manual"."""
+    if requested_at is None:
+        requested_at = brief_request(event_id, request=False)
+    return f"brief-{event_id}-{requested_at or 'manual'}"
+
+
+def list_brief_events() -> None:
+    with psycopg.connect(db_url(), row_factory=dict_row) as conn:
+        rows = conn.execute(BRIEF_EVENTS_SQL).fetchall()
+    if not rows:
+        print("no events with reports or pending briefs (seed and fuse some: --once a few times)")
+    for r in rows:
+        print(f"{r['event_id']}  {r['source']:9} {r['hazard_type']:10} {r['severity']:8} tier {r['tier']}  "
+              f"{r['reports']:2} report(s)  brief {r['brief_status']:13} {r['title']}")
 
 
 def load_builder(spec: str):
@@ -125,15 +171,39 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--list", action="store_true", help="list pending reports")
     g.add_argument("--once", action="store_true", help="run the graph on one report")
     g.add_argument("--resume", metavar="REPORT_ID", help="resume a paused run with --decision")
+    g.add_argument("--brief-list", action="store_true", help="list events a brief could cover")
+    g.add_argument("--brief", metavar="EVENT_ID", help="run the brief graph on one event")
     p.add_argument("--report-id", help="with --once: this report instead of the oldest pending one")
     p.add_argument("--decision", default="approve", help="with --resume: the value passed to Command(resume=…)")
     p.add_argument("--graph", default=GRAPH, help=f"module:function that builds the graph (default {GRAPH})")
     p.add_argument("--postgres", action="store_true", help="persistent Postgres checkpointer (milestone 4)")
     p.add_argument("--show-state", action="store_true", help="print the final state")
+    p.add_argument("--thread-id", help="with --brief: use this checkpointer thread instead of brief-<event>-<requested_at>")
+    p.add_argument("--request", action="store_true",
+                   help="with --brief: ask for a brief first (request_brief), so save_brief has a request to save for")
+    p.add_argument("--resume-run", action="store_true",
+                   help="with --brief --postgres: continue the thread from its last checkpoint (input None)")
     args = p.parse_args(argv)
 
     if args.list:
         list_pending()
+        return 0
+    if args.brief_list:
+        list_brief_events()
+        return 0
+    if args.brief:
+        builder = load_builder(BRIEF_GRAPH if args.graph == GRAPH else args.graph)
+        requested_at = brief_request(args.brief, request=args.request)
+        if requested_at is None:
+            print("nobody has asked for a brief of this event: save_brief won't write (add --request)")
+        thread_id = args.thread_id or brief_thread_id(args.brief, requested_at)
+        # --resume-run: input None continues the thread from its last checkpoint (what the worker
+        # does after a crash) instead of starting over. Only useful with --postgres.
+        state = {"event_id": args.brief, "requested_at": requested_at or ""}
+        final = asyncio.run(run(builder, state=None if args.resume_run else state,
+                                thread_id=thread_id, postgres=args.postgres))
+        if args.show_state:
+            print(json.dumps(final, indent=2, default=str))
         return 0
     builder = load_builder(args.graph)
     if args.resume:

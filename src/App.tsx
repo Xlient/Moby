@@ -32,6 +32,7 @@ import { PrivacyScreen } from '@/screens/PrivacyScreen';
 import { NearbyMeshScreen } from '@/screens/NearbyMeshScreen';
 import { EmergencyScreen } from '@/screens/EmergencyScreen';
 import { HelpScreen } from '@/screens/HelpScreen';
+import { RouteCheckScreen } from '@/screens/RouteCheckScreen';
 import { OfflineAnswersScreen } from '@/screens/OfflineAnswersScreen';
 import { useModelState } from '@/ondevice/useModel';
 import { useMeshLifecycle } from '@/mesh/useMeshLifecycle';
@@ -52,6 +53,7 @@ type Screen =
   | { name: 'alert-detail'; alertId: string }
   | { name: 'emergency'; alertId: string }
   | { name: 'help' }
+  | { name: 'route-check' }
   | { name: 'guidance'; hazard?: HazardType }
   | { name: 'report' }
   | { name: 'my-reports' }
@@ -72,6 +74,7 @@ function getActiveTab(screen: Screen): string {
     case 'alert-detail':
     case 'emergency':
     case 'help':
+    case 'route-check':
     case 'guidance':
     case 'report':
     case 'my-reports':
@@ -234,6 +237,7 @@ export function App() {
             onMyReportsPress={() => push({ name: 'my-reports' })}
             onEmergencyPress={(alertId) => push({ name: 'emergency', alertId })}
             onHelpPress={() => push({ name: 'help' })}
+            onRouteCheckPress={() => push({ name: 'route-check' })}
             onTripPress={showTrip ? () => openTrip() : undefined}
           />
         )}
@@ -253,6 +257,7 @@ export function App() {
           />
         )}
         {screen.name === 'help' && <HelpScreen onBack={goBack} />}
+        {screen.name === 'route-check' && <RouteCheckScreen onBack={goBack} onAlertPress={navigateToAlert} />}
         {screen.name === 'map' &&
           (mapEngine === 'maplibre' ? (
             <MapLibreMapScreen

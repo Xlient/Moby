@@ -840,7 +840,7 @@ export interface paths {
         };
         /**
          * Situational brief for an event
-         * @description Generated asynchronously on Ultra after the fast alert has already been sent. Returns 202 with status "pending" while generation is in flight — clients should render the alert immediately and let the brief arrive behind it. Never block alert display on this endpoint.
+         * @description Generated asynchronously on Ultra after the fast alert has already been sent. Returns 202 with status "pending" while generation is in flight — clients should render the alert immediately and let the brief arrive behind it. Never block alert display on this endpoint. Opening an event asks for a brief when community reports arrived that the current brief doesn't cover: with no brief yet the response is 202; with one, the current brief is returned (200) and the rewrite follows.
          */
         get: {
             parameters: {
@@ -1367,6 +1367,94 @@ export interface paths {
                         };
                     };
                 };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/routes/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Does a route cross a hazard Moby knows about? And one that goes around
+         * @description The usual route from OpenRouteService (OpenStreetMap), the active hazards it crosses (official warnings with an area; community events from tier 1, as 500 m circles), and, when it crosses any, a route that avoids them, checked the same way. Never says a route is safe: only that it crosses no hazard Moby knows about. Only the two points go to OpenRouteService. Capped per day (429 daily_limit); 503 routing_unavailable when the server has no ORS key; 422 with no_route, point_not_routable or over_limits when ORS can't route these points.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RouteCheckRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RouteCheck"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/routes/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Place search for a route's destination */
+        get: {
+            parameters: {
+                query: {
+                    q: string;
+                    /** @description Bias results towards here */
+                    lat?: number;
+                    lon?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            places: components["schemas"]["Place"][];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
             };
         };
         put?: never;
@@ -1907,6 +1995,30 @@ export interface components {
              * @description When the version that `changes` compares against was generated.
              */
             changes_since?: string;
+            /** @description Built from the database when the brief is read (not by the model), oldest first: the official warning (issued, updated, in force until) and one entry per thing people reported. after_brief marks what the brief doesn't cover yet. */
+            timeline?: {
+                /** Format: date-time */
+                at: string;
+                /**
+                 * Format: date-time
+                 * @description Last report of a community group
+                 */
+                until?: string;
+                /** @enum {string} */
+                kind: "official" | "community";
+                /** @enum {string} */
+                type: "issued" | "updated" | "expires" | "reports";
+                label: string;
+                /** @description The issuing agency (official entries) */
+                detail?: string;
+                /** @description Distinct people (community entries) */
+                reporters?: number;
+                /** @enum {string} */
+                severity?: "low" | "medium" | "high" | "critical";
+                /** @description When each report in the group was observed (up to 20) */
+                times?: string[];
+                after_brief: boolean;
+            }[];
         };
         CascadeAssessment: {
             region: components["schemas"]["RegionCode"];
@@ -1961,6 +2073,69 @@ export interface components {
              * @default false
              */
             is_critical_fallback: boolean;
+        };
+        RouteCheckRequest: {
+            origin: components["schemas"]["LatLon"];
+            destination: components["schemas"]["LatLon"];
+            /**
+             * @default driving-car
+             * @enum {string}
+             */
+            profile: "driving-car" | "foot-hiking";
+        };
+        LatLon: {
+            lat: number;
+            lon: number;
+        };
+        Place: {
+            label: string;
+            lat: number;
+            lon: number;
+        };
+        RouteCheck: {
+            /** @enum {string} */
+            profile: "driving-car" | "foot-hiking";
+            route: components["schemas"]["CheckedRoute"];
+            /** @description A route around the hazards the usual one crosses; null when it crosses none or none was found */
+            alternative?: components["schemas"]["CheckedRoute"] | null;
+            /**
+             * @description Why there's no alternative although the route crosses hazards
+             * @enum {string|null}
+             */
+            alternative_problem?: "cannot_avoid" | "no_route" | "over_limits" | "point_not_routable" | "rate_limited" | "not_configured" | "unreachable" | "routing_failed" | null;
+        };
+        CheckedRoute: {
+            geometry: {
+                /** @enum {string} */
+                type: "LineString";
+                /** @description [lon, lat] pairs */
+                coordinates: number[][];
+            };
+            distance_m: number;
+            duration_s: number;
+            /** @description Hazards the route crosses, in the order you'd reach them */
+            hazards: components["schemas"]["RouteHazard"][];
+        };
+        RouteHazard: {
+            event_id: string;
+            /** @description Opens the alert (GET /alerts/{alert_id}) */
+            alert_id: string;
+            hazard_type: components["schemas"]["HazardType"];
+            severity: components["schemas"]["Severity"];
+            /** @enum {string} */
+            verification: "official" | "community";
+            headline?: string | null;
+            /** @description How far along the route you'd reach it */
+            km_along: number;
+            /** @description The point on the route nearest the hazard */
+            at: components["schemas"]["LatLon"];
+            /** Format: date-time */
+            expires_at?: string | null;
+            /**
+             * @description Present when no route can avoid it (you start or end inside it, or it's too large to route around)
+             * @enum {string}
+             */
+            cannot_avoid?: "start_inside" | "end_inside" | "too_large";
         };
         /** @description JSON mirror of the ~28-byte binary record relayed over BLE. The wire format is CBOR/packed-binary; this shape is only used at the gateway sync boundary. */
         MeshRecord: {

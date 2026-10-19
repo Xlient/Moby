@@ -11,6 +11,7 @@ dependencies = [
     "langchain>=1.4.0",
     "langchain-openai>=1.0",
     "langgraph>=1.2.11",
+    "langgraph-checkpoint-postgres>=3.2.0",
     "langsmith>=0.4",
     "markdown>=3.7",
     "openai>=3.16.2",

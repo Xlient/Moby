@@ -1,7 +1,7 @@
 from moby.llm import chat_model
 from moby.graph.schemas import ReportDetails
 
-SYS_PROMPT = """You read the free-text note from a hazard report and fill in ONLY the fields in the schema you are given.
+REPORT_SYS_PROMPT = """You read the free-text note from a hazard report and fill in ONLY the fields in the schema you are given.
 The hazard type, severity and what was seen come from the report form and are context only; there are no fields for place or time.
 Default every field to null. Fill a field only when the note itself clearly says it; a field the note doesn't mention MUST be null.
 In particular: trend is null unless the note describes the hazard changing or explicitly staying the same; extent is null unless the note describes the size of the affected area.
@@ -23,4 +23,5 @@ def extract_details(report: dict) -> ReportDetails:
     # mode made Nano fill every field (e.g. trend 'steady' when the note said nothing): 69% → 92%.
     llm = chat_model("nano", temperature=0, timeout=10, max_retries=1).with_structured_output(
         ReportDetails, method="function_calling")
-    return llm.invoke([("system", SYS_PROMPT), ("user", message)])
+    return llm.invoke([("system", REPORT_SYS_PROMPT), ("user", message)])
+
