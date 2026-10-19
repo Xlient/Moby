@@ -9,6 +9,8 @@ import type {
   AskAnswer,
   EventReports,
   ReportSummary,
+  TripBrief,
+  TripBriefRequest,
 } from './types';
 
 // ── Helpers: relative dates ──────────────────────────────────────────
@@ -36,6 +38,7 @@ export const mockConfig: ClientConfig = {
     mesh_relay: false,
     proximity_confirmation: false,
     early_tier_opt_in: false,
+    trip_briefing: true,
   },
 };
 
@@ -409,5 +412,81 @@ export function getMockAnswer(question: string): AskAnswer {
       url: 'https://www.weather.gov/safety/flood-turn-around-dont-drown' }],
     model: 'nvidia/nemotron-3-super-120b-a12b',
     searched_web: false,
+  };
+}
+
+// "Before you go" sample (POST /v1/trips/brief): the Phakding demo — an official flood alert and
+// community "bridge washed out" reports, explained with citations. Elsewhere: nothing found.
+export function getMockTripBrief(req: TripBriefRequest): TripBrief {
+  const now = new Date();
+  const start = req.start_date ?? now.toISOString().slice(0, 10);
+  const end = req.end_date ?? new Date(now.getTime() + 3 * 86_400_000).toISOString().slice(0, 10);
+  // A route's destination is its last stop.
+  const stops = req.stops ?? [{ lat: req.lat ?? 0, lon: req.lon ?? 0, name: req.place_name }];
+  const last = stops[stops.length - 1]!;
+  const lat = Math.round(last.lat * 100) / 100;
+  const lon = Math.round(last.lon * 100) / 100;
+  const nearPhakding = stops.some((s) => Math.abs(s.lat - 27.74) < 0.5 && Math.abs(s.lon - 86.71) < 0.5);
+  const base = {
+    generated_at: now.toISOString(),
+    destination: {
+      lat, lon, radius_km: req.radius_km ?? 25,
+      ...(last.name ? { place_name: last.name } : {}),
+      ...(req.country ? { country: req.country } : {}),
+    },
+    ...(req.stops ? { route: { stops: req.stops, length_km: 13.5 } } : {}),
+    trip: { start_date: start, end_date: end },
+    language: 'en',
+    cached: false,
+  };
+  const stale = `This briefing shows what Moby knew at ${now.toISOString().slice(0, 16).replace('T', ' ')} UTC. `
+    + 'Saved for offline, it goes stale: it can\u2019t know about warnings issued or changed after it was saved. '
+    + 'Check again whenever you have signal, and follow local authorities.';
+  if (!nearPhakding) {
+    return {
+      ...base, official_alerts: [], community_reports: [], hazards: [], web_sources: [], searched_web: false,
+      web_status: 'no_official_sites', ai_status: 'nothing_to_explain',
+      uncertainty: [stale, 'No active official alerts cover this area right now. That doesn\u2019t mean it\u2019s safe: '
+        + 'Moby only sees agencies whose warnings it can read, and conditions change quickly.'],
+    };
+  }
+  return {
+    ...base,
+    official_alerts: [{
+      alert_id: 'trip-o1', event_id: 'trip-o1', cite_id: 'O1', ends_before_trip: false,
+      hazard_type: 'flood', headline: 'Flood warning for the Dudh Koshi',
+      body: 'Water level of the Dudh Koshi at Phakding is above the warning level and rising. People along the '
+        + 'river banks and trails close to the river are advised to stay alert and avoid crossing the river.',
+      severity: 'high', location: { lat: 27.74, lon: 86.71, frame: 'WGS84' },
+      issued_at: minutesAgo(95), expires_at: new Date(Date.now() + 30 * 3_600_000).toISOString(),
+      verification_label: 'official_confirmed', source_attribution: 'Department of Hydrology and Meteorology',
+      location_name: 'Dudh Koshi, Solukhumbu', country: 'NP', distance_km: 0,
+    }],
+    community_reports: [{
+      alert_id: 'trip-c1', event_id: 'trip-c1', cite_id: 'C1', reporter_count: 3, last_report_at: minutesAgo(70),
+      hazard_type: 'flood', headline: 'Bridge washed out reported', severity: 'high',
+      location: { lat: 27.75, lon: 86.71, frame: 'WGS84' }, issued_at: minutesAgo(180),
+      verification_label: 'corroborated_report', source_attribution: 'Community reports', corroboration_count: 3,
+      distance_km: 1.1,
+    }],
+    hazards: ['flood'],
+    web_sources: [{ cite_id: 'W1', title: 'Flood early warning', url: 'https://bipad.gov.np/en/', publisher: 'bipad.gov.np' }],
+    searched_web: true,
+    web_status: 'searched',
+    ai_status: 'ok',
+    explanation: {
+      model: 'nvidia/Nemotron-3-Ultra-550b-a55b',
+      claims: [
+        { text: 'The Dudh Koshi at Phakding is above the warning level and rising; avoid the river banks and trails '
+          + 'close to the river, and don\u2019t cross the river.', basis: 'official', cites: ['O1'] },
+        { text: '3 people nearby report a bridge washed out about 1.1 km from Phakding. This isn\u2019t confirmed, but '
+          + 'plan for a river crossing being closed.', basis: 'community', cites: ['C1'] },
+      ],
+    },
+    uncertainty: [
+      stale,
+      `Alerts and reports are matched to a ${req.radius_km ?? 25} km circle around the point you picked, not to your exact route.`,
+      'Reports from people nearby are unverified: no official source has confirmed them.',
+    ],
   };
 }

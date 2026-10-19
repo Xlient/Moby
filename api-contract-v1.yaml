@@ -1,13 +1,22 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.8.1
+  version: 0.9.1
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
-    0.8.1 — SituationalBrief.timeline (additive): official and community events over time,
+    0.9.1 — SituationalBrief.timeline (additive): official and community events over time,
       built from the database when the brief is read.
+    0.9.0 — "Before you go" trip briefing (additive):
+      + POST /trips/brief (signed-in, 10 per hour): active official alerts whose area meets a
+        circle around the destination, or a corridor along a route through 2-8 stops, and recent
+        community reports in it (PostGIS), why each
+        matters for the trip (NVIDIA Nemotron Ultra; every statement cites O/C/W ids and is
+        checked), official web pages (Tavily) and a required, never-empty uncertainty list.
+        Without the AI part (daily cap, no key) the same lists come back, labelled by ai_status
+      + TripBriefRequest, TripBrief schemas
+      + ClientConfig.flags.trip_briefing
     0.8.0 — Situational brief with citations and "what changed" (additive):
       + SituationalBrief.version, claims (each with basis official | community | news and
         the citation ids it rests on), contradictions, citations, changes, changes_since
@@ -411,6 +420,35 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { description: Too many questions }
         '503': { description: Ask Moby isn't available right now }
+
+  /trips/brief:
+    post:
+      tags: [analysis]
+      summary: '"Before you go": a trip briefing for a destination, to save for offline'
+      description: >
+        Code decides, AI explains. PostGIS selects the active official alerts whose area (or
+        point) is within radius_km of the destination and the community reports there from the
+        last 72 hours. NVIDIA Nemotron Ultra then explains why each matters for the trip; every
+        statement cites the rows (O1…, C1…) or official web pages (W1…, Tavily, restricted to
+        the country's official domains) it rests on, and is dropped if its numbers, names or
+        hazards aren't in them. Statements resting on community reports have basis community
+        and are shown as unverified. Never changes tier, severity or delivery. The destination
+        is snapped to 0.01° and isn't stored with the caller's identity; the AI part is cached
+        per snapped point, radius, trip and day, and redone when an alert or report changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TripBriefRequest' }
+      responses:
+        '200':
+          description: The briefing (always; ai_status says whether the AI part is included)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TripBrief' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { description: Invalid destination, radius or dates }
+        '429': { description: Too many briefings }
 
   /events/{event_id}/confirm:
     post:
@@ -915,12 +953,15 @@ components:
             mesh_relay: { type: boolean, default: false }
             proximity_confirmation: { type: boolean, default: false }
             early_tier_opt_in: { type: boolean, default: false }
+            trip_briefing: { type: boolean, default: false, description: 'POST /trips/brief ("Before you go") is available' }
 
     RegionCode:
       type: string
       description: >
         Enabled regions. v1 ships US only; CN is reserved and rejected at runtime
-        until its feed, coordinate-frame and push work lands.
+        until its feed, coordinate-frame and push work lands. Exception: guidance
+        (/guidance/manifest, /guidance/cards) already serves CN bundles: English cards
+        from Chinese agencies' pages, for people in China.
       enum: [US, CN]
 
     CoordinateFrame:
@@ -1231,6 +1272,144 @@ components:
         searched_web: { type: boolean, description: True when official websites were searched via Tavily }
         language: { type: string, description: "Language of the answer (ISO 639-1); 'en' unless translated by Moby" }
 
+    TripBriefRequest:
+      type: object
+      description: A destination (lat + lon) or a route (stops), not both.
+      properties:
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lon: { type: number, minimum: -180, maximum: 180 }
+        stops:
+          type: array
+          minItems: 2
+          maxItems: 8
+          description: >
+            A route, in order. Checked as straight lines between the stops (not the actual trail),
+            with radius_km on either side; at most 500 km in total.
+          items: { $ref: '#/components/schemas/TripStop' }
+        radius_km: { type: number, minimum: 1, maximum: 100, default: 25 }
+        start_date: { type: string, format: date, description: 'Default today (UTC); yesterday to a year ahead' }
+        end_date: { type: string, format: date, description: 'Default start_date + 3 days; at most 30 days after it' }
+        country: { type: string, pattern: '^[A-Z]{2}$', description: Picks the official websites to search; else taken from the alerts }
+        place_name: { type: string, maxLength: 80, description: "The place picked from the app's list (used in the web search and the text)" }
+
+    TripStop:
+      type: object
+      required: [lat, lon]
+      properties:
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lon: { type: number, minimum: -180, maximum: 180 }
+        name: { type: string, maxLength: 80, description: "The place picked from the app's list" }
+
+    TripBrief:
+      type: object
+      required: [generated_at, destination, trip, official_alerts, community_reports, hazards, web_sources,
+                 searched_web, web_status, ai_status, cached, uncertainty, language]
+      properties:
+        generated_at: { type: string, format: date-time }
+        destination:
+          type: object
+          required: [lat, lon, radius_km]
+          properties:
+            lat: { type: number, description: Snapped to 0.01° }
+            lon: { type: number }
+            radius_km: { type: number }
+            place_name: { type: string }
+            country: { type: string }
+        route:
+          type: object
+          description: Present for a route; destination is then its last stop.
+          required: [stops, length_km]
+          properties:
+            stops:
+              type: array
+              items: { $ref: '#/components/schemas/TripStop' }
+            length_km: { type: number, description: Sum of the straight legs between stops }
+        trip:
+          type: object
+          required: [start_date, end_date]
+          properties:
+            start_date: { type: string, format: date }
+            end_date: { type: string, format: date }
+        official_alerts:
+          type: array
+          description: Most severe first, then nearest. Every one is an agency's alert.
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Alert'
+              - type: object
+                required: [cite_id, ends_before_trip]
+                properties:
+                  cite_id: { type: string, description: 'O1, O2…' }
+                  ends_before_trip: { type: boolean, description: The alert expires before start_date }
+                  near_stop: { type: string, description: Routes only, the stop it is nearest to }
+        community_reports:
+          type: array
+          description: >
+            Reports from people nearby (fused community events), last 72 hours. Never official:
+            clients MUST show them as unverified and apart from official_alerts.
+          items:
+            allOf:
+              - $ref: '#/components/schemas/Alert'
+              - type: object
+                required: [cite_id, reporter_count, last_report_at]
+                properties:
+                  cite_id: { type: string, description: 'C1, C2…' }
+                  reporter_count: { type: integer, minimum: 1, description: Different people who reported it }
+                  last_report_at: { type: string, format: date-time }
+                  near_stop: { type: string, description: Routes only, the stop it is nearest to }
+        hazards:
+          type: array
+          description: Hazard types found (for matching offline guidance cards)
+          items: { $ref: '#/components/schemas/HazardType' }
+        web_sources:
+          type: array
+          items:
+            type: object
+            required: [cite_id, title, url, publisher]
+            properties:
+              cite_id: { type: string, description: 'W1, W2…' }
+              title: { type: string }
+              url: { type: string }
+              publisher: { type: string }
+        searched_web: { type: boolean }
+        web_status: { type: string, enum: [searched, no_official_sites, no_key, over_cap, failed] }
+        explanation:
+          type: object
+          description: Absent unless ai_status is ok or partial.
+          required: [model, claims]
+          properties:
+            model: { type: string, description: e.g. nvidia/Nemotron-3-Ultra-550b-a55b }
+            claims:
+              type: array
+              items:
+                type: object
+                required: [text, basis, cites]
+                properties:
+                  text: { type: string }
+                  basis:
+                    type: string
+                    enum: [official, community]
+                    description: community when any cited source is a community report; show as unverified
+                  cites:
+                    type: array
+                    items: { type: string, description: 'O1, C1 or W1' }
+        ai_status:
+          type: string
+          enum: [ok, partial, withheld, over_cap, unavailable, nothing_to_explain]
+          description: >
+            ok / partial (some statements failed their checks and were dropped); withheld (none
+            passed); over_cap (daily limit); unavailable (no model); nothing_to_explain (no rows).
+            Without explanation, label the lists as not written by AI.
+        cached: { type: boolean, description: The AI part and web results came from the cache }
+        uncertainty:
+          type: array
+          minItems: 1
+          description: >
+            Required, never empty. What the briefing can't tell you, including that a saved copy
+            goes stale. Clients MUST display it.
+          items: { type: string }
+        language: { type: string }
+
     SituationalBrief:
       type: object
       required: [event_id, generated_at, model, summary, uncertainty]
@@ -1387,7 +1566,7 @@ components:
         priority:
           type: integer
           description: Lower is more urgent. Drives static fallback ordering.
-        source_name: { type: string, description: e.g. FEMA, American Red Cross, NWS }
+        source_name: { type: string, description: 'The agency whose page the card is from, e.g. FEMA Ready.gov, National Weather Service, Ministry of Emergency Management (China). Cards are English even when the page is not.' }
         source_url: { type: string }
         last_reviewed_at:
           type: string

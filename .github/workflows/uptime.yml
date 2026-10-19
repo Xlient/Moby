@@ -3,14 +3,20 @@
 # Needs the repository secret MOBY_API_URL. A secret, not a variable: Actions logs and
 # issues on a public repository are public, and the production URL must not appear in them.
 # Note: GitHub pauses scheduled workflows after 60 days without repository activity.
+#
+# Once a day it also runs scripts/check_feed_coverage.py: do the non-US official feeds
+# reach GET /v1/alerts? The table goes to the run summary (and coverage.json as an
+# artifact). It's a report, never a failure: quiet feeds and known gaps are normal.
 name: uptime
 
 on:
   schedule:
     - cron: "*/30 * * * *"
+    - cron: "41 6 * * *"     # daily feed coverage report
   workflow_dispatch:
 
 permissions:
+  contents: read
   issues: write
 
 concurrency: uptime
@@ -73,3 +79,33 @@ jobs:
                   issue_number: issue.number, state: 'closed' });
               }
             }
+
+  coverage:
+    if: >-
+      github.repository == 'Xlient/Moby' &&
+      (github.event.schedule == '41 6 * * *' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Feed coverage (non-US sources → live API)
+        env:
+          MOBY_API_URL: ${{ secrets.MOBY_API_URL }}
+        run: |
+          if [ -z "$MOBY_API_URL" ]; then echo "MOBY_API_URL secret not set; skipping"; exit 0; fi
+          uv sync --frozen --quiet
+          uv run python scripts/check_feed_coverage.py --json coverage.json | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: feed-coverage
+          path: coverage.json
+          if-no-files-found: ignore
+          retention-days: 90

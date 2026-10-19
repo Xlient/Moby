@@ -13,6 +13,7 @@ Public, read-only:
 
 Signed-in users (Firebase ID token):
   POST /v1/ask                      Ask Moby: a cited answer from official sources, or none
+  POST /v1/trips/brief              "Before you go": alerts and reports around a destination, explained
   POST /v1/reports                  submit a ground report (write-first, 202)
   GET  /v1/reports/{client_event_id} status of one of your own reports
   POST /v1/me/devices               register this phone's push token (DELETE on sign-out)
@@ -42,6 +43,7 @@ import hmac
 import os
 import shutil
 import uuid
+from datetime import date, datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Literal
@@ -50,7 +52,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from psycopg_pool import AsyncConnectionPool
 
 from moby.alerts.preferences import AlertPreferences, alerts_near
@@ -60,7 +62,7 @@ from moby.feeds.poller import FEEDS, health as feeds_health
 from moby.feeds.schema import Severity
 from moby.llm import EMBEDDING_DIM
 
-from moby.ai import ask, budget, localize
+from moby.ai import ask, budget, localize, trip
 from moby.graph.brief_queries import TIMELINE_EVENT_SQL, TIMELINE_REPORTS_SQL, build_timeline
 from moby.graph.brief_queries import VIEW_SQL as BRIEF_ON_VIEW_SQL
 
@@ -293,6 +295,59 @@ async def ask_moby(body: AskRequest, caller: Annotated[Caller, Depends(require_u
                             language=body.language)
 
 
+class TripStop(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    name: str | None = Field(None, max_length=80, description="the place picked from the app's list")
+
+
+class TripBriefRequest(BaseModel):
+    lat: float | None = Field(None, ge=-90, le=90, description="a destination; or give stops for a route")
+    lon: float | None = Field(None, ge=-180, le=180)
+    stops: list[TripStop] | None = Field(None, min_length=2, max_length=trip.MAX_STOPS,
+                                         description="a route, in order (straight lines between stops)")
+    radius_km: float = Field(25, ge=1, le=100)
+    start_date: date | None = Field(None, description="default: today (UTC)")
+    end_date: date | None = Field(None, description="default: start_date + 3 days")
+    country: str | None = Field(None, pattern="^[A-Z]{2}$")
+    place_name: str | None = Field(None, max_length=80, description="the place picked from the app's list")
+
+    @model_validator(mode="after")
+    def _where_and_when(self):
+        if self.stops is None and (self.lat is None or self.lon is None):
+            raise ValueError("give lat and lon (a destination) or stops (a route)")
+        if self.stops is not None and (self.lat is not None or self.lon is not None):
+            raise ValueError("give either lat/lon or stops, not both")
+        if self.stops and trip.route_length_km(self.stop_list()) > trip.MAX_ROUTE_KM:
+            raise ValueError(f"route is longer than {trip.MAX_ROUTE_KM} km")
+        today = datetime.now(timezone.utc).date()
+        self.start_date = self.start_date or today
+        self.end_date = self.end_date or self.start_date + timedelta(days=3)
+        if not today - timedelta(days=1) <= self.start_date <= today + timedelta(days=365):
+            raise ValueError("start_date must be between yesterday and a year from now")
+        if not 0 <= (self.end_date - self.start_date).days <= 30:
+            raise ValueError("end_date must be on or after start_date, at most 30 days later")
+        return self
+
+    def stop_list(self) -> list[trip.Stop] | None:
+        return [trip.Stop(s.lat, s.lon, s.name) for s in self.stops] if self.stops else None
+
+
+@app.post("/v1/trips/brief")
+async def trip_brief(body: TripBriefRequest, caller: Annotated[Caller, Depends(require_user)]):
+    """'Before you go' (moby/ai/trip.py): the active official alerts and recent community reports
+    within radius_km of a destination or of a route through stops (PostGIS), why each matters for the trip (Nemotron Ultra,
+    every statement cited and checked) and what the briefing can't tell you. Without the AI
+    part (daily cap, no key) the same lists come back, labelled. Signed-in only, rate-limited;
+    the destination isn't stored with the caller's identity."""
+    if not trip.allow(caller.uid):
+        raise HTTPException(429, "Too many briefings; try again later")
+    assert body.start_date and body.end_date
+    return await trip.brief(_pool(), lat=body.lat, lon=body.lon, stops=body.stop_list(), radius_km=body.radius_km,
+                            start=body.start_date, end=body.end_date, country=body.country,
+                            place_name=body.place_name)
+
+
 @app.get("/v1/events/{event_id}/explain")
 async def event_explain(event_id: uuid.UUID,
                         lang: Annotated[str | None, Query(max_length=16, description="phone language, e.g. es-MX")] = None):
@@ -409,6 +464,7 @@ async def get_config():
             "mesh_relay": False,
             "proximity_confirmation": False,
             "early_tier_opt_in": False,
+            "trip_briefing": True,   # POST /v1/trips/brief (works without AI too: the plain list)
         },
     }
 

@@ -9,6 +9,7 @@ import pytest
 
 from moby.feeds import centers, emsc
 from moby.feeds.dedupe import merge_duplicate_quakes
+from moby.feeds.usgs import quake_ttl
 
 from .test_chains_and_preferences import _test_db_url
 
@@ -83,7 +84,24 @@ def test_emsc_normalize():
     r = emsc.normalize(json.loads((FIX / "emsc_events.json").read_text()))
     assert r.events and all(e.source_feed == "emsc" and e.magnitude >= 3.0 for e in r.events)
     assert all(e.title.startswith("M ") for e in r.events)
-    assert "start=" in emsc.url_for_gap(timedelta(minutes=5))
+    assert all(e.expires_at == e.first_reported_at + quake_ttl(e.severity) for e in r.events)
+
+
+def _query(url: str) -> dict[str, datetime]:
+    from urllib.parse import parse_qs, urlparse
+    q = parse_qs(urlparse(url).query)
+    return {k: datetime.fromisoformat(q[k][0]).replace(tzinfo=timezone.utc) for k in ("start", "updatedafter")}
+
+
+def test_emsc_asks_for_quakes_published_late():
+    # Mexico's network reaches EMSC hours after the quake: asking by origin time over the
+    # last hour never saw those (coverage check, 2026-10-18). Ask by update time instead.
+    now = datetime.now(timezone.utc)
+    q = _query(emsc.url_for_gap(timedelta(minutes=5)))
+    assert abs(q["updatedafter"] - (now - timedelta(hours=1))) < timedelta(minutes=1)    # an hour minimum
+    assert abs(q["start"] - (now - timedelta(hours=72))) < timedelta(minutes=1)          # origins within the longest TTL
+    q = _query(emsc.url_for_gap(timedelta(days=3)))
+    assert abs(q["updatedafter"] - (now - timedelta(days=3, minutes=10))) < timedelta(minutes=1)  # covers downtime
 
 
 # ── Same quake from two networks ─────────────────────────────────────
