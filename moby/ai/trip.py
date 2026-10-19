@@ -90,7 +90,8 @@ CITE_MARK = re.compile(r"[\[(]?\b([OCW]\d{1,2})\b[\])]?")
 # alone (seen with Ultra). Hazards, names and numbers are checked separately and stay strict.
 FRAMING = ("official alert alerts agency warning warnings report reports reported say says said people nearby "
            "trip travel traveller travellers trek trekking visit stay route routes plan plans area areas "
-           "destination around near close severity severe rated level means matters could may might")
+           "destination around near close roughly approximately severity severe rated level means matters could may might "
+           "unverified information")
 # Spelled-out numbers are checked like digits ("three reports" needs a 3 in the source).
 NUMBER_WORDS = {w: str(i) for i, w in enumerate(
     "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
@@ -273,7 +274,18 @@ async def web_sources(pool: AsyncConnectionPool, hazards: list[str], place: str 
         log.warning("Tavily search failed: %s", type(e).__name__)
         return [], "failed"
     return [Cited(f"W{i}", "web", r.title or _domain(r.url), r.content[:1200], url=r.url, publisher=_domain(r.url))
-            for i, r in enumerate((r for r in results if r.content), 1)], "searched"
+            for i, r in enumerate(unique_pages(results), 1)], "searched"
+
+
+def unique_pages(results: list) -> list:
+    """One result per page: Tavily can return the same page as http:// and http://www. (seen on drrportal.gov.np)."""
+    seen, out = set(), []
+    for r in results:
+        key = re.sub(r"^https?://(www\.)?", "", r.url).rstrip("/").lower()
+        if r.content and key not in seen:
+            seen.add(key)
+            out.append(r)
+    return out
 
 
 # ── Nemotron Ultra explains; code checks every statement ────────────────────

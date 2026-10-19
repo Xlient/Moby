@@ -82,6 +82,14 @@ def test_short_sources_allow_framing_words_but_not_new_hazards():
     assert "hazards" in problem
 
 
+def test_real_ultra_bridge_statement_passes():
+    # Ultra on the seeded Phakding demo (2026-10-19): accurate, but dropped before "roughly"/"unverified" were framing.
+    ok, problem = trip.check_claim(claim("People nearby report that a bridge has been washed out roughly 1.2 km from "
+                                         "Phakding, which may block trails or crossing points; this information is "
+                                         "unverified.", "C1"), SOURCES, CONTEXT)
+    assert problem is None and ok["basis"] == "community", problem
+
+
 def test_community_reports_are_never_presented_as_official():
     problem = trip.check_claim(claim("Officials confirmed the bridge washed out.", "C1"), SOURCES, CONTEXT)[1]
     assert "presented as official" in problem
@@ -106,6 +114,15 @@ def test_search_query_uses_structured_fields_only():
         "flooding landslide warning travel safety Phakding Nepal"
     # Anything that doesn't look like a place name is left out of the query.
     assert "@" not in trip.search_query([], "call me +977 98 @ lodge", "NP")
+
+
+def test_the_same_page_is_cited_once():
+    from moby.search.tavily import SearchResult
+
+    pages = [SearchResult("Risk profile", "http://drrportal.gov.np/risk-profile-of-nepal", "Flood is common.", 0.4),
+             SearchResult("Risk profile", "http://www.drrportal.gov.np/risk-profile-of-nepal/", "Flood is common.", 0.4),
+             SearchResult("Empty", "https://bipad.gov.np/x", "", 0.3)]
+    assert [r.url for r in trip.unique_pages(pages)] == ["http://drrportal.gov.np/risk-profile-of-nepal"]
 
 
 def test_rate_limit_per_user_per_hour():
