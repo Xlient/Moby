@@ -83,7 +83,10 @@ HAZARD_TERMS = {"flood", "flooding", "floods", "flash", "landslide", "landslides
                 "glacial", "glof", "outburst", "debris"}
 # Community-backed statements may not borrow official authority.
 OFFICIAL_WORDING = re.compile(r"\b(official(ly)?|confirmed|verified|authorities|government|agency)\b", re.I)
-NEGATED = re.compile(r"\b(not|never|nor|no|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|hasn['’]t|haven['’]t)\s+(\w+\s+)?(\w+\s+)?(official(ly)?|confirmed|verified)\b", re.I)
+# A negated clause ("…not confirmed by any official source") is disclaiming authority, not claiming it:
+# it's ignored up to the next comma, semicolon or full stop. Seen with Ultra.
+NEGATED = re.compile(r"\b(not|never|nor|no|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|hasn['’]t|haven['’]t)\b[^.;,]*",
+                     re.I)
 CITE_MARK = re.compile(r"[\[(]?\b([OCW]\d{1,2})\b[\])]?")
 # Words that frame a statement without adding a fact ("an official alert reports…", "for your
 # trip"). Short sources (a quake is two lines) otherwise fail the word-support check on these
@@ -100,7 +103,8 @@ NUMBER_WORDS = {w: str(i) for i, w in enumerate(
 # a 10 in the source, e.g. "2026-10-21"). Seen with Ultra.
 MONTHS = {m: str(i) for i, m in enumerate(
     "january february march april may june july august september october november december".split(), 1)}
-WEEKDAYS = set("monday tuesday wednesday thursday friday saturday sunday".split())
+MONTHS |= {m[:3]: n for m, n in MONTHS.items()} | {"sept": "9"}      # "Oct 21" (seen with Ultra)
+WEEKDAYS = set("monday tuesday wednesday thursday friday saturday sunday mon tue wed thu fri sat sun".split())
 # Capitalised words that may appear without a source (sentence starts are skipped anyway).
 ALLOWED_NAMES = {"moby", "i", "utc", *MONTHS, *WEEKDAYS}
 
@@ -444,7 +448,7 @@ async def explain(pool: AsyncConnectionPool, context: str, sources: list[Cited])
             best, best_problems = kept, problems
         if kept and len(problems) <= len(kept):
             break
-        log.info("trip brief attempt %d: kept %d, rejected %d", attempt + 1, len(kept), len(problems))
+        log.info("trip brief attempt %d: kept %d, rejected %d: %s", attempt + 1, len(kept), len(problems), problems)
     if not best:
         return None, "withheld"
     return {"model": model, "claims": best}, "partial" if best_problems else "ok"

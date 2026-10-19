@@ -103,9 +103,24 @@ def test_month_names_are_dates_and_hazards_match_by_stem():
     assert problem is None, problem
     assert "numbers" in trip.check_claim(claim("An official flood warning for the Dudh Koshi is in effect until 21 "
                                                "November; keep away from the river banks.", "O1"), srcs, CONTEXT)[1]
+    ok, problem = trip.check_claim(claim("The flood warning is in effect through the morning of Oct 21; keep away "
+                                         "from the river banks.", "O1"), srcs, CONTEXT)
+    assert problem is None, problem
     ok, problem = trip.check_claim(claim("People nearby report a bridge washed out by the flood, about 1.2 km from "
                                          "Phakding; this is unverified.", "C1"), srcs, CONTEXT)
     assert problem is None, problem
+
+
+def test_disclaiming_official_status_is_not_claiming_it():
+    # Real Ultra statement (2026-10-19), dropped 3 times in 6 runs before negated clauses were ignored.
+    ok, problem = trip.check_claim(claim("People nearby report a bridge washed out about 1.2 km from Phakding, blocking "
+                                         "a road or path; this is unverified and not confirmed by any official source.",
+                                         "C1"), SOURCES, CONTEXT)
+    assert problem is None and ok["basis"] == "community", problem
+    problem = trip.check_claim(claim("Authorities confirmed the bridge washed out about 1.2 km from Phakding; people nearby "
+                                     "report it is not passable.", "C1"),
+                               SOURCES, CONTEXT)[1]
+    assert "presented as official" in problem
 
 
 def test_community_reports_are_never_presented_as_official():
