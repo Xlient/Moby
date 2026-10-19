@@ -33,6 +33,7 @@ def test_official_event_starts_with_o1(conn):  # noqa: F811
     conn.execute("UPDATE events SET source = 'official', source_feed = 'noaa', external_id = 'x', "
                  "title = 'Flood Warning', description = 'River rising fast.' WHERE event_id = %s", (eid,))
     out = gather_evidence({"event_id": eid})
+    assert out["facts"]["place"] is None and "raw_payload" not in out["facts"]   # no areaDesc in this test row
     first = out["evidence"][0]
     assert first["id"] == "O1" and first["kind"] == "official"
     assert first["title"] == "Flood Warning · National Weather Service" and "River rising fast." in first["text"]

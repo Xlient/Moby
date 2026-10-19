@@ -38,7 +38,8 @@ def test_search_and_extract():
 
 
 def test_missing_key(monkeypatch):
-    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    # Empty, not deleted: settings also read .env, where a developer's real key may be.
+    monkeypatch.setenv("TAVILY_API_KEY", "")
     from moby.config import get_settings
     get_settings.cache_clear()
     with pytest.raises(TavilyNotConfigured):

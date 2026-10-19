@@ -167,6 +167,7 @@ SELECT now()::text AS evidence_as_of,          -- when this evidence was read (s
        ST_Y(e.location::geometry) AS lat, ST_X(e.location::geometry) AS lon,
        round((ST_Area(e.area) / 1e6)::numeric, 1)::float AS area_km2,
        e.reports_disagree,
+       jsonb_build_object('properties', e.raw_payload->'properties') AS raw_payload,   -- for `place`; removed after
        (SELECT count(DISTINCT r.reporter_hash) FROM reports r WHERE r.event_id = e.event_id)::int AS reporters,
        (SELECT count(*) FROM reports r WHERE r.event_id = e.event_id)::int AS reports
 FROM events e WHERE e.event_id = %(event_id)s
@@ -196,9 +197,17 @@ ORDER BY version DESC LIMIT 1
 
 def event_facts(conn: Connection, event_id: str) -> dict[str, Any] | None:
     """The event as the brief sees it (official wording in English when translated), plus
-    area in km² and reporter counts. None if the event doesn't exist."""
+    area in km², reporter counts and `place`: the official area's name as the app shows it
+    (e.g. "Solukhumbu"), or None for community events and feeds without one. None if the
+    event doesn't exist."""
+    from moby.api.alerts import _location_name   # same place name the app shows
     with conn.cursor(row_factory=dict_row) as cur:
-        return cur.execute(FACTS_SQL, {"event_id": event_id}).fetchone()
+        facts = cur.execute(FACTS_SQL, {"event_id": event_id}).fetchone()
+    if facts is None:
+        return None
+    facts["place"] = _location_name(facts) if facts["source_feed"] else None
+    del facts["raw_payload"]
+    return facts
 
 
 def community_evidence(conn: Connection, event_id: str) -> list[dict[str, Any]]:

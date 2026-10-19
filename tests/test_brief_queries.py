@@ -247,3 +247,12 @@ def test_a_saved_brief_settles_ready(conn):  # noqa: F811
     conn.execute("INSERT INTO briefs (event_id, generated_at, model, summary, uncertainty) "
                  "VALUES (%s, %s, 'm', 's', 'u')", (eid, facts["evidence_as_of"]))
     assert bq.settle_finished_run(conn, eid, requested_at) == "ready"
+
+
+def test_facts_place_is_the_official_area_name(conn):  # noqa: F811
+    eid = make_event(conn)
+    assert bq.event_facts(conn, eid)["place"] is None                       # community event
+    conn.execute("""UPDATE events SET source = 'official', source_feed = 'noaa', external_id = 'p',
+                    raw_payload = '{"properties": {"areaDesc": "Sonoma; Marin"}, "big": "dropped"}'""")
+    facts = bq.event_facts(conn, eid)
+    assert facts["place"] == "Sonoma" and "raw_payload" not in facts
