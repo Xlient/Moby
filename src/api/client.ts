@@ -332,7 +332,11 @@ export class ApiClient {
   // ── Situational brief ────────────────────────────────────────────
 
   async getEventBrief(eventId: string): Promise<SituationalBrief | BriefPending> {
-    if (USE_MOCK) return getMockBrief(eventId);
+    if (USE_MOCK) {
+      const mock = getMockBrief(eventId);
+      if (!mock) throw new ApiRequestError(404, 'not_found', 'no brief for this event');
+      return mock;
+    }
     // The server returns 200 for ready, 202 for pending.
     // Both are valid JSON — we return the parsed body and let the caller
     // check `'status' in result` to distinguish the two shapes.

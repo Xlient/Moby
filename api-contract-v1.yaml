@@ -1,11 +1,13 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.8.0
+  version: 0.8.1
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.8.1 — SituationalBrief.timeline (additive): official and community events over time,
+      built from the database when the brief is read.
     0.8.0 — Situational brief with citations and "what changed" (additive):
       + SituationalBrief.version, claims (each with basis official | community | news and
         the citation ids it rests on), contradictions, citations, changes, changes_since
@@ -1303,6 +1305,29 @@ components:
           type: string
           format: date-time
           description: When the version that `changes` compares against was generated.
+        timeline:
+          type: array
+          description: >
+            Built from the database when the brief is read (not by the model), oldest first:
+            the official warning (issued, updated, in force until) and one entry per thing
+            people reported. after_brief marks what the brief doesn't cover yet.
+          items:
+            type: object
+            required: [at, kind, type, label, after_brief]
+            properties:
+              at: { type: string, format: date-time }
+              until: { type: string, format: date-time, description: Last report of a community group }
+              kind: { type: string, enum: [official, community] }
+              type: { type: string, enum: [issued, updated, expires, reports] }
+              label: { type: string }
+              detail: { type: string, description: The issuing agency (official entries) }
+              reporters: { type: integer, description: Distinct people (community entries) }
+              severity: { type: string, enum: [low, medium, high, critical] }
+              times:
+                type: array
+                description: When each report in the group was observed (up to 20)
+                items: { type: string, format: date-time }
+              after_brief: { type: boolean }
 
     CascadeAssessment:
       type: object

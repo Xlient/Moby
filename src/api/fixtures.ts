@@ -28,7 +28,7 @@ function daysAgo(days: number): string {
 export const mockConfig: ClientConfig = {
   min_supported_client: '1.0.0',
   flags: {
-    situational_brief: false,
+    situational_brief: true,
     cascade_analysis: false,
     offline_guidance_cards: true,
     on_device_assistant: false,
@@ -163,50 +163,79 @@ export const mockAlerts: Alert[] = [
   },
 ];
 
-// ── Mock situational brief (ready) ──────────────────────────────────
+// ── Mock situational briefs (shaped like Nemotron Ultra's real output) ──
+
+const inHours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
 
 export const mockBriefReady: SituationalBrief = {
   event_id: 'event-001',
-  generated_at: minutesAgo(10),
-  model: 'nemotron-3-ultra',
+  generated_at: minutesAgo(6),
+  model: 'nvidia/Nemotron-3-Ultra-550b-a55b',
+  version: 2,
   summary:
-    'Persistent atmospheric-river rainfall over the past 72 hours has pushed the Russian River above its 18-foot flood stage at Guerneville. ' +
-    'Rapid runoff from saturated hillsides is funneling into the lower basin, where water levels are rising at approximately 0.8 feet per hour. ' +
-    'Low-lying areas from Forestville to Jenner are experiencing street-level flooding, and several evacuation orders are in effect.',
-  likely_progression:
-    'Rain is forecast to continue for another 12\u201318 hours with an additional 2\u20134 inches expected. ' +
-    'The river may crest near 32 feet by early tomorrow morning before gradually receding over the following 48 hours. ' +
-    'Secondary flooding in tributaries (Austin Creek, Dry Creek) is possible as hillside saturation continues.',
-  uncertainty:
-    'Exact crest height depends on rainfall intensity overnight, which models currently disagree on by \u00b11.5 inches. ' +
-    'Levee integrity near Guerneville has not been independently assessed since 2021 and could change the inundation footprint. ' +
-    'This brief is an AI-generated estimate, not an official forecast.',
-  exposed_areas: [
-    {
-      description: 'Downtown Guerneville and River Road corridor',
-      location: { lat: 38.5021, lon: -122.9949, accuracy_m: 1000, frame: 'WGS84' },
-      rationale: 'Historically the lowest-elevation zone in the basin; first to flood and last to drain.',
-    },
-    {
-      description: 'Monte Rio and Villa Grande',
-      location: { lat: 38.4658, lon: -123.0103, accuracy_m: 1500, frame: 'WGS84' },
-      rationale: 'Narrow canyon concentrates flow; roads cut off when river exceeds 28 feet.',
-    },
-    {
-      description: 'Jenner estuary and coastal bluffs',
-      location: { lat: 38.4503, lon: -123.1086, accuracy_m: 2000, frame: 'WGS84' },
-      rationale: 'Sediment-choked river mouth may cause backwater flooding combined with high tide at 06:12 PST.',
-    },
+    'The National Weather Service has a flash flood warning in force for the Russian River basin. ' +
+    'People nearby report a flooded road and rising water near the river; these reports are unverified.',
+  claims: [
+    { text: 'A flash flood warning is in force for the Russian River basin until later today.', basis: 'official', evidence: ['O1'] },
+    { text: 'The warning tells people in low-lying areas to move to higher ground.', basis: 'official', evidence: ['O1'] },
+    { text: 'Three people nearby report a flooded road, the most recent 9 minutes ago.', basis: 'community', evidence: ['C1'] },
+    { text: 'Two people nearby report rising water near the river.', basis: 'community', evidence: ['C2'] },
   ],
-  official_guidance:
-    'The National Weather Service has issued a Flash Flood Warning (VTEC #0047) effective through 06:00 PST tomorrow. ' +
-    'Sonoma County Office of Emergency Services advises immediate evacuation for Zone A (Guerneville floodplain). ' +
-    'Do not drive through flooded roads \u2014 turn around, don\'t drown.',
-  sources: [
-    'NWS Sacramento \u2014 Flash Flood Warning VTEC #0047',
-    'USGS Russian River at Guerneville gauge (11467000)',
-    'Sonoma County OES Evacuation Order 2024-FLD-003',
-    'NOAA CNRFC quantitative precipitation forecast',
+  contradictions: [],
+  official_guidance: 'The National Weather Service says to move to higher ground now and not to drive through flooded roads.',
+  likely_progression: 'The warning is in force for about 6 more hours (an estimate from its end time).',
+  uncertainty:
+    'The community reports are unverified and come from 5 people. The brief can\'t say how deep the water is or ' +
+    'which roads are affected beyond what people reported. Conditions may have changed since the last report.',
+  changes: 'Two more people reported the flooded road since the last brief.',
+  changes_since: minutesAgo(40),
+  citations: [
+    { id: 'O1', kind: 'official', title: 'Flash Flood Warning · National Weather Service' },
+    { id: 'C1', kind: 'community', title: 'Flooded road · 3 people' },
+    { id: 'C2', kind: 'community', title: 'Rising water · 2 people' },
+  ],
+  sources: ['Flash Flood Warning · National Weather Service', 'Flooded road · 3 people', 'Rising water · 2 people'],
+  timeline: [
+    { at: minutesAgo(48), until: minutesAgo(31), kind: 'community', type: 'reports', label: 'Rising water', reporters: 2,
+      severity: 'high', times: [minutesAgo(48), minutesAgo(31)], after_brief: false },
+    { at: minutesAgo(26), kind: 'official', type: 'issued', label: 'Flash Flood Warning issued',
+      detail: 'National Weather Service', after_brief: false },
+    { at: minutesAgo(21), until: minutesAgo(9), kind: 'community', type: 'reports', label: 'Flooded road', reporters: 3,
+      severity: 'high', times: [minutesAgo(21), minutesAgo(15), minutesAgo(9)], after_brief: false },
+    { at: minutesAgo(14), kind: 'official', type: 'updated', label: 'Flash Flood Warning updated',
+      detail: 'National Weather Service', after_brief: false },
+    { at: minutesAgo(2), until: minutesAgo(2), kind: 'community', type: 'reports', label: 'Blocked road', reporters: 1,
+      severity: 'medium', times: [minutesAgo(2)], after_brief: true },
+    { at: inHours(6), kind: 'official', type: 'expires', label: 'In force until', detail: 'National Weather Service',
+      after_brief: false },
+  ],
+};
+
+export const mockCommunityBrief: SituationalBrief = {
+  event_id: 'event-003',
+  generated_at: minutesAgo(18),
+  model: 'nvidia/Nemotron-3-Ultra-550b-a55b',
+  version: 1,
+  summary:
+    'People nearby report a landslide across the road, with debris still moving. There is no official warning; ' +
+    'these reports are unverified.',
+  claims: [
+    { text: 'Four people nearby report debris blocking the road.', basis: 'community', evidence: ['C1'] },
+    { text: 'One person reports the slope is still moving.', basis: 'community', evidence: ['C2'] },
+  ],
+  contradictions: ['C1 describes the road as fully blocked; one report in C1 says one lane is still open.'],
+  uncertainty:
+    'No agency has confirmed this. Only one person reports movement, and nobody has said whether anyone is hurt.',
+  citations: [
+    { id: 'C1', kind: 'community', title: 'Blocked road · 4 people' },
+    { id: 'C2', kind: 'community', title: 'Ground movement · 1 person' },
+  ],
+  sources: ['Blocked road · 4 people', 'Ground movement · 1 person'],
+  timeline: [
+    { at: minutesAgo(118), until: minutesAgo(64), kind: 'community', type: 'reports', label: 'Blocked road', reporters: 4,
+      severity: 'high', times: [minutesAgo(118), minutesAgo(104), minutesAgo(90), minutesAgo(64)], after_brief: false },
+    { at: minutesAgo(40), until: minutesAgo(40), kind: 'community', type: 'reports', label: 'Ground movement',
+      reporters: 1, severity: 'critical', times: [minutesAgo(40)], after_brief: false },
   ],
 };
 
@@ -214,7 +243,7 @@ export const mockBriefReady: SituationalBrief = {
 
 export const mockBriefPending: BriefPending = {
   status: 'pending',
-  retry_after_seconds: 15,
+  retry_after_seconds: 2,
 };
 
 // ── Mock guidance cards ──────────────────────────────────────────────
@@ -332,11 +361,17 @@ export function getMockConfig(): ClientConfig {
   return mockConfig;
 }
 
-export function getMockBrief(eventId: string): SituationalBrief | BriefPending {
-  if (eventId === 'event-001') {
-    return mockBriefReady;
-  }
-  return mockBriefPending;
+// The first look at an event "generates" its brief for a few seconds, like the real worker.
+const MOCK_BRIEF_DELAY_MS = 4_000;
+const mockBriefFirstAsked = new Map<string, number>();
+
+/** null = no brief for this event (the API's 404). */
+export function getMockBrief(eventId: string): SituationalBrief | BriefPending | null {
+  const brief = eventId === 'event-001' ? mockBriefReady : eventId === 'event-003' ? mockCommunityBrief : null;
+  if (!brief) return null;
+  const first = mockBriefFirstAsked.get(eventId) ?? Date.now();
+  mockBriefFirstAsked.set(eventId, first);
+  return Date.now() - first < MOCK_BRIEF_DELAY_MS ? mockBriefPending : brief;
 }
 
 export function getMockGuidanceCards(): GuidanceCard[] {

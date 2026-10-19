@@ -61,9 +61,10 @@ from moby.feeds.schema import Severity
 from moby.llm import EMBEDDING_DIM
 
 from moby.ai import ask, budget, localize
+from moby.graph.brief_queries import TIMELINE_EVENT_SQL, TIMELINE_REPORTS_SQL, build_timeline
 from moby.graph.brief_queries import VIEW_SQL as BRIEF_ON_VIEW_SQL
 
-from .alerts import to_alert
+from .alerts import SOURCE_ATTRIBUTION, to_alert
 from .auth import Caller, require_user
 from .mesh import router as mesh_router
 from .reports import router as reports_router
@@ -340,6 +341,11 @@ async def event_brief(event_id: uuid.UUID):
             (event_id,),
         )
         row = await cur.fetchone()
+        if row is not None and row["summary"] is not None:
+            event = await (await cur.execute(TIMELINE_EVENT_SQL, {"event_id": event_id})).fetchone()
+            groups = await (await cur.execute(TIMELINE_REPORTS_SQL, {"event_id": event_id})).fetchall()
+            timeline = build_timeline(event, groups, attribution=SOURCE_ATTRIBUTION,
+                                      generated_at=row["generated_at"])
     if row is None:
         raise HTTPException(404, "event not found")
     if row["summary"] is not None:
@@ -359,10 +365,11 @@ async def event_brief(event_id: uuid.UUID):
             "citations": row["citations"],
             "changes": row["changes"],
             "changes_since": row["changes_since"].isoformat() if row["changes_since"] else None,
+            "timeline": timeline,
         }
         return {k: v for k, v in brief.items() if v is not None}
     if row["brief_status"] == "pending" or requested:
-        return JSONResponse({"status": "pending", "retry_after_seconds": 15}, status_code=202)
+        return JSONResponse({"status": "pending", "retry_after_seconds": 5}, status_code=202)
     raise HTTPException(404, "no brief for this event")
 
 
@@ -394,7 +401,7 @@ async def get_config():
     return {
         "min_supported_client": "0.1.0",
         "flags": {
-            "situational_brief": False,
+            "situational_brief": True,
             "cascade_analysis": False,
             "offline_guidance_cards": True,   # Week 5: synced cards + built-in fallbacks
             "on_device_assistant": False,

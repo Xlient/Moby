@@ -292,3 +292,60 @@ def save_brief(conn: Connection, event_id: str, requested_at: str, *, brief: dic
         })
         conn.execute(READY_SQL, {"event_id": event_id})
     return version
+
+
+# ── Timeline for the app (GET /v1/events/{id}/brief) ─────────────────────────────────────
+#
+# Built from the database when the brief is read, not by the model: code decides what's on
+# the timeline, so it's always current. Entries newer than the brief are flagged after_brief,
+# so the app can show "new since this brief".
+
+TIMELINE_EVENT_SQL = """
+SELECT source, source_feed, product, COALESCE(title_en, title) AS title,
+       first_reported_at, last_updated_at, expires_at
+FROM events WHERE event_id = %(event_id)s
+"""
+
+TIMELINE_REPORTS_SQL = """
+SELECT COALESCE(observed_effect, 'unspecified') AS effect,
+       count(DISTINCT reporter_hash)::int AS reporters,
+       min(observed_at) AS first_seen, max(observed_at) AS last_seen,
+       (array_agg(observed_at ORDER BY observed_at))[1:20] AS times,
+       array_agg(DISTINCT severity) AS severities
+FROM reports WHERE event_id = %(event_id)s
+GROUP BY 1
+"""
+
+_SEVERITY = ["low", "medium", "high", "critical"]
+
+
+def build_timeline(event: dict[str, Any] | None, groups: list[dict[str, Any]], *,
+                   attribution: dict[str, str], generated_at=None) -> list[dict[str, Any]]:
+    """Timeline entries, oldest first: the official warning (issued, updated, in force until)
+    and one entry per thing people reported (first to last report, with each report's time)."""
+    def iso(t):
+        return t.isoformat() if t else None
+
+    def after(t):
+        return bool(generated_at and t and t > generated_at)
+
+    out: list[dict[str, Any]] = []
+    if event and event["source"] == "official":
+        agency = attribution.get(event["source_feed"], event["source_feed"] or "Official agency")
+        label = event["product"] or event["title"] or "Official warning"
+        out.append({"at": iso(event["first_reported_at"]), "kind": "official", "type": "issued",
+                    "label": f"{label} issued", "detail": agency, "after_brief": after(event["first_reported_at"])})
+        upd = event["last_updated_at"]
+        if upd and event["first_reported_at"] and (upd - event["first_reported_at"]).total_seconds() > 60:
+            out.append({"at": iso(upd), "kind": "official", "type": "updated", "label": f"{label} updated",
+                        "detail": agency, "after_brief": after(upd)})
+        if event["expires_at"]:
+            out.append({"at": iso(event["expires_at"]), "kind": "official", "type": "expires",
+                        "label": "In force until", "detail": agency, "after_brief": False})
+    for g in groups:
+        sev = max(g["severities"], key=_SEVERITY.index) if g["severities"] else None
+        out.append({"at": iso(g["first_seen"]), "until": iso(g["last_seen"]), "kind": "community",
+                    "type": "reports", "label": g["effect"].replace("_", " ").capitalize(),
+                    "reporters": g["reporters"], "severity": sev, "times": [iso(t) for t in g["times"]],
+                    "after_brief": after(g["last_seen"])})
+    return sorted(out, key=lambda e: e["at"] or "")
