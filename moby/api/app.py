@@ -72,6 +72,7 @@ from .mesh import router as mesh_router
 from .reports import router as reports_router
 from .appcheck import app_check_middleware
 from .guidance import router as guidance_router
+from .routes import router as routes_router
 from .me import router as me_router
 from .privacy import router as privacy_router
 from .review import router as review_router
@@ -104,6 +105,7 @@ app.include_router(review_router)
 app.include_router(me_router)
 app.include_router(privacy_router)
 app.include_router(guidance_router)
+app.include_router(routes_router)
 
 # ── Reviewer console (static page; it signs in with Firebase and calls /v1/review) ──
 CONSOLE_DIR = Path(__file__).resolve().parent.parent / "console"

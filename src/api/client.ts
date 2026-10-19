@@ -20,6 +20,9 @@ import type {
   Event,
   EventReports,
   HazardType,
+  Place,
+  RouteCheck,
+  RouteCheckRequest,
 } from './types';
 import {
   getMockAlerts,
@@ -31,6 +34,8 @@ import {
   getMockGuidanceCards,
   getMockSubscriptions,
   getMockEventReports,
+  getMockPlaces,
+  getMockRouteCheck,
   getMockTripBrief,
 } from './fixtures';
 import { env } from '@/config/env';
@@ -278,6 +283,22 @@ export class ApiClient {
       return alert;
     }
     return this.request<Alert>('GET', `/alerts/${encodeURIComponent(alertId)}`);
+  }
+
+  // ── Hazard route check ───────────────────────────────────────────
+
+  /** The usual route, the hazards it crosses, and one around them (moby/routing). */
+  async checkRoute(body: RouteCheckRequest): Promise<RouteCheck> {
+    if (USE_MOCK) return getMockRouteCheck(body);
+    return this.request<RouteCheck>('POST', '/routes/check', { body });
+  }
+
+  async searchPlaces(q: string, near?: { lat: number; lon: number }): Promise<Place[]> {
+    if (USE_MOCK) return getMockPlaces(q);
+    const res = await this.request<{ places: Place[] }>('GET', '/routes/places', {
+      query: { q, lat: near?.lat, lon: near?.lon },
+    });
+    return res.places;
   }
 
   // ── Events ───────────────────────────────────────────────────────

@@ -48,6 +48,13 @@ export type ReportSummary = components['schemas']['ReportSummary'];
 // ── Subscriptions ────────────────────────────────────────────────────
 export type Subscription = components['schemas']['Subscription'];
 
+// ── Hazard route check ───────────────────────────────────────────────
+export type RouteCheck = components['schemas']['RouteCheck'];
+export type CheckedRoute = components['schemas']['CheckedRoute'];
+export type RouteHazard = components['schemas']['RouteHazard'];
+export type RouteCheckRequest = components['schemas']['RouteCheckRequest'];
+export type Place = components['schemas']['Place'];
+
 // ── Mesh relay ───────────────────────────────────────────────────────
 export type MeshRecord = components['schemas']['MeshRecord'];
 
