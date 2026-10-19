@@ -1,8 +1,10 @@
 import logging
+import asyncio
 
+from moby.ai.budget import take_sync
 from moby.api.alerts import SOURCE_ATTRIBUTION
-
 from .brief_queries import community_evidence, event_facts, previous_version
+from .brief_writer import write_draft
 from .db import connection
 from .state import BriefState, EvidenceItem
 
@@ -55,3 +57,17 @@ def gather_evidence(state: BriefState) -> dict:
         evidence.append(community_item(n, group))
 
     return {"facts": facts, "community": community, "previous": previous, "evidence": evidence}
+
+async def write_brief(state:BriefState):
+    
+            try:
+                with connection() as conn:
+                    if await asyncio.to_thread(take_sync(conn, "brief", 1)) == 0:
+                        return {"brief": {}}
+                    evidence = state["evidence"]
+                    draft = await write_draft(evidence)
+                    return {"brief": draft}
+
+            except Exception:
+                log.exception("AI brief %s failed", state["event_id"])
+                return {"brief": {}}
