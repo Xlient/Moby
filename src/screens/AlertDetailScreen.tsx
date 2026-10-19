@@ -60,7 +60,7 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
   const fromCommunity = !!alert && alert.verification_label !== 'official_confirmed';
   const reports = useEventReports(alert?.event_id, fromCommunity);
   const explained = useExplanation(alert?.event_id, !!alert && !fromCommunity && !!alert.body);
-  const { cards } = useGuidance();
+  const { cards } = useGuidance(alert?.country ?? (center.source === 'device' ? countryAt(center.lat, center.lon) : undefined));
   const whatToDo = cardsForHazard(cards, alert?.hazard_type ?? 'other').slice(0, WHAT_TO_DO_CARDS);
 
   const raw = alert ? alertDistanceKm(alert, center, fetchCenter(center)) : undefined;

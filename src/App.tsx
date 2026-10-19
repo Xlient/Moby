@@ -8,8 +8,11 @@ import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { api } from '@/api/client';
 import { useBackendSync } from '@/sync/useBackendSync';
 import { syncGuidance } from '@/guidance/guidanceStore';
+import { regionsToSync } from '@/guidance/regions';
+import { countryAt } from '@/data/emergencyNumbers';
+import { useUserCenterPassive } from '@/location/UserLocationContext';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import type { HazardType } from '@/api/types';
+import type { HazardType, RegionCode } from '@/api/types';
 import { typography } from '@/theme/tokens';
 import { BottomTabs } from '@/components/BottomTabs';
 import { AuthScreen } from '@/screens/AuthScreen';
@@ -127,12 +130,17 @@ export function App() {
   // Push token, preferences and "near me" to the server; notification taps open the alert.
   useBackendSync(navigateToAlert);
 
-  // Keep offline guidance fresh whenever we're online (cheap when nothing changed).
+  // Keep offline guidance fresh whenever we're online (cheap when nothing changed): the
+  // US bundle, plus the bundle for the country we're in (only from a real fix, never the
+  // demo city). Passive: guidance never triggers the location prompt.
   const isOnline = useOnlineStatus();
   const [mapEngine] = useMapEngine();
+  const center = useUserCenterPassive();
+  const country = center.source === 'device' ? countryAt(center.lat, center.lon) : undefined;
+  const regions = regionsToSync(country).join(',');
   useEffect(() => {
-    if (isOnline) syncGuidance();
-  }, [isOnline]);
+    if (isOnline) regions.split(',').forEach((r) => syncGuidance(r as RegionCode));
+  }, [isOnline, regions]);
   const openGuidance = useCallback((hazard?: HazardType) => push({ name: 'guidance', hazard }), [push]);
 
   const handleTabChange = useCallback((tab: string) => {

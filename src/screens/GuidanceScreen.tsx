@@ -38,10 +38,10 @@ export function GuidanceScreen({ onBack, initialHazard }: GuidanceScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
   const isOnline = useOnlineStatus();
-  const { cards, syncedAt } = useGuidance();
   const center = useUserCenter();
-  // Only from a real fix: never show the demo city's numbers as "where you are".
+  // Only from a real fix: never show the demo city's numbers (or guidance) as "where you are".
   const country = center.source === 'device' ? countryAt(center.lat, center.lon) : undefined;
+  const { cards, syncedAt } = useGuidance(country);
   const [hazard, setHazard] = useState<HazardType | undefined>(initialHazard);
   const shown = cardsForHazard(cards, hazard);
 
