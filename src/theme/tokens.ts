@@ -36,8 +36,10 @@ export interface TextColors {
 }
 
 export interface AccentColors {
-  /** Reassurance — "watching", all-clear, success */
+  /** Reassurance — "watching", all-clear, success; also Moby's own voice in Ask Moby */
   calm: string;
+  /** Quiet calm tint for surfaces (the person's own question in Ask Moby) */
+  calmSoft: string;
 }
 
 export interface TrustColor {
@@ -93,6 +95,7 @@ export const lightTheme: Theme = {
   },
   accent: {
     calm: '#6B8F87',
+    calmSoft: '#E5EEEB',
   },
   severity: {
     low: '#5B87A0',
@@ -125,6 +128,7 @@ export const darkTheme: Theme = {
   },
   accent: {
     calm: '#7FA79E',
+    calmSoft: '#1F2D2A',
   },
   severity: {
     low: '#7BA3B8',
