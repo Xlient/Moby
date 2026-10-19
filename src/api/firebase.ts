@@ -1,7 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import * as firebaseAuth from 'firebase/auth';
 import type { Auth, Persistence } from 'firebase/auth';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, type Firestore } from 'firebase/firestore';
 import { env } from '@/config/env';
 import { asyncStorage } from '@/lib/storage';
 import { connectEmulators } from './firebaseEmulators';
@@ -33,7 +33,10 @@ if (isFirebaseConfigured) {
     auth = initializeAuth(app, {
       persistence: getReactNativePersistence(asyncStorage),
     });
-    db = getFirestore(app);
+    // Long polling, not WebChannel streaming: on Android the stream gets stuck behind
+    // React Native's networking, Firestore decides it's offline ("Could not reach Cloud
+    // Firestore backend") and every read fails, including the API address override.
+    db = initializeFirestore(app, { experimentalForceLongPolling: true });
     connectEmulators(auth, db);
   } else {
     // Fast Refresh re-evaluates this module; the app (and its emulator wiring) already exist.
