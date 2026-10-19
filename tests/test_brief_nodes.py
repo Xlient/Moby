@@ -61,12 +61,12 @@ def test_message_numbers_the_evidence():
     assert "Hazard: flood" in msg and "no official warning" in msg and "[C1] (community) Rising water" in msg
 
 
-def run_brief(conn, monkeypatch, eid):  # noqa: F811
+def run_brief(conn, monkeypatch, eid, draft=FAKE):  # noqa: F811
     calls = []
 
     async def fake_write_draft(evidence, *, hazard, official, searched_web=True):
         calls.append(evidence)
-        return FAKE
+        return draft
 
     async def fake_search_web(facts, *, calls):
         return [{"kind": "official", "title": "Flood safety · weather.gov", "text": "Turn around.",
@@ -99,11 +99,21 @@ def test_an_official_warning_gets_web_sources(conn, monkeypatch):  # noqa: F811
     eid = make_event(conn)
     conn.execute("""UPDATE events SET source = 'official', source_feed = 'noaa', external_id = 'w',
                     title = 'Flood Warning', raw_payload = '{"properties": {"areaDesc": "Sonoma"}}'""")
-    calls = run_brief(conn, monkeypatch, eid)
+    cites_web = BriefDraft(reasoning="r", summary="s", uncertainty="u", claims=[
+        {"text": "Turn around.", "basis": "official", "evidence": ["W1"]},
+        {"text": "Flooding reported.", "basis": "community", "evidence": ["C1"]}])
+    calls = run_brief(conn, monkeypatch, eid, draft=cites_web)
     assert [e["id"] for e in calls[0]] == ["O1", "C1", "W1"]
     (citations,) = conn.execute("SELECT citations FROM briefs").fetchone()
+    # Only what the brief cites, in evidence order: O1 wasn't cited, so it isn't listed.
+    assert [c["id"] for c in citations] == ["C1", "W1"]
     assert citations[-1] == {"id": "W1", "title": "Flood safety · weather.gov", "kind": "official",
                              "url": "https://www.weather.gov/safety/flood"}
+
+
+def test_cited_ids_include_contradictions():
+    draft = {"claims": [{"evidence": ["O1"]}], "contradictions": ["C2 says the road is open; C1 says blocked."]}
+    assert brief_nodes.cited_ids(draft) == {"O1", "C1", "C2"}
 
 
 def test_over_the_cap_no_model_call_nothing_saved(conn, monkeypatch):  # noqa: F811

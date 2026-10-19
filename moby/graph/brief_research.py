@@ -38,12 +38,33 @@ def plan_calls(facts: dict[str, Any], granted: int) -> list[str]:
     return calls[:granted]
 
 
-def _pick(results: list[tuple[str, SearchResult]]) -> list[tuple[str, SearchResult]]:
-    """Drop social media and duplicate pages; official pages first, then by Tavily's score."""
+# Words in area names that don't identify a place on their own ("City and Borough of Juneau").
+_GENERIC = {"city", "county", "borough", "municipality", "parish", "district", "region", "province",
+            "island", "islands", "area", "areas", "coast", "coastal", "north", "south", "east", "west",
+            "northern", "southern", "eastern", "western", "central", "upper", "lower", "greater", "the",
+            "and", "for", "near"}
+
+
+def place_words(place: str | None) -> set[str]:
+    """The words that identify a place: "Hatteras Island" → {"hatteras"}; "Lake, FL" → {"lake"}."""
+    words = {w.strip(".,;()").lower() for w in (place or "").split()}
+    return {w for w in words if len(w) > 2 and w not in _GENERIC}
+
+
+def mentions(r: SearchResult, words: set[str]) -> bool:
+    text = f"{r.title} {r.content}".lower()
+    return not words or any(w in text for w in words)
+
+
+def _pick(results: list[tuple[str, SearchResult]], place: str | None = None) -> list[tuple[str, SearchResult]]:
+    """Drop social media, duplicate pages and pages that don't mention the place (a search for
+    "Coastal Flood Warning Hatteras Island" also returns California's warnings); official pages
+    first, then by Tavily's score."""
+    words = place_words(place)
     seen, kept = set(), []
     for _, r in results:
         kind, key = web_source_kind(r.url), canonical_url(r.url)
-        if kind is None or key in seen or not r.content:
+        if kind is None or key in seen or not r.content or not mentions(r, words):
             continue
         seen.add(key)
         kept.append((kind, r))
@@ -69,4 +90,4 @@ async def search_web(facts: dict[str, Any], *, calls: list[str]) -> list[dict[st
         "title": f"{(r.title or site_name(r.url)).strip()[:90]} · {site_name(r.url)}",
         "text": r.content.strip()[:MAX_PAGE_CHARS],
         "url": r.url,
-    } for kind, r in _pick(results)]
+    } for kind, r in _pick(results, facts.get("place"))]

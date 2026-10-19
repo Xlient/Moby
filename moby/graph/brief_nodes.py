@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 
 from moby.ai.budget import take_sync
 from moby.api.alerts import SOURCE_ATTRIBUTION
@@ -121,11 +122,24 @@ async def write_brief(state: BriefState) -> dict:
     return {"draft": draft.to_saved(), "attempts": state.get("attempts", 0) + 1}
 
 
+_EVIDENCE_ID = re.compile(r"\b[OCW]\d+\b")
+
+
+def cited_ids(draft: dict) -> set[str]:
+    """Evidence ids the brief actually uses: its claims' citations, plus ids named in contradictions."""
+    ids = {i for c in draft.get("claims", []) for i in c.get("evidence", [])}
+    for text in draft.get("contradictions") or []:
+        ids |= set(_EVIDENCE_ID.findall(text))
+    return ids
+
+
 def save_brief(state: BriefState) -> dict:
     """Save the draft for the claimed request and mark the event 'ready', in one transaction.
-    Safe to repeat on a resumed run: the second time nothing is written."""
+    Sources = only the evidence the brief cites (in evidence order), so the app never lists a
+    page the brief didn't use. Safe to repeat on a resumed run: the second time nothing is written."""
+    used = cited_ids(state["draft"])
     citations = [{"id": e["id"], "title": e["title"], "kind": e["kind"],
-                  **({"url": e["url"]} if e.get("url") else {})} for e in state["evidence"]]
+                  **({"url": e["url"]} if e.get("url") else {})} for e in state["evidence"] if e["id"] in used]
     with connection() as conn:
         version = save_brief_row(conn, state["event_id"], state["requested_at"], brief=state["draft"],
                                  citations=citations, facts=state["facts"], model=model_name("ultra"))

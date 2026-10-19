@@ -29,10 +29,11 @@ class FakeTavily:
     def search(self, query, **kw):
         self.searches.append((query, kw))
         if kw.get("topic") == "news":
-            return [SearchResult("Flood closes road", "https://www.reuters.com/flood", "News text", 0.8),
+            return [SearchResult("Flood closes road", "https://www.reuters.com/flood", "Sonoma news text", 0.8),
+                    SearchResult("Flood elsewhere", "https://www.reuters.com/la-flood", "Los Angeles flooding", 0.95),
                     SearchResult("Post", "https://www.facebook.com/p/1", "Social", 0.99)]
-        return [SearchResult("Flood safety", "https://www.weather.gov/safety/flood", "Snippet", 0.5),
-                SearchResult("Flood safety", "http://weather.gov/safety/flood/", "Same page", 0.4)]
+        return [SearchResult("Flood safety", "https://www.weather.gov/safety/flood", "Sonoma snippet", 0.5),
+                SearchResult("Flood safety", "http://weather.gov/safety/flood/", "Same page, Sonoma", 0.4)]
 
     def extract(self, urls):
         self.extracted.append(urls)
@@ -51,7 +52,7 @@ def test_search_web_keeps_trust_order_and_drops_duplicates_and_social(monkeypatc
     assert [(o["kind"], o["url"]) for o in out] == [("official", "https://www.weather.gov/safety/flood"),
                                                     ("news", "https://www.reuters.com/flood")]
     assert out[0]["title"] == "Flood safety · weather.gov"
-    assert [o["text"] for o in out] == ["Snippet", "News text"]            # Tavily's snippets, not full pages
+    assert [o["text"] for o in out] == ["Sonoma snippet", "Sonoma news text"]   # snippets; LA page dropped
     assert tavily.extracted == []
     official, news = tavily.searches
     assert official[1]["include_domains"] == ["ready.gov", "weather.gov", "fema.gov", "cdc.gov"]
@@ -61,3 +62,15 @@ def test_search_web_keeps_trust_order_and_drops_duplicates_and_social(monkeypatc
 def test_one_unit_searches_official_sites_only(monkeypatch):
     out, tavily = run(monkeypatch, ["official"])
     assert len(tavily.searches) == 1 and [o["kind"] for o in out] == ["official"]
+
+
+def test_place_words_skip_generic_words():
+    assert br.place_words("Hatteras Island") == {"hatteras"}
+    assert br.place_words("City and Borough of Juneau") == {"juneau"}
+    assert br.place_words(None) == set()
+
+
+def test_pages_must_mention_the_place():
+    on = SearchResult("Dare County bulletin", "https://www.darenc.gov/x", "Flooding in Hatteras Village", 0.5)
+    off = SearchResult("WWA Summary", "https://forecast.weather.gov/x", "Coastal Flood Warning, Carlsbad CA", 0.9)
+    assert [r.url for _, r in br._pick([("", on), ("", off)], "Hatteras Island")] == ["https://www.darenc.gov/x"]
