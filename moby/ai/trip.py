@@ -184,10 +184,12 @@ _COLUMNS = """e.event_id, e.source, e.source_feed, e.external_id, e.hazard_type,
     ST_Y(e.location::geometry) AS lat, ST_X(e.location::geometry) AS lon"""
 
 # The stop each row is nearest to (routes): named in the source text, so the model can say "near Phakding".
+# A warning area can cover several stops (all at distance 0): then the one nearest its centre point wins.
 def _near_stop(geom: str) -> str:
+    stop = "ST_SetSRID(ST_MakePoint(s.lon, s.lat), 4326)::geography"
     return f"""(SELECT NULLIF(s.name, '') FROM unnest(%(stop_names)s::text[], %(stop_lons)s::float8[],
                                                  %(stop_lats)s::float8[]) AS s(name, lon, lat)
-             ORDER BY ST_Distance({geom}, ST_SetSRID(ST_MakePoint(s.lon, s.lat), 4326)::geography) LIMIT 1)"""
+             ORDER BY ST_Distance({geom}, {stop}), ST_Distance(e.location, {stop}) LIMIT 1)"""
 
 
 # p.g is the destination point or the route line (trip_wkt). Inside a warning's area counts as

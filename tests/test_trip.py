@@ -318,6 +318,13 @@ def test_a_route_is_checked_along_the_line_not_just_at_its_stops(db_url):
     assert official[0]["distance_km"] == pytest.approx(0, abs=0.1)
     assert official[1]["near_stop"] == "Phakding" and community[0]["near_stop"] == "Phakding"
     assert [r["alert_headline"] for r in community] == ["Bridge washed out reported"]
+    # A warning area covering several stops is 'near' the stop closest to its centre, not the first one.
+    async def covering():
+        async with await psycopg.AsyncConnection.connect(db_url) as conn:
+            near_centre = Stop(PHAKDING[0] + 0.36, PHAKDING[1], "Centre")
+            return await trip.official_near(conn, [Stop(*PHAKDING, "Phakding"), near_centre], 10, NOW)
+    rows = {r["external_id"]: r["near_stop"] for r in asyncio.run(covering())}
+    assert rows["area-reaches"] == "Centre"       # its area covers both stops; its centre is at "Centre"
     # The same ends checked as points find nothing: the line is what matters.
     for end in (WEST, EAST):
         assert asyncio.run(go([end])) == ([], [])
