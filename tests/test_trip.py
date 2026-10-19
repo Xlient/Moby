@@ -90,6 +90,24 @@ def test_real_ultra_bridge_statement_passes():
     assert problem is None and ok["basis"] == "community", problem
 
 
+def test_month_names_are_dates_and_hazards_match_by_stem():
+    # Real Ultra statements (2026-10-19) that were wrongly dropped: "October" as an unknown name,
+    # "flood" not matching "flooding".
+    flood = Cited("O1", "official", "Flood warning for the Dudh Koshi",
+                  "Flood warning for the Dudh Koshi.\nExpires 2026-10-21 09:03 UTC.\nText: The water level has crossed "
+                  "the warning level and is rising. Keep away from the river banks and avoid crossing the river.")
+    srcs = {"O1": flood, "C1": BRIDGE}
+    ok, problem = trip.check_claim(claim("An official flood warning for the Dudh Koshi is in effect until 21 October "
+                                         "09:03 UTC; keep away from the river banks and avoid crossing the river.",
+                                         "O1"), srcs, CONTEXT)
+    assert problem is None, problem
+    assert "numbers" in trip.check_claim(claim("An official flood warning for the Dudh Koshi is in effect until 21 "
+                                               "November; keep away from the river banks.", "O1"), srcs, CONTEXT)[1]
+    ok, problem = trip.check_claim(claim("People nearby report a bridge washed out by the flood, about 1.2 km from "
+                                         "Phakding; this is unverified.", "C1"), srcs, CONTEXT)
+    assert problem is None, problem
+
+
 def test_community_reports_are_never_presented_as_official():
     problem = trip.check_claim(claim("Officials confirmed the bridge washed out.", "C1"), SOURCES, CONTEXT)[1]
     assert "presented as official" in problem

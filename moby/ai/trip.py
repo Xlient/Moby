@@ -96,8 +96,21 @@ FRAMING = ("official alert alerts agency warning warnings report reports reporte
 NUMBER_WORDS = {w: str(i) for i, w in enumerate(
     "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
     "seventeen eighteen nineteen twenty".split())}
+# Month names are dates, not places: they're checked as their number instead ("21 October" needs
+# a 10 in the source, e.g. "2026-10-21"). Seen with Ultra.
+MONTHS = {m: str(i) for i, m in enumerate(
+    "january february march april may june july august september october november december".split(), 1)}
+WEEKDAYS = set("monday tuesday wednesday thursday friday saturday sunday".split())
 # Capitalised words that may appear without a source (sentence starts are skipped anyway).
-ALLOWED_NAMES = {"moby", "i"}
+ALLOWED_NAMES = {"moby", "i", "utc", *MONTHS, *WEEKDAYS}
+
+
+def _stem(word: str) -> str:
+    """flood/floods/flooding/flooded → flood, for the hazard check only."""
+    for suffix in ("ing", "ed", "es", "s"):
+        if word.endswith(suffix) and len(word) - len(suffix) >= 3:
+            return word[: -len(suffix)]
+    return word
 
 
 # ── Rate limit (per process, like Ask Moby) ─────────────────────────────────
@@ -356,13 +369,15 @@ def check_claim(claim: TripClaim, sources: dict[str, Cited], context: str) -> tu
     if not text or len(text) > 400:
         return None, "statement empty or too long"
     cited = "\n".join(f"{sources[c].title}\n{sources[c].text}" for c in cites) + f"\n{context}"
-    spelled = " ".join(NUMBER_WORDS.get(w, w) for w in text.lower().split())
+    spelled = " ".join(NUMBER_WORDS.get(w) or MONTHS.get(w, w) for w in re.findall(r"[a-z]+", text.lower())
+                       if w != "may")      # "may" is nearly always the verb
     if stray := stray_numbers(f"{text} {spelled}", cited):
         return None, f"numbers not in {', '.join(cites)}: {stray}"
     have = set(norm(cited).split())
     if missing := sorted(n for n in _proper_names(text) if norm(n) not in have and norm(n).strip("'’") not in have):
         return None, f"names not in {', '.join(cites)}: {missing}"
-    if extra := sorted({w for w in norm(text).split() if w in HAZARD_TERMS} - have):
+    have_stems = {_stem(w) for w in have}
+    if extra := sorted(w for w in set(norm(text).split()) if w in HAZARD_TERMS and _stem(w) not in have_stems):
         return None, f"hazards not in {', '.join(cites)}: {extra}"
     if support(text, f"{cited}\n{FRAMING}") < MIN_CLAIM_SUPPORT:
         return None, f"strays from {', '.join(cites)}: {text[:60]!r}"
