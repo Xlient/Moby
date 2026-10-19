@@ -1,9 +1,12 @@
-import logging
 import asyncio
+import logging
 
 from moby.ai.budget import take_sync
 from moby.api.alerts import SOURCE_ATTRIBUTION
+from moby.llm import model_name
+
 from .brief_queries import community_evidence, event_facts, previous_version
+from .brief_queries import save_brief as save_brief_row
 from .brief_writer import write_draft
 from .db import connection
 from .state import BriefState, EvidenceItem
@@ -58,16 +61,34 @@ def gather_evidence(state: BriefState) -> dict:
 
     return {"facts": facts, "community": community, "previous": previous, "evidence": evidence}
 
-async def write_brief(state:BriefState):
-    
-            try:
-                with connection() as conn:
-                    if await asyncio.to_thread(take_sync(conn, "brief", 1)) == 0:
-                        return {"brief": {}}
-                    evidence = state["evidence"]
-                    draft = await write_draft(evidence)
-                    return {"brief": draft}
 
-            except Exception:
-                log.exception("AI brief %s failed", state["event_id"])
-                return {"brief": {}}
+def _take_brief_budget() -> bool:
+    with connection() as conn:
+        return take_sync(conn, "brief", 1) == 1
+
+
+async def write_brief(state: BriefState) -> dict:
+    """Ask Ultra for a brief written only from the evidence. Over today's cap: no draft (the
+    graph ends and the event is settled as failed; a later view with new reports asks again).
+    Model errors are NOT caught: the worker records them and retries the run once."""
+    if not await asyncio.to_thread(_take_brief_budget):
+        log.warning("brief %s: daily brief cap reached, not written", state["event_id"])
+        return {"draft": {}, "problems": ["daily brief cap reached"]}
+    # No DB connection is held while Ultra writes (up to a minute): the pool is small.
+    draft = await write_draft(state["evidence"], hazard=state["facts"]["hazard_type"],
+                              official=state["facts"]["source"] == "official")
+    return {"draft": draft.to_saved(), "attempts": state.get("attempts", 0) + 1}
+
+
+def save_brief(state: BriefState) -> dict:
+    """Save the draft for the claimed request and mark the event 'ready', in one transaction.
+    Safe to repeat on a resumed run: the second time nothing is written."""
+    citations = [{"id": e["id"], "title": e["title"], "kind": e["kind"],
+                  **({"url": e["url"]} if e.get("url") else {})} for e in state["evidence"]]
+    with connection() as conn:
+        version = save_brief_row(conn, state["event_id"], state["requested_at"], brief=state["draft"],
+                                 citations=citations, facts=state["facts"], model=model_name("ultra"))
+    if version is None:
+        log.info("brief %s: request no longer pending; nothing saved", state["event_id"])
+    return {}
+

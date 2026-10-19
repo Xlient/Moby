@@ -45,7 +45,7 @@ async def process_brief(graph: CompiledStateGraph , event:dict) -> bool:
             status = await asyncio.to_thread(_settle, event["event_id"], event["brief_requested_at"])
             log.warning("brief %s: run had already finished; settled as %s", event["event_id"], status)
         else:
-            await graph.ainvoke({"event_id": event["event_id"]}, config)
+            await graph.ainvoke({"event_id": event["event_id"], "requested_at": event["brief_requested_at"]}, config)
         return True
     except Exception as e:
         log.exception("brief %s failed (attempt %s)", event["event_id"], event.get("brief_attempts"))
