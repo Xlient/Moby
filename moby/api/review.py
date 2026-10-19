@@ -8,7 +8,7 @@ down (no longer listed or pushed). Nothing waits on a decision.
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from psycopg.rows import dict_row
 from pydantic import BaseModel, Field
 
@@ -181,6 +181,53 @@ class DecisionIn(BaseModel):
     decision: Literal["approve", "reject", "hold"]
     note: str | None = Field(default=None, max_length=500)
     override_severity: Severity | None = None
+
+
+SOS_SQL = """
+-- One row per sender (daily mesh id): their latest call for help, and whether they later
+-- said they're safe. Newest first. Location is as sent (rounded to ~11 m on the air).
+SELECT DISTINCT ON (h.reporter_hash)
+       h.mesh_key, h.reporter_hash, h.sent_at, h.received_at, h.hop_count,
+       cardinality(h.relayed_by) AS relay_count,
+       ST_Y(h.location::geometry) AS lat, ST_X(h.location::geometry) AS lon, h.location_accuracy_m,
+       (SELECT count(*) FROM sos_signals x
+         WHERE x.reporter_hash = h.reporter_hash AND x.status = 'help'
+           AND x.sent_at > now() - make_interval(hours => %(hours)s)) AS help_count,
+       (SELECT min(s.sent_at) FROM sos_signals s
+         WHERE s.reporter_hash = h.reporter_hash AND s.status = 'safe' AND s.sent_at >= h.sent_at) AS safe_at
+FROM sos_signals h
+WHERE h.status = 'help' AND h.sent_at > now() - make_interval(hours => %(hours)s)
+ORDER BY h.reporter_hash, h.sent_at DESC
+"""
+
+
+@router.get("/sos")
+async def sos_signals(_: Reviewer, hours: int = Query(default=24, ge=1, le=72)):
+    """SOS calls relayed over the Bluetooth mesh, for local partners to look into.
+
+    Nobody has checked them: a phone said its owner needs help, nothing more. Moby does
+    not forward them anywhere; the reviewer decides whether to call emergency services.
+    """
+    from .app import _pool
+
+    async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(SOS_SQL, {"hours": hours})
+        rows = await cur.fetchall()
+    rows.sort(key=lambda r: r["sent_at"], reverse=True)
+    return [
+        {
+            "sos_id": r["mesh_key"],
+            "sender": r["reporter_hash"].removeprefix("mesh:"),
+            "location": {"lat": r["lat"], "lon": r["lon"], "accuracy_m": r["location_accuracy_m"], "frame": "WGS84"},
+            "sent_at": _iso(r["sent_at"]),
+            "received_at": _iso(r["received_at"]),
+            "hop_count": r["hop_count"],
+            "relay_count": r["relay_count"],
+            "help_count": r["help_count"],
+            "safe_at": _iso(r["safe_at"]),
+        }
+        for r in rows
+    ]
 
 
 @router.post("/{event_id}/decision", status_code=204)

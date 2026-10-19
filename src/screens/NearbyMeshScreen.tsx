@@ -8,6 +8,7 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { useMesh } from '@/mesh/useMesh';
 import { clearMesh, isMeshAvailable, isMeshEnabled, setMeshEnabled, type MeshStatus } from '@/mesh/meshService';
 import { formatTimeAgo } from '@/lib/alerts';
+import { SosCalls } from '@/components/SosCalls';
 
 interface NearbyMeshScreenProps {
   onBack: () => void;
@@ -94,6 +95,8 @@ export function NearbyMeshScreen({ onBack }: NearbyMeshScreenProps) {
           )}
         </View>
 
+        <SosCalls calls={mesh.sosCalls} />
+
         {mesh.alerts.length > 0 && (
           <View style={{ gap: spacing.scale[2] }}>
             <Text accessibilityRole="header" style={[typography.title, { color: theme.text.primary }]}>
@@ -123,6 +126,7 @@ export function NearbyMeshScreen({ onBack }: NearbyMeshScreenProps) {
           </Text>
           <Text style={muted}>
             Only the hazard type, how severe it is, a location rounded to about 10 m, the time, and an id that changes every day.
+            An SOS you send from “I need help” carries your location the same way.
             Never your name, your notes or your phone’s name. Reports from nearby phones are marked unverified until Moby checks them.
           </Text>
           <Text style={muted}>

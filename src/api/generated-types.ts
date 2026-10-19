@@ -1507,6 +1507,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/review/sos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * SOS calls relayed over the Bluetooth mesh
+         * @description Reviewer role required. One row per sender (daily-rotating mesh id): their latest call for help, how many times they sent it, and when they said they're safe, if they did. Nobody has checked these, and Moby forwards them nowhere: the reviewer decides whether to contact emergency services. Kept 30 days.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    hours?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK, newest call first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SosSignal"][];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/review/{event_id}/decision": {
         parameters: {
             query?: never;
@@ -2074,6 +2116,31 @@ export interface components {
              */
             is_critical_fallback: boolean;
         };
+        SosSignal: {
+            /** @description 8-byte mesh id of the latest call */
+            sos_id: string;
+            /** @description The sender's daily-rotating mesh id (not linked to an account) */
+            sender: string;
+            location: components["schemas"]["GeoPoint"];
+            /** Format: date-time */
+            sent_at: string;
+            /**
+             * Format: date-time
+             * @description When a phone with signal uploaded it
+             */
+            received_at: string;
+            /** @description Fewest phones it passed through to reach a phone with signal */
+            hop_count: number;
+            /** @description Phones that uploaded it */
+            relay_count: number;
+            /** @description Calls for help from this sender in the window */
+            help_count: number;
+            /**
+             * Format: date-time
+             * @description When the sender said they're safe
+             */
+            safe_at?: string | null;
+        };
         RouteCheckRequest: {
             origin: components["schemas"]["LatLon"];
             destination: components["schemas"]["LatLon"];
@@ -2141,7 +2208,7 @@ export interface components {
         MeshRecord: {
             /** @description 8 bytes, hex. Reports: sha256(client_event_id)[:8] */
             event_id: string;
-            /** @description Index into HazardType: 0 flood, 1 fire, 2 earthquake, 3 storm, 4 landslide, 5 other */
+            /** @description Index into HazardType: 0 flood, 1 fire, 2 earthquake, 3 storm, 4 landslide, 5 other. 6 is an SOS (severity 3 = needs help, 0 = safe now), stored apart from reports (see /review/sos) */
             hazard_type: number;
             /** @description Degrees times 1e6 (sent over the air rounded to 1e-4) */
             lat_e6: number;

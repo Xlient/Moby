@@ -31,7 +31,7 @@ def client(db_url, monkeypatch):
     monkeypatch.setenv("MOBY_AUTH_DISABLED", "true")
     get_settings.cache_clear()
     with psycopg.connect(db_url, autocommit=True) as c:
-        c.execute("TRUNCATE reports CASCADE")
+        c.execute("TRUNCATE reports, sos_signals CASCADE")
     from moby.api.app import app
     with TestClient(app) as c:
         yield c
@@ -165,3 +165,61 @@ def test_mesh_alerts_are_official_and_compact(client, db_url):
     assert rec["hazard_type"] == 0 and rec["severity"] == 2 and rec["hop_count"] == 0
     assert len(rec["event_id"]) == 16 and rec["reporter_hash"] == "00000000"
     assert abs(rec["lat_e6"] - 27_720_000) < 2
+
+
+# ── SOS (hazard code 6) ──────────────────────────────────────────────
+
+def sos(**kw) -> dict:
+    return record(**{"hazard_type": mesh_module.SOS_CODE, "severity": 3, **kw})
+
+
+def test_sos_is_stored_apart_from_reports_and_never_becomes_a_hazard(client, db_url):
+    rec = sos()
+    assert sync(client, rec) == {"acknowledged": [rec["event_id"]], "rejected": []}
+    with psycopg.connect(db_url) as c:
+        assert c.execute("SELECT count(*) FROM reports").fetchone()[0] == 0
+        row = c.execute(
+            "SELECT reporter_hash, status, hop_count, ST_Y(location::geometry) FROM sos_signals WHERE mesh_key = %s",
+            (rec["event_id"],),
+        ).fetchone()
+    assert row[:3] == ("mesh:a1b2c3d4", "help", 2)
+    assert abs(row[3] - 27.7172) < 1e-6
+
+
+def test_sos_via_two_relays_is_one_signal_with_the_shortest_path(client, db_url):
+    rec = sos()
+    sync(client, rec)
+    sync(client, {**rec, "relayed_by": ["r2"], "hop_count": 1})
+    with psycopg.connect(db_url) as c:
+        rows = c.execute("SELECT hop_count, relayed_by FROM sos_signals").fetchall()
+    assert len(rows) == 1
+    assert rows[0][0] == 1 and {"r1", "r2"} <= set(rows[0][1])
+
+
+def test_only_help_and_safe_are_valid_sos_states(client):
+    rec = sos(severity=2)
+    assert sync(client, rec)["rejected"] == [{"event_id": rec["event_id"], "reason": "unknown_sos_status"}]
+
+
+def test_a_phone_spamming_sos_is_rate_limited(client):
+    out = sync(client, *[sos() for _ in range(mesh_module.MAX_SOS_PER_HOUR + 1)])
+    assert len(out["acknowledged"]) == mesh_module.MAX_SOS_PER_HOUR
+    assert out["rejected"][0]["reason"] == "rate_limited"
+
+
+def test_reviewers_see_the_latest_call_per_sender_and_whether_they_said_safe(client):
+    now = datetime.now(timezone.utc)
+    ts = lambda minutes: int((now - timedelta(minutes=minutes)).timestamp())  # noqa: E731
+    sync(
+        client,
+        sos(timestamp=ts(50)),                                   # first call from a1b2c3d4
+        sos(timestamp=ts(40)),                                   # sent again
+        sos(timestamp=ts(10), severity=0),                       # then: I'm safe
+        sos(timestamp=ts(20), reporter_hash="0badf00d"),         # someone else, still needs help
+    )
+    r = client.get("/v1/review/sos")
+    assert r.status_code == 200, r.text
+    signals = r.json()
+    assert [s["sender"] for s in signals] == ["0badf00d", "a1b2c3d4"]   # newest call first
+    assert signals[0]["safe_at"] is None
+    assert signals[1]["help_count"] == 2 and signals[1]["safe_at"] is not None

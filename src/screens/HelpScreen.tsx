@@ -10,6 +10,7 @@ import { countryAt } from '@/data/emergencyNumbers';
 import { formatAccuracy, formatCoords, formatUtcTime, helpMessage } from '@/lib/helpMessage';
 import { formatTimeAgo } from '@/lib/alerts';
 import { useUserCenterPassive } from '@/location/UserLocationContext';
+import { SosPanel } from '@/components/SosPanel';
 
 interface HelpScreenProps {
   onBack: () => void;
@@ -99,6 +100,8 @@ export function HelpScreen({ onBack }: HelpScreenProps) {
           Opens your messages or another app with your location and a map link, to send to someone you trust.
           Moby doesn’t send it for you and can’t tell whether it arrives.
         </Text>
+
+        <SosPanel at={fix ? { lat: fix.lat, lon: fix.lon } : null} />
       </ScrollView>
     </View>
   );

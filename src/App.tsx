@@ -237,6 +237,7 @@ export function App() {
             onMyReportsPress={() => push({ name: 'my-reports' })}
             onEmergencyPress={(alertId) => push({ name: 'emergency', alertId })}
             onHelpPress={() => push({ name: 'help' })}
+            onSosCallsPress={() => push({ name: 'nearby-mesh' })}
             onRouteCheckPress={() => push({ name: 'route-check' })}
             onTripPress={showTrip ? () => openTrip() : undefined}
           />

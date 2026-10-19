@@ -14,6 +14,7 @@ import { RadiusPicker } from '@/components/RadiusPicker';
 import { formatTimeAgo } from '@/lib/alerts';
 import { useReportQueue } from '@/hooks/useReportQueue';
 import { useEmergencyAlert } from '@/hooks/useEmergencyAlert';
+import { useMesh } from '@/mesh/useMesh';
 
 interface HomeScreenProps {
   onReportPress: () => void;
@@ -26,6 +27,7 @@ interface HomeScreenProps {
   onMyReportsPress: () => void;
   onEmergencyPress: (alertId: string) => void;
   onHelpPress: () => void;
+  onSosCallsPress: () => void;
   onRouteCheckPress: () => void;
 }
 
@@ -125,7 +127,7 @@ function LoadingCards({ theme }: { theme: Theme }) {
 }
 
 export function HomeScreen({
-  onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress, onMyReportsPress, onEmergencyPress, onHelpPress, onTripPress, onRouteCheckPress,
+  onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress, onMyReportsPress, onEmergencyPress, onHelpPress, onSosCallsPress, onTripPress, onRouteCheckPress,
 }: HomeScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
@@ -136,6 +138,7 @@ export function HomeScreen({
   const myReports = useReportQueue();
   const waitingReports = myReports.filter((x) => x.state === 'queued' || x.state === 'sending').length;
   const { emergency, shouldOpen, markOpened } = useEmergencyAlert();
+  const openSosCalls = useMesh().sosCalls.filter((c) => !c.safe).length;
 
   // Inside an official warning: emergency mode opens by itself, once per warning.
   useEffect(() => {
@@ -174,6 +177,24 @@ export function HomeScreen({
             <View style={styles.guidanceText}>
               <Text variant="titleMedium" style={styles.bannerText}>{emergency.alert.headline}</Text>
               <Text variant="bodyMedium" style={styles.bannerText}>You are in the warning area. Tap for what to do now.</Text>
+            </View>
+          </Pressable>
+        )}
+
+        {openSosCalls > 0 && (
+          // Unverified, so not the emergency colour band: violet, like every unverified thing in Moby.
+          <Pressable
+            onPress={onSosCallsPress}
+            accessibilityRole="button"
+            accessibilityLabel={`${openSosCalls === 1 ? 'Someone nearby asked' : `${openSosCalls} people nearby asked`} for help over Bluetooth. Unverified. Open.`}
+            style={[styles.emergencyBanner, { backgroundColor: theme.trust.unverified.bg, borderColor: theme.trust.unverified.border, borderWidth: 1 }]}
+          >
+            <Avatar.Icon size={40} icon="access-point" color={theme.trust.unverified.text} style={{ backgroundColor: theme.bg.raised }} />
+            <View style={styles.guidanceText}>
+              <Text variant="titleMedium" style={{ color: theme.trust.unverified.text }}>
+                {openSosCalls === 1 ? 'Someone nearby asked for help' : `${openSosCalls} people nearby asked for help`}
+              </Text>
+              <Text variant="bodyMedium" style={{ color: theme.text.primary }}>Sent over Bluetooth, not checked by anyone. Tap for the location.</Text>
             </View>
           </Pressable>
         )}

@@ -14,6 +14,12 @@ Trust rules (plan §9):
   so it can't collide with account-based hashes;
 - free text never travels over the mesh; the reporter attaches it later, when their own
   phone reconnects (see `reports.submit_report`, which upgrades the mesh copy).
+
+SOS (hazard code 6): "someone near here asked for help", from the "I need help" screen.
+Stored in `sos_signals`, never in `reports`: a person is not a hazard, so an SOS is never
+fused into an event or pushed as an alert. Severity carries the state: critical = help,
+low = "I'm safe now" (from the same daily reporter id). Reviewers see them in the console
+(`GET /v1/review/sos`).
 """
 import hashlib
 from datetime import datetime, timezone
@@ -34,6 +40,11 @@ router = APIRouter(prefix="/v1/mesh", tags=["mesh"])
 # Codes used on the air. Order matters: it is the wire format (src/mesh/codec.ts).
 HAZARD_CODES = ["flood", "fire", "earthquake", "storm", "landslide", "other"]
 SEVERITY_CODES = ["low", "medium", "high", "critical"]
+# Appended after the hazards, so older phones simply drop it (wire format: append only).
+SOS_CODE = 6
+SOS_STATUS = {3: "help", 0: "safe"}
+# A person in trouble may resend; a phone spamming SOS is something else.
+MAX_SOS_PER_HOUR = 6
 
 # Phones stop relaying after this many hops; anything higher was tampered with.
 MAX_HOPS = 8
@@ -67,7 +78,10 @@ class MeshSyncIn(BaseModel):
 
 def _problem(rec: MeshRecordIn, now: datetime) -> str | None:
     """Why a record can't be stored, or None. Stable reason codes; the app logs them."""
-    if rec.hazard_type >= len(HAZARD_CODES):
+    if rec.hazard_type == SOS_CODE:
+        if rec.severity not in SOS_STATUS:
+            return "unknown_sos_status"
+    elif rec.hazard_type >= len(HAZARD_CODES):
         return "unknown_hazard_type"
     if rec.severity >= len(SEVERITY_CODES):
         return "unknown_severity"
@@ -98,9 +112,11 @@ async def sync(body: MeshSyncIn, caller: Annotated[Caller, Depends(require_user)
     async with _pool().connection() as conn:
         async with conn.transaction(), conn.cursor(row_factory=dict_row) as cur:
             await cur.execute(
-                """SELECT count(*) AS n FROM reports
-                   WHERE source = 'mesh' AND %s = ANY(relayed_by) AND received_at > now() - interval '1 hour'""",
-                (caller.reporter_hash,),
+                """SELECT (SELECT count(*) FROM reports
+                           WHERE source = 'mesh' AND %(g)s = ANY(relayed_by) AND received_at > now() - interval '1 hour')
+                        + (SELECT count(*) FROM sos_signals
+                           WHERE %(g)s = ANY(relayed_by) AND received_at > now() - interval '1 hour') AS n""",
+                {"g": caller.reporter_hash},
             )
             budget = MAX_SYNC_PER_GATEWAY_PER_HOUR - (await cur.fetchone())["n"]
             for rec in body.records:
@@ -108,6 +124,14 @@ async def sync(body: MeshSyncIn, caller: Annotated[Caller, Depends(require_user)
                     rejected.append({"event_id": rec.event_id, "reason": reason})
                     continue
                 originator = f"mesh:{rec.reporter_hash}"
+                if rec.hazard_type == SOS_CODE:
+                    reason, inserted = await _store_sos(cur, rec, originator, caller.reporter_hash, budget)
+                    if reason:
+                        rejected.append({"event_id": rec.event_id, "reason": reason})
+                        continue
+                    budget -= int(inserted)
+                    acknowledged.append(rec.event_id)
+                    continue
                 await cur.execute(
                     """SELECT count(*) AS n FROM reports
                        WHERE reporter_hash = %s AND received_at > now() - interval '1 hour'
@@ -143,6 +167,37 @@ async def sync(body: MeshSyncIn, caller: Annotated[Caller, Depends(require_user)
                     budget -= 1
                 acknowledged.append(rec.event_id)
     return {"acknowledged": acknowledged, "rejected": rejected}
+
+
+async def _store_sos(cur, rec: MeshRecordIn, originator: str, gateway: str, budget: int) -> tuple[str | None, bool]:
+    """Stores one SOS (or "I'm safe"). Returns (reject reason, whether a new row was made)."""
+    await cur.execute(
+        """SELECT count(*) AS n FROM sos_signals
+           WHERE reporter_hash = %s AND received_at > now() - interval '1 hour' AND mesh_key <> %s""",
+        (originator, rec.event_id),
+    )
+    if (await cur.fetchone())["n"] >= MAX_SOS_PER_HOUR:
+        return "rate_limited", False
+    if budget <= 0:
+        return "gateway_rate_limited", False
+    await cur.execute(
+        """INSERT INTO sos_signals (mesh_key, reporter_hash, status, location, location_accuracy_m,
+                                    sent_at, hop_count, relayed_by)
+           VALUES (%(key)s, %(originator)s, %(status)s,
+                   ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, %(acc)s,
+                   %(sent_at)s, %(hops)s, %(relays)s)
+           ON CONFLICT (mesh_key) DO UPDATE
+           SET relayed_by = ARRAY(SELECT DISTINCT unnest(sos_signals.relayed_by || EXCLUDED.relayed_by)),
+               hop_count = LEAST(sos_signals.hop_count, EXCLUDED.hop_count)
+           RETURNING (xmax = 0) AS inserted""",
+        {
+            "key": rec.event_id, "originator": originator, "status": SOS_STATUS[rec.severity],
+            "lat": rec.lat_e6 / 1e6, "lon": rec.lon_e6 / 1e6, "acc": MESH_LOCATION_ACCURACY_M,
+            "sent_at": datetime.fromtimestamp(rec.timestamp, timezone.utc), "hops": rec.hop_count,
+            "relays": sorted({*rec.relayed_by[:31], gateway}),
+        },
+    )
+    return None, (await cur.fetchone())["inserted"]
 
 
 @router.get("/alerts")
