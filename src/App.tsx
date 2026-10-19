@@ -27,6 +27,7 @@ import { SubscriptionsScreen } from '@/screens/SubscriptionsScreen';
 import { AlertPreferencesScreen } from '@/screens/AlertPreferencesScreen';
 import { PrivacyScreen } from '@/screens/PrivacyScreen';
 import { NearbyMeshScreen } from '@/screens/NearbyMeshScreen';
+import { RouteCheckScreen } from '@/screens/RouteCheckScreen';
 import { useMeshLifecycle } from '@/mesh/useMeshLifecycle';
 import { TrustReviewScreen } from '@/screens/TrustReviewScreen';
 import { AlertCardReviewScreen } from '@/screens/AlertCardReviewScreen';
@@ -41,6 +42,7 @@ type Screen =
   | { name: 'map' }
   | { name: 'alerts' }
   | { name: 'alert-detail'; alertId: string }
+  | { name: 'route-check' }
   | { name: 'guidance'; hazard?: HazardType }
   | { name: 'report' }
   | { name: 'my-reports' }
@@ -57,6 +59,7 @@ function getActiveTab(screen: Screen): string {
     case 'home':
     case 'alerts':
     case 'alert-detail':
+    case 'route-check':
     case 'guidance':
     case 'report':
     case 'my-reports':
@@ -201,6 +204,7 @@ export function App() {
             onMapPress={() => push({ name: 'map' })}
             onGuidancePress={() => openGuidance()}
             onMyReportsPress={() => push({ name: 'my-reports' })}
+            onRouteCheckPress={() => push({ name: 'route-check' })}
           />
         )}
         {screen.name === 'alerts' && (
@@ -209,6 +213,7 @@ export function App() {
         {screen.name === 'alert-detail' && (
           <AlertDetailScreen alertId={screen.alertId} onBack={goBack} onGuidance={openGuidance} />
         )}
+        {screen.name === 'route-check' && <RouteCheckScreen onBack={goBack} onAlertPress={navigateToAlert} />}
         {screen.name === 'map' &&
           (mapEngine === 'maplibre' ? (
             <MapLibreMapScreen onBack={goBack} onAlertDetail={navigateToAlert} />

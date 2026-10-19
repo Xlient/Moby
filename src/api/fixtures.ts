@@ -1,4 +1,7 @@
 import type {
+  Place,
+  RouteCheck,
+  RouteCheckRequest,
   Alert,
   ClientConfig,
   SituationalBrief,
@@ -374,5 +377,46 @@ export function getMockAnswer(question: string): AskAnswer {
       url: 'https://www.weather.gov/safety/flood-turn-around-dont-drown' }],
     model: 'nvidia/nemotron-3-super-120b-a12b',
     searched_web: false,
+  };
+}
+
+// ── Hazard route check (demo) ─────────────────────────────────────────
+
+export function getMockPlaces(q: string): Place[] {
+  return [
+    { label: `${q} · Muir Woods, Mill Valley, CA`, lat: 37.8912, lon: -122.5719 },
+    { label: `${q} · Golden Gate Park, San Francisco, CA`, lat: 37.7694, lon: -122.4862 },
+  ];
+}
+
+/** A demo route: the straight way crosses the red flag warning; the way around doesn't. */
+export function getMockRouteCheck(req: RouteCheckRequest): RouteCheck {
+  const { origin: o, destination: d } = req;
+  const mid = { lat: (o.lat + d.lat) / 2, lon: (o.lon + d.lon) / 2 };
+  const km = Math.hypot((d.lat - o.lat) * 111, (d.lon - o.lon) * 88);
+  const walking = req.profile === 'foot-hiking';
+  const seconds = (k: number) => Math.round((k / (walking ? 4.5 : 40)) * 3600);
+  return {
+    profile: req.profile ?? 'driving-car',
+    route: {
+      geometry: { type: 'LineString', coordinates: [[o.lon, o.lat], [mid.lon, mid.lat], [d.lon, d.lat]] },
+      distance_m: Math.round(km * 1000),
+      duration_s: seconds(km),
+      hazards: [{
+        event_id: 'event-005', alert_id: 'alert-005', hazard_type: 'fire', severity: 'high',
+        verification: 'official', headline: 'Red flag warning', km_along: Math.round(km * 5) / 10, at: mid,
+        expires_at: new Date(Date.now() + 10 * 3_600_000).toISOString(),
+      }],
+    },
+    alternative: {
+      geometry: {
+        type: 'LineString',
+        coordinates: [[o.lon, o.lat], [mid.lon - 0.04, mid.lat - 0.03], [d.lon, d.lat]],
+      },
+      distance_m: Math.round(km * 1300),
+      duration_s: seconds(km * 1.3),
+      hazards: [],
+    },
+    alternative_problem: null,
   };
 }
