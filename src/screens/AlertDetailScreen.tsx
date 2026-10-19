@@ -23,7 +23,8 @@ import type { HazardType } from '@/api/types';
 import { alertDistanceKm } from '@/lib/geo';
 import { EmergencyNumbers } from '@/components/EmergencyNumbers';
 import { countryAt } from '@/data/emergencyNumbers';
-import { fetchCenter, useUserCenter } from '@/location/UserLocationContext';
+import { fetchCenter, isRealPlace, useUserCenter, useUserCenterPassive } from '@/location/UserLocationContext';
+import { isDemoAlert } from '@/lib/tryMoby';
 
 interface AlertDetailScreenProps {
   alertId: string;
@@ -40,6 +41,7 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
   const { isEnabled } = useFeatureFlags();
   const { alerts } = useAlerts();
   const center = useUserCenter();
+  const realCenter = useUserCenterPassive();
 
   const listed = useMemo(
     () => alerts.find((a) => a.alert_id === alertId),
@@ -60,7 +62,7 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
   const fromCommunity = !!alert && alert.verification_label !== 'official_confirmed';
   const reports = useEventReports(alert?.event_id, fromCommunity);
   const explained = useExplanation(alert?.event_id, !!alert && !fromCommunity && !!alert.body);
-  const { cards } = useGuidance(alert?.country ?? (center.source === 'device' ? countryAt(center.lat, center.lon) : undefined));
+  const { cards } = useGuidance(alert?.country ?? (isRealPlace(center) ? countryAt(center.lat, center.lon) : undefined));
   const whatToDo = cardsForHazard(cards, alert?.hazard_type ?? 'other').slice(0, WHAT_TO_DO_CARDS);
 
   const raw = alert ? alertDistanceKm(alert, center, fetchCenter(center)) : undefined;
@@ -96,7 +98,12 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
             />
           )}
           <TierLadder alert={alert} />
-          <EmergencyNumbers country={alert.country ?? countryAt(center.lat, center.lon)} />
+          {/* Demo replay or viewing another place: the numbers for where the phone really is. */}
+          <EmergencyNumbers
+            country={isDemoAlert(alert) || center.source === 'viewing'
+              ? countryAt(realCenter.lat, realCenter.lon)
+              : alert.country ?? countryAt(center.lat, center.lon)}
+          />
           {whatToDo.length > 0 && (
             // Saved on the phone: works even if this alert arrived just before the signal went.
             <View style={styles.whatToDo}>

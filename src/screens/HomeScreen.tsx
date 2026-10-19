@@ -15,6 +15,8 @@ import { formatTimeAgo } from '@/lib/alerts';
 import { useReportQueue } from '@/hooks/useReportQueue';
 import { useEmergencyAlert } from '@/hooks/useEmergencyAlert';
 import { useMesh } from '@/mesh/useMesh';
+import { TryMobyBanner } from '@/components/TryMobyBanner';
+import { isDemoAlert } from '@/lib/tryMoby';
 
 interface HomeScreenProps {
   onReportPress: () => void;
@@ -153,6 +155,7 @@ export function HomeScreen({
   // Offline changes the subline only — no banner (spec v3, H1).
   const subline = isOffline ? 'Offline — showing saved info' : `Watching within ${radiusKm} km`;
 
+  const inArea = center.source === 'viewing' ? `${center.name ?? 'This place'} is in the warning area` : 'You are in the warning area';
   const visible = nearby.slice(0, MAX_HOME_CARDS);
   const hasMore = nearby.length > MAX_HOME_CARDS;
 
@@ -166,17 +169,21 @@ export function HomeScreen({
           paddingBottom: FAB_CLEARANCE + spacing.scale[3],
         }}
       >
+        <TryMobyBanner />
+
         {emergency && (
           <Pressable
             onPress={() => onEmergencyPress(emergency.alert.alert_id)}
             accessibilityRole="button"
-            accessibilityLabel={`Emergency mode: ${emergency.alert.headline}. You are in the warning area. Open.`}
+            accessibilityLabel={`Emergency mode${isDemoAlert(emergency.alert) ? ', demo' : ''}: ${emergency.alert.headline}. ${inArea}. Open.`}
             style={[styles.emergencyBanner, { backgroundColor: theme.severity[emergency.alert.severity] }]}
           >
             <Avatar.Icon size={40} icon="alert-octagon" color="#FFFFFF" style={styles.bannerIcon} />
             <View style={styles.guidanceText}>
               <Text variant="titleMedium" style={styles.bannerText}>{emergency.alert.headline}</Text>
-              <Text variant="bodyMedium" style={styles.bannerText}>You are in the warning area. Tap for what to do now.</Text>
+              <Text variant="bodyMedium" style={styles.bannerText}>
+                {isDemoAlert(emergency.alert) ? 'Demo replay. ' : ''}{inArea}. Tap for what to do now.
+              </Text>
             </View>
           </Pressable>
         )}
@@ -215,7 +222,7 @@ export function HomeScreen({
 
         <View style={styles.section}>
           <Text variant="titleMedium" accessibilityRole="header" style={[styles.sectionTitle, { color: theme.text.primary }]}>
-            Alerts near you
+            {center.source === 'viewing' ? `Alerts near ${center.name ?? 'this place'}` : 'Alerts near you'}
           </Text>
 
           {isOffline && cachedAt && nearby.length > 0 && (

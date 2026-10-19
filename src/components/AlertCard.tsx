@@ -4,6 +4,7 @@ import { useTheme } from '@/theme/ThemeContext';
 import { spacing, radius } from '@/theme/tokens';
 import type { Theme } from '@/theme/tokens';
 import { formatTimeAgo, hazardIcon, isExpired, severityLabel, trustText } from '@/lib/alerts';
+import { isDemoAlert } from '@/lib/tryMoby';
 import { SeverityIndicator } from './SeverityIndicator';
 import type { Alert } from '@/api/types';
 
@@ -86,6 +87,27 @@ function TrustLabel({ alert, theme }: { alert: Alert; theme: Theme }) {
   );
 }
 
+/** "Demo · replay of 12 Jul, Dujiangyan": what a demo alert really was. */
+export function demoText(alert: Alert): string {
+  const r = alert.replay_of;
+  if (!r) return 'Demo';
+  const when = new Date(r.issued_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return `Demo · replay of a real alert from ${when}${r.location_name ? `, ${r.location_name}` : ''}`;
+}
+
+/** Demo mode's replays: never mistaken for a current warning. */
+export function DemoTag({ alert }: { alert: Alert }) {
+  const { theme } = useTheme();
+  return (
+    <View style={[styles.pill, styles.trustPill, { backgroundColor: theme.bg.recessed, borderColor: theme.text.secondary, borderStyle: 'dashed' }]}>
+      <Icon source="play-circle-outline" size={16} color={theme.text.primary} />
+      <Text variant="labelMedium" style={[styles.trustText, styles.trustTextFlex, { color: theme.text.primary }]}>
+        {demoText(alert)}
+      </Text>
+    </View>
+  );
+}
+
 export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
   const { theme } = useTheme();
   const t = treatmentFor(alert, theme);
@@ -108,7 +130,8 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
     .filter(Boolean)
     .join(' · ');
 
-  const trust = trustText(alert);
+  const demo = isDemoAlert(alert);
+  const trust = demo ? `${demoText(alert)}. ${trustText(alert)}` : trustText(alert);
 
   return (
     <Card
@@ -153,6 +176,11 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
           <View style={styles.trustRow}>
             <TrustLabel alert={alert} theme={theme} />
           </View>
+          {demo && (
+            <View style={styles.trustRow}>
+              <DemoTag alert={alert} />
+            </View>
+          )}
         </View>
       </View>
     </Card>

@@ -15,6 +15,7 @@ import { RadiusPicker } from '@/components/RadiusPicker';
 import { isMeshEnabled } from '@/mesh/meshService';
 import { useModelState } from '@/ondevice/useModel';
 import type { ModelState } from '@/ondevice/model';
+import { setDemoMode, useTryMoby } from '@/lib/tryMoby';
 
 const OFFLINE_LABEL: Record<ModelState['kind'], string> = {
   unsupported: 'Not on this phone',
@@ -33,6 +34,7 @@ interface SettingsScreenProps {
   onOfflineAnswers?: () => void;
   onCardReview?: () => void;
   onTrustReview?: () => void;
+  onTryMoby: () => void;
 }
 
 const APP_VERSION = Constants.expoConfig?.version ?? '0.1.0';
@@ -184,7 +186,8 @@ function NameRow() {
   );
 }
 
-export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy, onNearbyMesh, onOfflineAnswers, onAbout, onCardReview, onTrustReview }: SettingsScreenProps) {
+export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy, onNearbyMesh, onOfflineAnswers, onAbout, onCardReview, onTrustReview, onTryMoby }: SettingsScreenProps) {
+  const tryMoby = useTryMoby();
   const [mapEngine, setMapEngine] = useMapEngine();
   const modelState = useModelState();
   const { theme, isDark, toggleTheme } = useTheme();
@@ -260,6 +263,27 @@ export function SettingsScreen({ onSubscriptions, onAlertPreferences, onPrivacy,
             )}
           </Section>
         )}
+
+        <Section title="Try Moby">
+          <LinkRow
+            label="View another place"
+            value={tryMoby.viewing ? tryMoby.viewing.name : 'My location'}
+            onPress={onTryMoby}
+          />
+          <Row last>
+            <View style={styles.flexShrink}>
+              <Text style={rowLabel}>Demo mode</Text>
+              <Text style={rowValue}>Replays real past alerts here, marked Demo. Only this phone sees them.</Text>
+            </View>
+            <Switch
+              value={tryMoby.demoMode}
+              onValueChange={setDemoMode}
+              accessibilityLabel="Demo mode"
+              trackColor={{ false: theme.line.hairline, true: theme.accent.calm }}
+              thumbColor={theme.bg.raised}
+            />
+          </Row>
+        </Section>
 
         <Section title="Privacy">
           <LinkRow label="Privacy & data" onPress={onPrivacy} last />

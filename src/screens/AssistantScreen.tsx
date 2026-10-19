@@ -17,7 +17,7 @@ import {
   ThinkingBubble,
 } from '@/components/AskMessage';
 import { countryAt } from '@/data/emergencyNumbers';
-import { useUserCenter } from '@/location/UserLocationContext';
+import { isRealPlace, useUserCenter } from '@/location/UserLocationContext';
 import { phoneLanguage } from '@/lib/language';
 import { useTheme } from '@/theme/ThemeContext';
 import { radius, spacing, typography } from '@/theme/tokens';
@@ -60,7 +60,7 @@ export function AssistantScreen({ onTripPress }: { onTripPress?: () => void } = 
   const scroll = useRef<ScrollView>(null);
   const isOnline = useOnlineStatus();
   // Offline answers use the local agencies' cards first (only from a real fix, never the demo city).
-  const { cards } = useGuidance(center.source === 'device' ? country : undefined);
+  const { cards } = useGuidance(isRealPlace(center) ? country : undefined);
   const model = useModelState();
   const canAnswerOffline = model.kind === 'ready';
 
@@ -80,7 +80,7 @@ export function AssistantScreen({ onTripPress }: { onTripPress?: () => void } = 
       api.ask({
         question,
         // Only a real fix: never ask about the demo city as if it were "near you".
-        ...(center.source === 'device' ? { lat: center.lat, lon: center.lon } : {}),
+        ...(isRealPlace(center) ? { lat: center.lat, lon: center.lon } : {}),
         ...(country ? { country } : {}),
         language: phoneLanguage(),
       }),

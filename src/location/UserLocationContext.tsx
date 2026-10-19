@@ -4,12 +4,15 @@ import * as Location from 'expo-location';
 import { env } from '@/config/env';
 import { USER_CENTER } from '@/lib/geo';
 import { kv } from '@/lib/storage';
+import { useTryMoby } from '@/lib/tryMoby';
 
 export type CenterSource =
   /** A fix from this device (possibly the last known one). */
   | 'device'
   /** No permission or no fix yet, and nothing saved: the demo city. */
-  | 'demo';
+  | 'demo'
+  /** Somewhere the person chose to look at (Settings → Try Moby), not where they are. */
+  | 'viewing';
 
 export interface UserCenter {
   lat: number;
@@ -20,6 +23,8 @@ export interface UserCenter {
    * permission refused, or location off / no fix possible.
    */
   problem: null | 'denied' | 'unavailable';
+  /** The place's name, when source is 'viewing'. */
+  name?: string;
 }
 
 const SAVED_KEY = 'last-device-center';
@@ -102,8 +107,18 @@ export function UserLocationProvider({ children }: { children: ReactNode }) {
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
+/** A real place (the phone's, or one the person chose to view), not the fallback demo city. */
+export function isRealPlace(c: UserCenter): boolean {
+  return c.source !== 'demo';
+}
+
 /**
- * The centre for "near me". The first screen that asks for it triggers the
+ * The centre for "near me": what Home, the alert list, the map and the assistant show.
+ * Normally the phone's position; while viewing another place (Settings → Try Moby), that
+ * place. Anything that acts on where the person really is (push area, SOS, mesh,
+ * reports, Help) uses useUserCenterPassive instead, which never follows a viewed place.
+ *
+ * The first screen that asks for it triggers the
  * location permission prompt (not app start, so sign-in comes first).
  */
 export function useUserCenter(): UserCenter {
@@ -113,7 +128,13 @@ export function useUserCenter(): UserCenter {
   useEffect(() => {
     start();
   }, [start]);
-  return ctx.center;
+  const { viewing } = useTryMoby();
+  return useMemo(
+    () => (viewing && !env.useMock
+      ? { lat: viewing.lat, lon: viewing.lon, source: 'viewing' as const, problem: null, name: viewing.name }
+      : ctx.center),
+    [viewing, ctx.center],
+  );
 }
 
 /**
@@ -131,7 +152,10 @@ export function useRetryLocation(): () => void {
   return ctx.retry;
 }
 
-/** The current centre without triggering the permission prompt (for background sync). */
+/**
+ * Where the phone really is (or the demo city), without triggering the permission prompt.
+ * Never a viewed place: push area, mesh, SOS and Help must use the real position.
+ */
 export function useUserCenterPassive(): UserCenter {
   const ctx = useContext(Ctx);
   if (!ctx) throw new Error('useUserCenterPassive must be used inside UserLocationProvider');

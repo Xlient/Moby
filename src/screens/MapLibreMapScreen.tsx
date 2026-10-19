@@ -15,6 +15,7 @@ import { spacing } from '@/theme/tokens';
 import { useNearbyAlerts } from '@/hooks/useNearbyAlerts';
 import { RadiusChip, RadiusPicker } from '@/components/RadiusPicker';
 import { countryAt } from '@/data/emergencyNumbers';
+import { isRealPlace } from '@/location/UserLocationContext';
 import { basemapFor } from '@/maps/basemap';
 import { AlertMapLayers } from '@/maps/AlertMapLayers';
 import { boundsAround } from '@/maps/geo';
@@ -59,7 +60,7 @@ export function MapLibreMapScreen({ onBack, onAlertDetail, onLongPressPoint }: P
   const [offlineOpen, setOfflineOpen] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  const country = center.source === 'device' ? countryAt(center.lat, center.lon) : undefined;
+  const country = isRealPlace(center) ? countryAt(center.lat, center.lon) : undefined;
   const basemap = useMemo(() => basemapFor(country, isDark), [country, isDark]);
   const selected = nearby.find((n) => n.alert.alert_id === selectedId) ?? null;
 

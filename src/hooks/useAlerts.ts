@@ -4,6 +4,7 @@ import type { Alert } from '@/api/types';
 import { useOnlineStatus } from './useOnlineStatus';
 import { kv } from '@/lib/storage';
 import { env } from '@/config/env';
+import { isDemoAlert, useTryMoby } from '@/lib/tryMoby';
 
 const ALERTS_CACHE_KEY = 'cached-alerts';
 const ALERTS_CACHE_TS_KEY = 'cached-alerts-ts';
@@ -38,14 +39,22 @@ export function useAlerts(lat?: number, lon?: number, radiusKm?: number): UseAle
   const queryClient = useQueryClient();
 
   const persisted = getPersistedAlerts();
+  // Demo mode (Settings → Try Moby): replays of real past alerts join the list, marked demo.
+  const { demoMode, demoRun } = useTryMoby();
+  const demo = demoMode && demoRun && lat !== undefined && lon !== undefined ? demoRun : null;
 
   const query = useQuery({
-    queryKey: ['alerts', lat, lon, radiusKm],
+    queryKey: ['alerts', lat, lon, radiusKm, demo],
     queryFn: async () => {
       // Every community report, labelled: the user's community_reports choice is applied
       // on the phone (useNearbyAlerts), so changing it is instant and works offline.
-      const data = await api.getAlerts({ lat, lon, radius_km: radiusKm, community_reports: 'all' });
-      const list = data.alerts ?? [];
+      const [data, replays] = await Promise.all([
+        api.getAlerts({ lat, lon, radius_km: radiusKm, community_reports: 'all' }),
+        // A failed replay never hides the real alerts.
+        demo ? api.getDemoReplay(lat!, lon!).catch(() => [] as Alert[]) : Promise.resolve([] as Alert[]),
+      ]);
+      // A new id per demo run, so its emergency screen opens again each time demo mode is turned on.
+      const list = [...(data.alerts ?? []), ...replays.map((a) => ({ ...a, alert_id: `demo-${demo}-${a.event_id}` }))];
       persistAlerts(list);
       return list;
     },
@@ -56,7 +65,9 @@ export function useAlerts(lat?: number, lon?: number, radiusKm?: number): UseAle
     enabled: isOnline || env.useMock,
   });
 
-  const alerts = query.data ?? persisted.alerts;
+  // Saved while demo mode was on: never show those replays once it's off.
+  const all = query.data ?? persisted.alerts;
+  const alerts = demoMode ? all : all.filter((a) => !isDemoAlert(a));
   const cachedAt = query.dataUpdatedAt
     ? new Date(query.dataUpdatedAt).toISOString()
     : persisted.cachedAt;

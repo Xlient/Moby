@@ -6,6 +6,7 @@ export type Event = components['schemas']['Event'];
 export type Severity = components['schemas']['Severity'];
 export type HazardType = components['schemas']['HazardType'];
 export type GeoPoint = components['schemas']['GeoPoint'];
+export type HotZone = components['schemas']['HotZone'];
 
 // ── Verification & source ────────────────────────────────────────────
 export type VerificationLabel = Alert['verification_label'];
