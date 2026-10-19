@@ -20,6 +20,8 @@ interface HomeScreenProps {
   onSeeAllPress: () => void;
   onMapPress: () => void;
   onGuidancePress: () => void;
+  /** "Before you go" (feature flag trip_briefing). */
+  onTripPress?: () => void;
   onMyReportsPress: () => void;
   onRouteCheckPress: () => void;
 }
@@ -120,7 +122,7 @@ function LoadingCards({ theme }: { theme: Theme }) {
 }
 
 export function HomeScreen({
-  onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress, onMyReportsPress, onRouteCheckPress,
+  onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress, onMyReportsPress, onRouteCheckPress, onTripPress,
 }: HomeScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
@@ -272,6 +274,20 @@ export function HomeScreen({
               <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>Does the way there cross a warning area or a reported hazard?</Text>
             </View>
           </Pressable>
+          {onTripPress && (
+            <Pressable
+              onPress={onTripPress}
+              accessibilityRole="button"
+              accessibilityLabel="Before you go. Check a destination and save it for offline."
+              style={[styles.guidanceRow, styles.rowGap, { backgroundColor: theme.bg.raised }]}
+            >
+              <Avatar.Icon size={40} icon="bag-personal-outline" style={{ backgroundColor: theme.bg.recessed }} color={theme.text.primary} />
+              <View style={styles.guidanceText}>
+                <Text variant="titleMedium" style={{ color: theme.text.primary }}>Before you go</Text>
+                <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>Check a destination’s alerts and save a safety pack for when signal runs out.</Text>
+              </View>
+            </Pressable>
+          )}
           {myReports.length > 0 && (
             // Only once there's something to show: where the person's reports are now.
             <Pressable

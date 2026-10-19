@@ -14,6 +14,8 @@ import type {
   ReportSubmission,
   SituationalBrief,
   Subscription,
+  TripBrief,
+  TripBriefRequest,
   User,
   Event,
   EventReports,
@@ -34,6 +36,7 @@ import {
   getMockEventReports,
   getMockPlaces,
   getMockRouteCheck,
+  getMockTripBrief,
 } from './fixtures';
 import { env } from '@/config/env';
 import { appCheckToken } from '@/lib/appCheck';
@@ -348,6 +351,16 @@ export class ApiClient {
       return getMockAnswer(body.question);
     }
     return this.request<AskAnswer>('POST', '/ask', { body });
+  }
+
+  // ── "Before you go" trip briefing (PostGIS + Nemotron Ultra) ────────
+
+  async tripBrief(body: TripBriefRequest): Promise<TripBrief> {
+    if (USE_MOCK) {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      return getMockTripBrief(body);
+    }
+    return this.request<TripBrief>('POST', '/trips/brief', { body });
   }
 
   // ── Situational brief ────────────────────────────────────────────

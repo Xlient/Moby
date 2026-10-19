@@ -10,14 +10,22 @@ the way it already does when a call fails:
   structure  a report's note isn't read for details; the report is fused anyway (moby/graph)
   route      route checks answer 429 and the app says to try tomorrow (moby/api/routes.py)
   places     place search answers 429 the same way
+  brief      no situational brief (Ultra); the alert and its explanation show on their own
+  brief_changes  "What changed" falls back to a plain list of the changes, not written by Super
+  trip_brief "Before you go" shows the alerts, reports and emergency numbers without Ultra's
+             explanation, labelled as such (moby/ai/trip.py); repeats are cached and free
 
 Caps reset at 00:00 UTC. Override with MOBY_DAILY_CAP_<FEATURE> (e.g. MOBY_DAILY_CAP_ASK=200).
 Defaults are sized for judging and a small user base: even if every cap is hit every
 day, roughly $0.75 a day of Token Factory use (Nano ~$0.0003 per translation, Super
 ~$0.002 per explanation or answer), and Tavily stays inside its free 1,000 searches a
-month. Route checks (up to 2 OpenRouteService directions calls each) and place searches
-stay inside ORS's free daily quota (2,000 directions, 1,000 searches). Explanations are cached per event (and per language), so a cap covers far more
+month. Explanations are cached per event (and per language), so a cap covers far more
 readers than its number; new warnings that are pushed get explained up front.
+Route checks (up to 2 OpenRouteService directions calls each) and place searches stay
+inside ORS's free daily quota (2,000 directions, 1,000 searches).
+The brief caps are on top of that figure: `brief` counts Ultra briefs (a retry claims
+another unit), `brief_changes` Super "what changed" notes. Briefs share the `tavily` cap.
+`trip_brief` counts Ultra trip briefings (a retry claims another unit); they share `tavily` too.
 """
 import os
 from datetime import datetime, timezone
@@ -25,7 +33,7 @@ from datetime import datetime, timezone
 from psycopg import AsyncConnection, Connection
 
 DEFAULT_CAPS = {"translate": 800, "explain": 150, "ask": 60, "tavily": 25, "localize": 400, "structure": 300,
-                "route": 400, "places": 500}
+                "brief": 20, "brief_changes": 40, "trip_brief": 20, "route": 400, "places": 500}
 
 
 def cap(feature: str) -> int:
