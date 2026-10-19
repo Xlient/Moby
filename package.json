@@ -9,6 +9,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "test:mesh": "node --import ./scripts/ts-test-hooks.mjs --test src/mesh/*.test.ts",
+    "test:lib": "node --import ./scripts/ts-test-hooks.mjs --test src/lib/*.test.ts",
     "prebuild:android": "expo prebuild --platform android",
     "build:android:apk": "eas build --platform android --profile preview",
     "build:android:aab": "eas build --platform android --profile production",

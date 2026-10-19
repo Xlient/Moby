@@ -27,6 +27,8 @@ import { SubscriptionsScreen } from '@/screens/SubscriptionsScreen';
 import { AlertPreferencesScreen } from '@/screens/AlertPreferencesScreen';
 import { PrivacyScreen } from '@/screens/PrivacyScreen';
 import { NearbyMeshScreen } from '@/screens/NearbyMeshScreen';
+import { EmergencyScreen } from '@/screens/EmergencyScreen';
+import { HelpScreen } from '@/screens/HelpScreen';
 import { useMeshLifecycle } from '@/mesh/useMeshLifecycle';
 import { TrustReviewScreen } from '@/screens/TrustReviewScreen';
 import { AlertCardReviewScreen } from '@/screens/AlertCardReviewScreen';
@@ -41,6 +43,8 @@ type Screen =
   | { name: 'map' }
   | { name: 'alerts' }
   | { name: 'alert-detail'; alertId: string }
+  | { name: 'emergency'; alertId: string }
+  | { name: 'help' }
   | { name: 'guidance'; hazard?: HazardType }
   | { name: 'report' }
   | { name: 'my-reports' }
@@ -57,6 +61,8 @@ function getActiveTab(screen: Screen): string {
     case 'home':
     case 'alerts':
     case 'alert-detail':
+    case 'emergency':
+    case 'help':
     case 'guidance':
     case 'report':
     case 'my-reports':
@@ -201,6 +207,8 @@ export function App() {
             onMapPress={() => push({ name: 'map' })}
             onGuidancePress={() => openGuidance()}
             onMyReportsPress={() => push({ name: 'my-reports' })}
+            onEmergencyPress={(alertId) => push({ name: 'emergency', alertId })}
+            onHelpPress={() => push({ name: 'help' })}
           />
         )}
         {screen.name === 'alerts' && (
@@ -209,6 +217,16 @@ export function App() {
         {screen.name === 'alert-detail' && (
           <AlertDetailScreen alertId={screen.alertId} onBack={goBack} onGuidance={openGuidance} />
         )}
+        {screen.name === 'emergency' && (
+          <EmergencyScreen
+            alertId={screen.alertId}
+            onClose={goBack}
+            onHelp={() => push({ name: 'help' })}
+            onAlertDetail={navigateToAlert}
+            onGuidance={openGuidance}
+          />
+        )}
+        {screen.name === 'help' && <HelpScreen onBack={goBack} />}
         {screen.name === 'map' &&
           (mapEngine === 'maplibre' ? (
             <MapLibreMapScreen onBack={goBack} onAlertDetail={navigateToAlert} />

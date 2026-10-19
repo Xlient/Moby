@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, View, StyleSheet } from 'react-native';
 import { Avatar, Button, FAB, Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
@@ -13,6 +13,7 @@ import { MapPreviewCard } from '@/components/MapPreviewCard';
 import { RadiusPicker } from '@/components/RadiusPicker';
 import { formatTimeAgo } from '@/lib/alerts';
 import { useReportQueue } from '@/hooks/useReportQueue';
+import { useEmergencyAlert } from '@/hooks/useEmergencyAlert';
 
 interface HomeScreenProps {
   onReportPress: () => void;
@@ -21,6 +22,8 @@ interface HomeScreenProps {
   onMapPress: () => void;
   onGuidancePress: () => void;
   onMyReportsPress: () => void;
+  onEmergencyPress: (alertId: string) => void;
+  onHelpPress: () => void;
 }
 
 const MAX_HOME_CARDS = 3;
@@ -118,7 +121,9 @@ function LoadingCards({ theme }: { theme: Theme }) {
   );
 }
 
-export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress, onMyReportsPress }: HomeScreenProps) {
+export function HomeScreen({
+  onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress, onMyReportsPress, onEmergencyPress, onHelpPress,
+}: HomeScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
   const { firstName } = useAuth();
@@ -127,6 +132,14 @@ export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPr
   const retryLocation = useRetryLocation();
   const myReports = useReportQueue();
   const waitingReports = myReports.filter((x) => x.state === 'queued' || x.state === 'sending').length;
+  const { emergency, shouldOpen, markOpened } = useEmergencyAlert();
+
+  // Inside an official warning: emergency mode opens by itself, once per warning.
+  useEffect(() => {
+    if (!shouldOpen || !emergency) return;
+    markOpened(emergency.alert.alert_id);
+    onEmergencyPress(emergency.alert.alert_id);
+  }, [shouldOpen, emergency, markOpened, onEmergencyPress]);
 
   const greeting = firstName
     ? `${greetingFor(new Date().getHours())}, ${firstName}`
@@ -147,6 +160,21 @@ export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPr
           paddingBottom: FAB_CLEARANCE + spacing.scale[3],
         }}
       >
+        {emergency && (
+          <Pressable
+            onPress={() => onEmergencyPress(emergency.alert.alert_id)}
+            accessibilityRole="button"
+            accessibilityLabel={`Emergency mode: ${emergency.alert.headline}. You are in the warning area. Open.`}
+            style={[styles.emergencyBanner, { backgroundColor: theme.severity[emergency.alert.severity] }]}
+          >
+            <Avatar.Icon size={40} icon="alert-octagon" color="#FFFFFF" style={styles.bannerIcon} />
+            <View style={styles.guidanceText}>
+              <Text variant="titleMedium" style={styles.bannerText}>{emergency.alert.headline}</Text>
+              <Text variant="bodyMedium" style={styles.bannerText}>You are in the warning area. Tap for what to do now.</Text>
+            </View>
+          </Pressable>
+        )}
+
         <View style={styles.section}>
           <Text variant="headlineMedium" accessibilityRole="header" style={{ color: theme.text.primary }}>
             {greeting}
@@ -257,6 +285,18 @@ export function HomeScreen({ onReportPress, onAlertPress, onSeeAllPress, onMapPr
               <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>What to do in a flood, fire, quake or storm. Works without signal.</Text>
             </View>
           </Pressable>
+          <Pressable
+            onPress={onHelpPress}
+            accessibilityRole="button"
+            accessibilityLabel="I need help. Your exact location and emergency numbers. Works without signal."
+            style={[styles.guidanceRow, styles.rowGap, { backgroundColor: theme.bg.raised }]}
+          >
+            <Avatar.Icon size={40} icon="lifebuoy" style={{ backgroundColor: theme.bg.recessed }} color={theme.severity.critical} />
+            <View style={styles.guidanceText}>
+              <Text variant="titleMedium" style={{ color: theme.text.primary }}>I need help</Text>
+              <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>Your exact location and emergency numbers. Works without signal.</Text>
+            </View>
+          </Pressable>
           {myReports.length > 0 && (
             // Only once there's something to show: where the person's reports are now.
             <Pressable
@@ -334,6 +374,20 @@ const styles = StyleSheet.create({
   },
   rowGap: {
     marginTop: spacing.scale[2],
+  },
+  emergencyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.scale[3],
+    padding: spacing.scale[4],
+    borderRadius: radius.card,
+    marginBottom: spacing.sectionGap,
+  },
+  bannerIcon: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  bannerText: {
+    color: '#FFFFFF',
   },
   guidanceText: {
     flex: 1,
