@@ -27,7 +27,7 @@ explains them in plain words with NVIDIA Nemotron, and tells you what to do, eve
 | **Android app (live backend)** | Join the closed test: TODO_PLAY_OPT_IN_LINK, or install the signed APK from [Releases](https://github.com/Xlient/Moby/releases) |
 | **Android emulator** | Drag `Moby-<version>.apk` from [Releases](https://github.com/Xlient/Moby/releases) onto a running emulator: [Run it on a phone or emulator → Android](#android) |
 | **iPhone / iOS Simulator (Mac)** | Install `Moby-simulator.zip` from [Releases](https://github.com/Xlient/Moby/releases) on the iOS Simulator: [Run it on a phone or emulator → iOS](#ios) |
-| **Sign in** | With any Google account (Android), or the test account in the Devpost testing instructions (Android and iOS) |
+| **Sign in** | With any Google account, or the test account in the Devpost testing instructions |
 | **No phone or emulator?** | Run the app in a browser with demo data in about 2 minutes: [Run it locally → A](#a-the-app-with-demo-data-2-minutes) |
 | **Everything on your machine** | Backend, database, live feeds and app: [Run it locally → B](#b-the-full-stack) |
 
@@ -200,8 +200,10 @@ The first build takes about 10 minutes (CocoaPods downloads React Native's prebu
 **On your own iPhone:** run `npx expo run:ios --device --configuration Release` with the phone plugged in, and sign in
 to Xcode with any Apple ID (free) when it asks for a team. Apple's free signing keeps the app working for 7 days.
 
-**Sign-in on iOS:** Google Sign-In isn't set up for iOS yet. Use email and password (the test account in the
-Devpost testing instructions). Push notifications need an Apple Developer membership, so they're Android-only for now.
+**Sign-in on iOS:** the Simulator build on Releases signs in with Google or with email and password (the test
+account in the Devpost testing instructions). Builds from source offer Google only when `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`
+and `GOOGLE_IOS_URL_SCHEME` are set (see `.env.example`). Push notifications need an Apple Developer membership, so they're
+Android-only for now.
 
 ## Run it locally
 
