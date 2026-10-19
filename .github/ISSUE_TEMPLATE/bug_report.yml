@@ -1,0 +1,62 @@
+name: Bug report
+description: Something in Moby doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Security problems:** please don't file them here; see SECURITY.md.
+        **In danger right now?** Contact your local emergency services, not this issue tracker.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Tap …
+        3. See …
+  - type: dropdown
+    id: safety
+    attributes:
+      label: Could this mislead someone in danger?
+      description: For example a missing or hidden alert, an unverified report shown as official, or wrong safety guidance.
+      options:
+        - "No"
+        - "Yes"
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options:
+        - Android (phone)
+        - Android (emulator)
+        - iOS Simulator
+        - iPhone (built from source)
+        - Web (demo mode)
+        - Backend / API
+  - type: input
+    id: version
+    attributes:
+      label: Moby version or commit
+      description: Settings → About shows the version. For a source build, the commit.
+  - type: input
+    id: device
+    attributes:
+      label: Device and OS version
+      placeholder: Pixel 8, Android 16
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or logs
+      description: Please remove your location and any personal details first.

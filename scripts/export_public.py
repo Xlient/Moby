@@ -3,7 +3,8 @@
     uv run python scripts/export_public.py OUT_DIR
 
 1. Copies every git-tracked file matched by public/allowlist.txt.
-2. Overlays public/overlay/ (public-only README, contributing guide, CI, templates).
+2. Overlays public/overlay/ (public-only README, contributing guide, CI). The code of conduct,
+   security policy, sponsors page and issue/PR templates are shared and come from the allowlist.
 3. Refuses (exit 1) if any published file contains a forbidden pattern: private
    hosts, model endpoints, project ids, keys, internal routes.
 
@@ -22,7 +23,7 @@ OVERLAY = ROOT / "public" / "overlay"
 
 # Never publish files matching these, even if the allowlist would.
 DENY_PATHS = ["google-services.json", "GoogleService-Info.plist", ".env*", "*.jks", "*.keystore",
-              "*adminsdk*.json", "db/*", "deploy/*", "moby/*", "docs/*", "*.sql"]
+              "*adminsdk*.json", "db/*", "deploy/*", "moby/*", "docs/*", "private/*", "*.sql"]
 
 # Content that must never appear in the public repo.
 FORBIDDEN = [

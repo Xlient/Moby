@@ -1,6 +1,6 @@
 <div align="center">
 
-# Moby — early warnings that reach you
+# Moby: early warnings that reach you
 
 **An open-source disaster early-warning app for locals and travellers.**
 Moby brings official hazard warnings from around the world and reports from people on the ground
@@ -18,6 +18,14 @@ into one calm, trustworthy app, and helps you know what to do, even with little 
 
 ---
 
+## Get Moby
+
+- **Android:** `Moby-<version>.apk` on [Releases](https://github.com/Xlient/Moby/releases) (signed, talks to the
+  live service). Not on Google Play yet.
+- **iOS Simulator (Mac):** `Moby-simulator.zip` on [Releases](https://github.com/Xlient/Moby/releases); unzip, then
+  `xcrun simctl install booted Moby.app`. Not on the App Store or TestFlight.
+- **In a browser:** no hosted version; run it locally with sample data (below).
+
 ## Why
 
 Floods, wildfires, landslides, typhoons and earthquakes are most dangerous exactly where warnings
@@ -31,7 +39,9 @@ language. Moby is built for that moment:
 - **In your language.** Warnings issued in other languages are translated, clearly labelled, and the
   original is always one tap away.
 - **Works offline.** Safety guidance from official sources and local emergency numbers stay on your
-  phone.
+  phone, and Ask Moby can answer with no signal using NVIDIA Nemotron 3 Nano 4B on the phone.
+- **Help with no signal.** A Bluetooth mesh (Android, opt-in) carries an SOS and the latest alerts phone to phone.
+- **Before you go.** Trip briefs for a destination or route, and a check of whether a route crosses a known hazard.
 - **Calm until it matters.** Critical alerts near you always get through, whatever your settings.
 
 ## This repository
@@ -48,13 +58,15 @@ implements it on the service side.
 
 ## Quick start
 
-Requires Node.js 22+, Android Studio (SDK + an emulator) and **JDK 17**.
+In a browser, with Node.js 22:
 
 ```bash
 git clone https://github.com/Xlient/Moby.git && cd Moby
-npm install
-npx expo run:android
+npm ci
+EXPO_PUBLIC_USE_MOCK=true npx expo start --web
 ```
+
+On an Android emulator, with Android Studio (SDK + an emulator) and **JDK 17**: `npx expo run:android`.
 
 Checks run on every pull request:
 
@@ -71,13 +83,15 @@ hold in every change:
 1. **Trust stays visible.** Unverified reports must never look like official warnings.
 2. **Never a false all-clear.** If the app can't check, it says so; it never shows "all quiet".
 
-Found a security problem? Please follow [SECURITY.md](SECURITY.md) instead of opening an issue.
+Everyone follows the [Code of Conduct](CODE_OF_CONDUCT.md). Found a security problem? Please follow
+[SECURITY.md](SECURITY.md) instead of opening an issue.
 
 ## Support Moby
 
 Moby is free and open source, built by one independent developer. If it's useful to you, please
 consider [sponsoring the project](https://github.com/sponsors/Xlient). Sponsorship keeps alerts
-running for everyone and funds development: offline mesh relay, more regions, and safety guidance.
+running for everyone and funds development: the mesh, more regions, and offline features.
+[SPONSORS.md](SPONSORS.md) lists the tiers and what each one gets.
 
 ## Data sources & acknowledgements
 
