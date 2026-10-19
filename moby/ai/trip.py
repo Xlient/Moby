@@ -162,10 +162,11 @@ def trip_wkt(stops: list["Stop"]) -> str:
 
 def route_length_km(stops: list["Stop"]) -> float:
     """Sum of the straight legs between stops (haversine)."""
+    from itertools import pairwise
     from math import asin, cos, radians, sin, sqrt
 
     total = 0.0
-    for a, b in zip(stops, stops[1:]):
+    for a, b in pairwise(stops):
         dlat, dlon = radians(b.lat - a.lat), radians(b.lon - a.lon)
         h = sin(dlat / 2) ** 2 + cos(radians(a.lat)) * cos(radians(b.lat)) * sin(dlon / 2) ** 2
         total += 2 * 6371.0 * asin(sqrt(h))
