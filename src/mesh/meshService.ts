@@ -310,6 +310,10 @@ async function requestPermissions(): Promise<boolean> {
       : [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION];
   // Optional: shows the "sharing with nearby phones" notification while in the background.
   const optional = Number(Platform.Version) >= 33 ? [PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS] : [];
+  // Check first: requesting opens the system permission screen even when everything
+  // is granted, which flashes on every launch.
+  const granted = await Promise.all([...wanted, ...optional].map((p) => PermissionsAndroid.check(p)));
+  if (granted.every(Boolean)) return true;
   const result = await PermissionsAndroid.requestMultiple([...wanted, ...optional]);
   return wanted.every((p) => result[p] === PermissionsAndroid.RESULTS.GRANTED);
 }

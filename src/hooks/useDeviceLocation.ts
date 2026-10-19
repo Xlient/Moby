@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
+import { ensureForegroundLocation } from '@/location/permission';
 
 export interface DeviceFix {
   lat: number;
@@ -55,8 +56,7 @@ export function useDeviceLocation(active: boolean, { lastKnownMaxAgeMs = LAST_KN
     cancelled.current = false;
     setStatus('locating');
     try {
-      const perm = await Location.requestForegroundPermissionsAsync();
-      if (perm.status !== 'granted') {
+      if (!(await ensureForegroundLocation())) {
         if (!cancelled.current) setStatus('denied');
         return;
       }
