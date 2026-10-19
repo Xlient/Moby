@@ -231,6 +231,17 @@ function Result({ saved, onAlertPress, stale }: { saved: Saved; onAlertPress: (i
       </View>
 
       <RouteMap check={check} />
+      {check.alternative && (
+        // The two lines share most of the road; the key says which is which.
+        <View style={styles.legend} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <View style={[styles.swatch, { backgroundColor: theme.accent.calm }]} />
+          <Text variant="bodySmall" style={{ color: theme.text.secondary }}>Way around</Text>
+          <View style={[styles.swatch, styles.dashed, { borderColor: theme.text.secondary }]} />
+          <Text variant="bodySmall" style={{ color: theme.text.secondary }}>Usual route</Text>
+          <View style={[styles.dot, { backgroundColor: theme.severity.high }]} />
+          <Text variant="bodySmall" style={{ color: theme.text.secondary }}>Hazard</Text>
+        </View>
+      )}
 
       <RouteSummary label={check.alternative ? 'Usual route' : 'Route'} route={check.route} />
       {check.route.hazards.map((h) => (
@@ -309,5 +320,9 @@ const styles = StyleSheet.create({
   box: { borderRadius: radius.card, paddingVertical: spacing.scale[1] },
   place: { paddingHorizontal: spacing.scale[3], paddingVertical: spacing.scale[3], minHeight: spacing.minTapTarget },
   verdict: { borderLeftWidth: 4, borderRadius: radius.card, padding: spacing.scale[3], gap: spacing.scale[1] },
+  legend: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.scale[1], marginTop: -spacing.scale[1] },
+  swatch: { width: 20, height: 4, borderRadius: 2, marginLeft: spacing.scale[2] },
+  dashed: { height: 0, borderTopWidth: 3, borderStyle: 'dashed' },
+  dot: { width: 10, height: 10, borderRadius: 5, marginLeft: spacing.scale[2] },
   hazard: { borderLeftWidth: 4, borderRadius: radius.card, padding: spacing.scale[3], gap: 2 },
 });
