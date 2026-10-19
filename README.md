@@ -39,8 +39,9 @@ explains them in plain words with NVIDIA Nemotron, and tells you what to do, eve
 4. **Assistant tab (Ask Moby):** ask "What should I do if the road ahead is flooded?". The answer cites its
    sources (official alerts, guidance, official government websites found with Tavily). Ask something
    off-topic and Moby says it can't answer rather than guessing.
-5. **Before you go** (Home): pick a destination such as Phakding, Nepal (or long-press the map), get its alerts
-   and reports explained by Nemotron Ultra with sources, and save it for offline with the emergency numbers.
+5. **Before you go** (Home): pick a destination such as Phakding, Nepal, or a route (Lukla → Phakding → Namche
+   Bazaar), or long-press the map. Nemotron Ultra explains the alerts and reports along it with sources; save it for
+   offline with the emergency numbers.
 6. **Settings → About → How Moby uses AI:** which model does what, and what AI never decides.
 
 ## Why

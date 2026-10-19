@@ -293,9 +293,17 @@ async def ask_moby(body: AskRequest, caller: Annotated[Caller, Depends(require_u
                             language=body.language)
 
 
-class TripBriefRequest(BaseModel):
+class TripStop(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lon: float = Field(ge=-180, le=180)
+    name: str | None = Field(None, max_length=80, description="the place picked from the app's list")
+
+
+class TripBriefRequest(BaseModel):
+    lat: float | None = Field(None, ge=-90, le=90, description="a destination; or give stops for a route")
+    lon: float | None = Field(None, ge=-180, le=180)
+    stops: list[TripStop] | None = Field(None, min_length=2, max_length=trip.MAX_STOPS,
+                                         description="a route, in order (straight lines between stops)")
     radius_km: float = Field(25, ge=1, le=100)
     start_date: date | None = Field(None, description="default: today (UTC)")
     end_date: date | None = Field(None, description="default: start_date + 3 days")
@@ -303,7 +311,13 @@ class TripBriefRequest(BaseModel):
     place_name: str | None = Field(None, max_length=80, description="the place picked from the app's list")
 
     @model_validator(mode="after")
-    def _dates(self):
+    def _where_and_when(self):
+        if self.stops is None and (self.lat is None or self.lon is None):
+            raise ValueError("give lat and lon (a destination) or stops (a route)")
+        if self.stops is not None and (self.lat is not None or self.lon is not None):
+            raise ValueError("give either lat/lon or stops, not both")
+        if self.stops and trip.route_length_km(self.stop_list()) > trip.MAX_ROUTE_KM:
+            raise ValueError(f"route is longer than {trip.MAX_ROUTE_KM} km")
         today = datetime.now(timezone.utc).date()
         self.start_date = self.start_date or today
         self.end_date = self.end_date or self.start_date + timedelta(days=3)
@@ -313,19 +327,23 @@ class TripBriefRequest(BaseModel):
             raise ValueError("end_date must be on or after start_date, at most 30 days later")
         return self
 
+    def stop_list(self) -> list[trip.Stop] | None:
+        return [trip.Stop(s.lat, s.lon, s.name) for s in self.stops] if self.stops else None
+
 
 @app.post("/v1/trips/brief")
 async def trip_brief(body: TripBriefRequest, caller: Annotated[Caller, Depends(require_user)]):
     """'Before you go' (moby/ai/trip.py): the active official alerts and recent community reports
-    within radius_km of a destination (PostGIS), why each matters for the trip (Nemotron Ultra,
+    within radius_km of a destination or of a route through stops (PostGIS), why each matters for the trip (Nemotron Ultra,
     every statement cited and checked) and what the briefing can't tell you. Without the AI
     part (daily cap, no key) the same lists come back, labelled. Signed-in only, rate-limited;
     the destination isn't stored with the caller's identity."""
     if not trip.allow(caller.uid):
         raise HTTPException(429, "Too many briefings; try again later")
     assert body.start_date and body.end_date
-    return await trip.brief(_pool(), lat=body.lat, lon=body.lon, radius_km=body.radius_km, start=body.start_date,
-                            end=body.end_date, country=body.country, place_name=body.place_name)
+    return await trip.brief(_pool(), lat=body.lat, lon=body.lon, stops=body.stop_list(), radius_km=body.radius_km,
+                            start=body.start_date, end=body.end_date, country=body.country,
+                            place_name=body.place_name)
 
 
 @app.get("/v1/events/{event_id}/explain")

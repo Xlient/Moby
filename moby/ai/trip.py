@@ -1,11 +1,12 @@
 """'Before you go': a trip briefing a traveller can save and read with no signal.
 
-    destination + radius → PostGIS (official alerts, community reports)
+    destination or route (stops) + radius → PostGIS (official alerts, community reports)
       → Tavily (the country's official websites only) → Nemotron Ultra explains why each
         one matters for the trip, citing it → grounding checks → app (saved for offline)
 
 Code decides, AI explains:
-  - PostGIS picks every alert and report (ST_DWithin on events.area / events.location).
+  - PostGIS picks every alert and report (ST_DWithin on events.area / events.location) near the
+    destination point, or near a route: straight lines between the stops, in order (not the trail).
     The model only explains the rows it is given: it may not add hazards, places or numbers.
   - Every statement cites O<n> (official alert), C<n> (community reports) or W<n> (official
     web page). Its numbers, proper names and hazard words must appear in what it cites, and
@@ -20,7 +21,7 @@ Cost: Ultra claims the `trip_brief` cap (a retry claims another unit) and Tavily
 paid part is cached per (snapped point, radius, day, trip, inputs): repeats are free, and
 a new or updated alert changes the inputs, so it is never explained from a stale cache.
 
-Privacy: the destination is snapped to 0.01° (~1 km) before it is used at all. The cache
+Privacy: the destination (or every stop) is snapped to 0.01° (~1 km) before it is used at all. The cache
 keeps only that point (no user id) and is purged after two days. Tavily queries are built
 from structured fields (hazard types, the place picked from Moby's list, the country),
 never from free text. Report notes never reach the model or the app.
@@ -52,6 +53,8 @@ from .grounding import norm, stray_numbers, support
 
 log = logging.getLogger("moby.ai.trip")
 
+MAX_STOPS = 8                    # a route: straight lines between up to 8 stops
+MAX_ROUTE_KM = 500
 SNAP_DECIMALS = 2                # ~1 km: privacy, and what the cache key is built from
 MAX_OFFICIAL = 12
 MAX_COMMUNITY = 12
@@ -139,17 +142,60 @@ def snap(x: float) -> float:
     return round(x, SNAP_DECIMALS)
 
 
+@dataclass(frozen=True)
+class Stop:
+    """One point of the trip: the destination, or a stop on a route (picked from the app's place list)."""
+    lat: float
+    lon: float
+    name: str | None = None
+
+
+def snapped(stops: list["Stop"]) -> list["Stop"]:
+    return [Stop(snap(s.lat), snap(s.lon), s.name.strip()[:80] if s.name and s.name.strip() else None) for s in stops]
+
+
+def trip_wkt(stops: list["Stop"]) -> str:
+    """One stop: the point. Several: straight lines between them, in order (not the actual trail)."""
+    coords = ", ".join(f"{s.lon} {s.lat}" for s in stops)
+    return f"SRID=4326;POINT({coords})" if len(stops) == 1 else f"SRID=4326;LINESTRING({coords})"
+
+
+def route_length_km(stops: list["Stop"]) -> float:
+    """Sum of the straight legs between stops (haversine)."""
+    from math import asin, cos, radians, sin, sqrt
+
+    total = 0.0
+    for a, b in zip(stops, stops[1:]):
+        dlat, dlon = radians(b.lat - a.lat), radians(b.lon - a.lon)
+        h = sin(dlat / 2) ** 2 + cos(radians(a.lat)) * cos(radians(b.lat)) * sin(dlon / 2) ** 2
+        total += 2 * 6371.0 * asin(sqrt(h))
+    return total
+
+
+def _geo_params(stops: list["Stop"]) -> dict:
+    return {"wkt": trip_wkt(stops), "stop_names": [s.name or "" for s in stops],
+            "stop_lats": [s.lat for s in stops], "stop_lons": [s.lon for s in stops]}
+
+
 _COLUMNS = """e.event_id, e.source, e.source_feed, e.external_id, e.hazard_type, e.observed_effect, e.product,
     e.marine, e.severity, e.tier, e.title, e.description, e.alert_headline, e.alert_body,
     e.distinct_reporter_count, e.reports_disagree, e.language, e.title_en, e.description_en,
     e.translation_status, e.country, e.first_reported_at, e.last_updated_at, e.expires_at, e.raw_payload,
     ST_Y(e.location::geometry) AS lat, ST_X(e.location::geometry) AS lon"""
 
-# Inside a warning's area counts as distance 0. Area and point are tested separately so each
-# can use its GiST index (migrations 0002, 0009).
+# The stop each row is nearest to (routes): named in the source text, so the model can say "near Phakding".
+def _near_stop(geom: str) -> str:
+    return f"""(SELECT NULLIF(s.name, '') FROM unnest(%(stop_names)s::text[], %(stop_lons)s::float8[],
+                                                 %(stop_lats)s::float8[]) AS s(name, lon, lat)
+             ORDER BY ST_Distance({geom}, ST_SetSRID(ST_MakePoint(s.lon, s.lat), 4326)::geography) LIMIT 1)"""
+
+
+# p.g is the destination point or the route line (trip_wkt). Inside a warning's area counts as
+# distance 0. Area and point are tested separately so each can use its GiST index (0002, 0009).
 OFFICIAL_SQL = f"""
-WITH p AS (SELECT ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography AS g)
-SELECT {_COLUMNS}, ST_Distance(COALESCE(e.area, e.location), p.g) / 1000.0 AS distance_km
+WITH p AS (SELECT ST_GeogFromText(%(wkt)s) AS g)
+SELECT {_COLUMNS}, ST_Distance(COALESCE(e.area, e.location), p.g) / 1000.0 AS distance_km,
+       {_near_stop("COALESCE(e.area, e.location)")} AS near_stop
 FROM events e, p
 WHERE e.source = 'official'
   AND e.reviewer_decision IS DISTINCT FROM 'reject'
@@ -165,8 +211,8 @@ LIMIT %(limit)s
 
 # Community events (fused groups of reports), recent ones only. Notes are never selected.
 COMMUNITY_SQL = f"""
-WITH p AS (SELECT ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography AS g)
-SELECT {_COLUMNS}, ST_Distance(e.location, p.g) / 1000.0 AS distance_km,
+WITH p AS (SELECT ST_GeogFromText(%(wkt)s) AS g)
+SELECT {_COLUMNS}, ST_Distance(e.location, p.g) / 1000.0 AS distance_km, {_near_stop("e.location")} AS near_stop,
        (SELECT max(r.observed_at) FROM reports r WHERE r.event_id = e.event_id) AS last_report_at
 FROM events e, p
 WHERE e.source IN ('manual', 'mesh')
@@ -181,18 +227,18 @@ LIMIT %(limit)s
 """
 
 
-async def official_near(conn: AsyncConnection, lat: float, lon: float, radius_km: float,
+async def official_near(conn: AsyncConnection, stops: list[Stop], radius_km: float,
                         now: datetime) -> list[dict[str, Any]]:
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(OFFICIAL_SQL, {"lat": lat, "lon": lon, "radius_m": radius_km * 1000, "now": now,
+        await cur.execute(OFFICIAL_SQL, {**_geo_params(stops), "radius_m": radius_km * 1000, "now": now,
                                          "no_expiry_h": NO_EXPIRY_WINDOW_H, "limit": MAX_OFFICIAL * 2})
         return collapse_repeats(await cur.fetchall())[:MAX_OFFICIAL]
 
 
-async def community_near(conn: AsyncConnection, lat: float, lon: float, radius_km: float,
+async def community_near(conn: AsyncConnection, stops: list[Stop], radius_km: float,
                          now: datetime) -> list[dict[str, Any]]:
     async with conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(COMMUNITY_SQL, {"lat": lat, "lon": lon, "radius_m": radius_km * 1000, "now": now,
+        await cur.execute(COMMUNITY_SQL, {**_geo_params(stops), "radius_m": radius_km * 1000, "now": now,
                                           "window_h": COMMUNITY_WINDOW_H, "limit": MAX_COMMUNITY})
         return await cur.fetchall()
 
@@ -214,19 +260,24 @@ def _ends_before(row: dict, start: date) -> bool:
     return exp is not None and exp < datetime.combine(start, datetime.min.time(), timezone.utc)
 
 
-def _where(distance_km: float) -> str:
-    return ("The destination area overlaps the warning area." if distance_km < 0.05
-            else f"About {distance_km:.1f} km from the destination." if distance_km < 10
-            else f"About {distance_km:.0f} km from the destination.")
+def _where(row: dict, route: bool) -> str:
+    d, what = row["distance_km"], "route" if route else "destination"
+    if d < 0.05:
+        text = "The route passes through the warning area." if route else "The destination area overlaps the warning area."
+    else:
+        text = f"About {d:.1f} km from the {what}." if d < 10 else f"About {d:.0f} km from the {what}."
+    if route and row.get("near_stop"):
+        text += f" Nearest stop: {row['near_stop']}."
+    return text
 
 
-def official_source(i: int, row: dict, start: date) -> Cited:
+def official_source(i: int, row: dict, start: date, route: bool = False) -> Cited:
     a = to_alert(row)
     lines = [
         f"{a['headline']}. Issued by {a.get('source_attribution') or 'an official agency'}.",
         f"Hazard: {HAZARD_WORDS[row['hazard_type']]}. Severity: {row['severity']}.",
         f"Area: {a['location_name']}." if a.get("location_name") else "",
-        _where(row["distance_km"]),
+        _where(row, route),
         f"Expires {row['expires_at']:%Y-%m-%d %H:%M} UTC." if row.get("expires_at") else "",
         "It expires before the trip starts." if _ends_before(row, start) else "",
         f"Text: {a['body']}" if a.get("body") else "",
@@ -235,7 +286,7 @@ def official_source(i: int, row: dict, start: date) -> Cited:
                  publisher=a.get("source_attribution"))
 
 
-def community_source(i: int, row: dict, now: datetime) -> Cited:
+def community_source(i: int, row: dict, now: datetime, route: bool = False) -> Cited:
     a = to_alert(row)
     people = max(row.get("distinct_reporter_count") or 0, 1)
     last = row.get("last_report_at") or row["last_updated_at"]
@@ -250,7 +301,7 @@ def community_source(i: int, row: dict, now: datetime) -> Cited:
         f"Reported by {people} different {'person' if people == 1 else 'people'}.",
         "Last report less than an hour ago." if hours == 0
         else f"Last report about {hours} hour{'' if hours == 1 else 's'} ago.",
-        _where(row["distance_km"]),
+        _where(row, route),
     ]
     return Cited(f"C{i}", "community", a["headline"], "\n".join(lines), publisher="People nearby (unverified)")
 
@@ -461,10 +512,10 @@ def inputs_fingerprint(official: list[dict], community: list[dict]) -> str:
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 
 
-def cache_key(day: date, lat: float, lon: float, radius_km: float, country: str | None, start: date, end: date,
-              place: str | None, inputs: str) -> str:
-    raw = json.dumps([day.isoformat(), lat, lon, radius_km, country, start.isoformat(), end.isoformat(),
-                      (place or "").strip().lower(), inputs])
+def cache_key(day: date, stops: list[Stop], radius_km: float, country: str | None, start: date, end: date,
+              inputs: str) -> str:
+    raw = json.dumps([day.isoformat(), [[s.lat, s.lon, (s.name or "").lower()] for s in stops], radius_km, country,
+                      start.isoformat(), end.isoformat(), inputs])
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -503,11 +554,13 @@ WEB_NOTES = {
 
 
 def uncertainty(*, generated_at: datetime, radius_km: float, start: date, official: list, community: list,
-                ai_status: str, web_status: str, today: date) -> list[str]:
+                ai_status: str, web_status: str, today: date, route: bool = False) -> list[str]:
     notes = [
         f"This briefing shows what Moby knew at {generated_at:%Y-%m-%d %H:%M} UTC. Saved for offline, it goes "
         "stale: it can't know about warnings issued or changed after it was saved. Check again whenever you "
         "have signal, and follow local authorities.",
+        f"Alerts and reports are matched to within {radius_km:g} km of straight lines between your stops, not "
+        "the actual trail or road, which can wander further." if route else
         f"Alerts and reports are matched to a {radius_km:g} km circle around the point you picked, not to your "
         "exact route.",
     ]
@@ -541,29 +594,40 @@ def _pick_country(country: str | None, official: list[dict]) -> str | None:
     return counts.most_common(1)[0][0] if counts else None
 
 
-async def brief(pool: AsyncConnectionPool, *, lat: float, lon: float, radius_km: float, start: date, end: date,
-                country: str | None = None, place_name: str | None = None, now: datetime | None = None) -> dict:
+async def brief(pool: AsyncConnectionPool, *, lat: float | None = None, lon: float | None = None,
+                radius_km: float, start: date, end: date, country: str | None = None, place_name: str | None = None,
+                stops: list[Stop] | None = None, now: datetime | None = None) -> dict:
+    """A destination (lat/lon, place_name) or a route (2+ stops, in order)."""
     now = now or datetime.now(timezone.utc)
     today = now.date()
-    lat, lon = snap(lat), snap(lon)
-    place = place_name.strip()[:80] if place_name and place_name.strip() else None
+    if not stops:
+        assert lat is not None and lon is not None
+        stops = [Stop(lat, lon, place_name)]
+    stops = snapped(stops)
+    route = len(stops) > 1
     async with pool.connection() as conn:
-        official = await official_near(conn, lat, lon, radius_km, now)
-        community = await community_near(conn, lat, lon, radius_km, now)
+        official = await official_near(conn, stops, radius_km, now)
+        community = await community_near(conn, stops, radius_km, now)
     country = _pick_country(country, official)
-    sources = ([official_source(i, r, start) for i, r in enumerate(official, 1)]
-               + [community_source(i, r, now) for i, r in enumerate(community, 1)])
+    sources = ([official_source(i, r, start, route) for i, r in enumerate(official, 1)]
+               + [community_source(i, r, now, route) for i, r in enumerate(community, 1)])
     hazards = sorted({r["hazard_type"] for r in official + community}, key=list(HAZARD_WORDS).index)
-    context = (f"{place or 'the picked point'}"
-               f"{f', {COUNTRY_NAMES[country]}' if country in COUNTRY_NAMES else ''}, within {radius_km:g} km, "
-               f"from {start.isoformat()} to {end.isoformat()}")
+    in_country = f", {COUNTRY_NAMES[country]}" if country in COUNTRY_NAMES else ""
+    names = [s.name for s in stops if s.name]
+    if route:
+        where = f"the route {' → '.join(s.name or 'a dropped pin' for s in stops)}{in_country}, within {radius_km:g} km of it"
+    else:
+        where = f"{stops[0].name or 'the picked point'}{in_country}, within {radius_km:g} km"
+    context = f"{where}, from {start.isoformat()} to {end.isoformat()}"
+    # Search the route's ends (or the destination): place names from Moby's list only.
+    search_place = " ".join(dict.fromkeys([names[0], names[-1]])) if names else None
 
-    key = cache_key(today, lat, lon, radius_km, country, start, end, place, inputs_fingerprint(official, community))
+    key = cache_key(today, stops, radius_km, country, start, end, inputs_fingerprint(official, community))
     async with pool.connection() as conn:
         payload = await cache_get(conn, key)
     cached = payload is not None
     if payload is None:
-        web, web_status = await web_sources(pool, hazards, place, country)
+        web, web_status = await web_sources(pool, hazards, search_place, country)
         if sources:
             explanation, ai_status = await explain(pool, context, sources + web)
         else:
@@ -575,19 +639,25 @@ async def brief(pool: AsyncConnectionPool, *, lat: float, lon: float, radius_km:
         }
         if ai_status not in ("over_cap", "unavailable") and web_status != "failed":
             async with pool.connection() as conn:
-                await cache_put(conn, key, today, lat, lon, radius_km, payload)
+                await cache_put(conn, key, today, stops[-1].lat, stops[-1].lon, radius_km, payload)
 
+    def near(r: dict) -> dict:
+        return {"near_stop": r["near_stop"]} if route and r.get("near_stop") else {}
+
+    last = stops[-1]
     out = {
         "generated_at": now.isoformat(),
-        "destination": {"lat": lat, "lon": lon, "radius_km": radius_km,
-                        **({"place_name": place} if place else {}), **({"country": country} if country else {})},
+        "destination": {"lat": last.lat, "lon": last.lon, "radius_km": radius_km,
+                        **({"place_name": last.name} if last.name else {}), **({"country": country} if country else {})},
+        **({"route": {"stops": [{"lat": s.lat, "lon": s.lon, **({"name": s.name} if s.name else {})} for s in stops],
+                      "length_km": round(route_length_km(stops), 1)}} if route else {}),
         "trip": {"start_date": start.isoformat(), "end_date": end.isoformat()},
         "official_alerts": [
-            {**to_alert(r), "cite_id": f"O{i}", "ends_before_trip": _ends_before(r, start)}
+            {**to_alert(r), "cite_id": f"O{i}", "ends_before_trip": _ends_before(r, start), **near(r)}
             for i, r in enumerate(official, 1)],
         "community_reports": [
             {**to_alert(r), "cite_id": f"C{i}", "reporter_count": max(r.get("distinct_reporter_count") or 0, 1),
-             "last_report_at": (r.get("last_report_at") or r["last_updated_at"]).isoformat()}
+             "last_report_at": (r.get("last_report_at") or r["last_updated_at"]).isoformat(), **near(r)}
             for i, r in enumerate(community, 1)],
         "hazards": hazards,
         "web_sources": payload["web_sources"],
@@ -597,7 +667,7 @@ async def brief(pool: AsyncConnectionPool, *, lat: float, lon: float, radius_km:
         "cached": cached,
         "uncertainty": uncertainty(generated_at=now, radius_km=radius_km, start=start, official=official,
                                    community=community, ai_status=payload["ai_status"],
-                                   web_status=payload["web_status"], today=today),
+                                   web_status=payload["web_status"], today=today, route=route),
         "language": "en",
     }
     if payload["explanation"]:

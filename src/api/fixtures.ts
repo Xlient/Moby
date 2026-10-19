@@ -386,16 +386,20 @@ export function getMockTripBrief(req: TripBriefRequest): TripBrief {
   const now = new Date();
   const start = req.start_date ?? now.toISOString().slice(0, 10);
   const end = req.end_date ?? new Date(now.getTime() + 3 * 86_400_000).toISOString().slice(0, 10);
-  const lat = Math.round(req.lat * 100) / 100;
-  const lon = Math.round(req.lon * 100) / 100;
-  const nearPhakding = Math.abs(req.lat - 27.74) < 0.5 && Math.abs(req.lon - 86.71) < 0.5;
+  // A route's destination is its last stop.
+  const stops = req.stops ?? [{ lat: req.lat ?? 0, lon: req.lon ?? 0, name: req.place_name }];
+  const last = stops[stops.length - 1]!;
+  const lat = Math.round(last.lat * 100) / 100;
+  const lon = Math.round(last.lon * 100) / 100;
+  const nearPhakding = stops.some((s) => Math.abs(s.lat - 27.74) < 0.5 && Math.abs(s.lon - 86.71) < 0.5);
   const base = {
     generated_at: now.toISOString(),
     destination: {
       lat, lon, radius_km: req.radius_km ?? 25,
-      ...(req.place_name ? { place_name: req.place_name } : {}),
+      ...(last.name ? { place_name: last.name } : {}),
       ...(req.country ? { country: req.country } : {}),
     },
+    ...(req.stops ? { route: { stops: req.stops, length_km: 13.5 } } : {}),
     trip: { start_date: start, end_date: end },
     language: 'en',
     cached: false,

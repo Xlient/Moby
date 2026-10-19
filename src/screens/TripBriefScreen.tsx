@@ -24,6 +24,7 @@ import { deleteTripPack, saveTripPack, useTripPacks, type TripPack } from '@/tri
 // on the phone with the emergency numbers and matching guidance, for when signal runs out.
 
 const RADII = [10, 25, 50, 100] as const;
+const MAX_STOPS = 8;
 const MAX_DAYS = 30;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -37,6 +38,13 @@ interface Destination {
   /** Sent to the server only when it came from Moby's place list. */
   placeName?: string;
   country?: string;
+}
+
+/** One place, or a route through stops in order. */
+type Trip = { kind: 'place'; dest: Destination } | { kind: 'route'; stops: Destination[] };
+
+function tripLabel(t: Trip): string {
+  return t.kind === 'place' ? t.dest.label : t.stops.map((s) => s.placeName ?? s.label).join(' → ');
 }
 
 interface TripBriefScreenProps {
@@ -92,6 +100,8 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
       ? { ...initialPoint, label: pinLabel(initialPoint.lat, initialPoint.lon), country: countryAt(initialPoint.lat, initialPoint.lon) }
       : null,
   );
+  const [mode, setMode] = useState<'place' | 'route'>('place');
+  const [stops, setStops] = useState<Destination[]>([]);
   const [radiusKm, setRadiusKm] = useState<(typeof RADII)[number]>(25);
   const today = useMemo(() => new Date(), []);
   const [startOffset, setStartOffset] = useState(0);
@@ -103,18 +113,38 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
   const startDate = isoDay(addDays(today, startOffset));
   const endDate = isoDay(addDays(today, startOffset + days));
   const matches = useMemo(() => searchPlaces(query), [query]);
+  const trip: Trip | null =
+    mode === 'place' ? (dest ? { kind: 'place', dest } : null) : stops.length >= 2 ? { kind: 'route', stops } : null;
+  const [asked, setAsked] = useState<Trip | null>(null);
+
+  function pick(d: Destination) {
+    setQuery('');
+    if (mode === 'place') return setDest(d);
+    // A route: append, but not the same place twice in a row.
+    setStops((ss) => (ss.length && ss[ss.length - 1]!.lat === d.lat && ss[ss.length - 1]!.lon === d.lon ? ss : [...ss, d]));
+  }
 
   const brief = useMutation({
-    mutationFn: (d: Destination) =>
-      api.tripBrief({
+    mutationFn: (t: Trip) => {
+      setAsked(t);
+      const when = { radius_km: radiusKm, start_date: startDate, end_date: endDate };
+      if (t.kind === 'route') {
+        const country = t.stops.find((s) => s.country)?.country;
+        return api.tripBrief({
+          ...when,
+          stops: t.stops.map((s) => ({ lat: s.lat, lon: s.lon, ...(s.placeName ? { name: s.placeName } : {}) })),
+          ...(country ? { country } : {}),
+        });
+      }
+      const d = t.dest;
+      return api.tripBrief({
+        ...when,
         lat: d.lat,
         lon: d.lon,
-        radius_km: radiusKm,
-        start_date: startDate,
-        end_date: endDate,
         ...(d.country ? { country: d.country } : {}),
         ...(d.placeName ? { place_name: d.placeName } : {}),
-      }),
+      });
+    },
     onSuccess: () => {
       setSavedId(null);
       scroll.current?.scrollTo({ y: 0, animated: false });
@@ -123,10 +153,13 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
 
   const result = brief.data;
 
+  const askedLabel = asked ? tripLabel(asked) : undefined;
+  const askedCountry = asked?.kind === 'place' ? asked.dest.country : asked?.stops.find((s) => s.country)?.country;
+
   function save(b: TripBrief) {
-    const country = b.destination.country ?? dest?.country;
+    const country = b.destination.country ?? askedCountry;
     const pack = saveTripPack({
-      label: dest?.label ?? b.destination.place_name ?? pinLabel(b.destination.lat, b.destination.lon),
+      label: askedLabel ?? b.destination.place_name ?? pinLabel(b.destination.lat, b.destination.lon),
       brief: b,
       emergency: emergencyFor(country),
       guidance: guidanceFor(guidance.cards, b.hazards),
@@ -198,7 +231,14 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
             )}
 
             <Section title="Where are you going?">
-              {dest ? (
+              <Options
+                label="Trip type"
+                options={['place', 'route'] as const}
+                selected={mode}
+                format={(m) => (m === 'place' ? 'One place' : 'A route')}
+                onSelect={setMode}
+              />
+              {mode === 'place' && dest ? (
                 <View style={[styles.picked, { backgroundColor: theme.bg.raised }]}>
                   <Icon source="map-marker-outline" size={22} color={theme.text.primary} />
                   <View style={styles.flex}>
@@ -213,71 +253,45 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
                 </View>
               ) : (
                 <>
-                  <TextInput
-                    style={[
-                      typography.body,
-                      styles.input,
-                      { backgroundColor: theme.bg.recessed, borderColor: theme.line.hairline, color: theme.text.primary },
-                    ]}
-                    placeholder="Search a place, e.g. Phakding or Pokhara"
-                    placeholderTextColor={theme.text.faint}
-                    value={query}
-                    onChangeText={setQuery}
-                    accessibilityLabel="Search a destination"
-                    autoCorrect={false}
-                    maxLength={60}
-                  />
-                  {matches.map((p) => (
-                    <Pressable
-                      key={`${p.name}-${p.country}`}
-                      onPress={() => {
-                        setDest({ lat: p.lat, lon: p.lon, label: placeLabel(p), placeName: p.name, country: p.country });
-                        setQuery('');
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${p.name}, ${p.area}, ${countryName(p.country)}`}
-                      style={[styles.match, { backgroundColor: theme.bg.raised }]}
-                    >
-                      <Text variant="titleSmall" style={{ color: theme.text.primary }}>{p.name}</Text>
-                      <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
-                        {p.area}, {countryName(p.country)}
+                  {mode === 'route' && (
+                    <>
+                      <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
+                        Add the places you’ll pass, in order (at least 2). Moby checks straight lines between them,
+                        so add stops where the trail bends.
                       </Text>
-                    </Pressable>
-                  ))}
-                  {query.trim().length >= 2 && matches.length === 0 && (
-                    <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
-                      Not in Moby’s list of destinations.{' '}
-                      {CAN_DROP_PIN ? 'Use your location, or long-press the map to drop a pin.' : 'Try a nearby town, or use your location.'}
-                    </Text>
+                      {stops.map((st, i) => (
+                        <View key={`${i}-${st.lat}-${st.lon}`} style={[styles.picked, { backgroundColor: theme.bg.raised }]}>
+                          <Text variant="titleSmall" style={[styles.stopNo, { color: theme.text.secondary }]}>{i + 1}</Text>
+                          <Text variant="titleMedium" style={[styles.flex, { color: theme.text.primary }]}>{st.label}</Text>
+                          <IconButton
+                            icon="close"
+                            onPress={() => setStops((ss) => ss.filter((_, j) => j !== i))}
+                            accessibilityLabel={`Remove stop ${i + 1}, ${st.label}`}
+                          />
+                        </View>
+                      ))}
+                    </>
                   )}
-                  {center.source === 'device' && (
-                    <Button
-                      mode="outlined"
-                      icon="crosshairs-gps"
-                      onPress={() =>
-                        setDest({
-                          lat: center.lat,
-                          lon: center.lon,
-                          label: 'Where you are now',
-                          country: countryAt(center.lat, center.lon),
-                        })
+                  {(mode === 'place' || stops.length < MAX_STOPS) && (
+                    <PlaceSearch
+                      query={query}
+                      setQuery={setQuery}
+                      matches={matches}
+                      onPick={pick}
+                      label={mode === 'route' ? (stops.length ? 'Add the next stop' : 'Add the first stop') : undefined}
+                      here={
+                        center.source === 'device'
+                          ? { lat: center.lat, lon: center.lon, label: 'Where you are now', country: countryAt(center.lat, center.lon) }
+                          : undefined
                       }
-                      style={styles.alignStart}
-                      contentStyle={styles.tapTarget}
-                    >
-                      Use my location
-                    </Button>
-                  )}
-                  {CAN_DROP_PIN && (
-                    <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
-                      Tip: long-press anywhere on the map to brief that spot.
-                    </Text>
+                      tip={mode === 'place' && CAN_DROP_PIN}
+                    />
                   )}
                 </>
               )}
             </Section>
 
-            <Section title="How far around it?">
+            <Section title={mode === 'route' ? 'How far either side of the route?' : 'How far around it?'}>
               <Options
                 label="Radius"
                 options={RADII}
@@ -305,16 +319,16 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
             <Button
               mode="contained"
               icon="shield-search"
-              disabled={!dest || !isOnline || brief.isPending}
+              disabled={!trip || !isOnline || brief.isPending}
               loading={brief.isPending}
-              onPress={() => dest && brief.mutate(dest)}
+              onPress={() => trip && brief.mutate(trip)}
               contentStyle={styles.tapTarget}
             >
               Get briefing
             </Button>
             {brief.isPending && (
               <Text variant="bodyMedium" style={{ color: theme.text.secondary }} accessibilityLiveRegion="polite">
-                Checking official alerts and reports around {dest?.label}. Nemotron Ultra can take up to a minute to
+                Checking official alerts and reports {trip?.kind === 'route' ? 'along' : 'around'} {trip && tripLabel(trip)}. Nemotron Ultra can take up to a minute to
                 explain them.
               </Text>
             )}
@@ -361,8 +375,8 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
           <>
             <BriefView
               brief={result}
-              label={dest?.label ?? result.destination.place_name ?? 'Your destination'}
-              emergency={emergencyFor(result.destination.country ?? dest?.country)}
+              label={askedLabel ?? result.destination.place_name ?? 'Your destination'}
+              emergency={emergencyFor(result.destination.country ?? askedCountry)}
               guidance={guidanceFor(guidance.cards, result.hazards)}
               onAlertPress={onAlertPress}
               isOnline={isOnline}
@@ -432,7 +446,8 @@ function BriefView({
       <View>
         <Text variant="headlineSmall" accessibilityRole="header" style={{ color: theme.text.primary }}>{label}</Text>
         <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
-          Within {d.radius_km} km · {showDay(trip.start_date)} to {showDay(trip.end_date)} · checked{' '}
+          {brief.route ? `Within ${d.radius_km} km of the route (${brief.route.length_km} km)` : `Within ${d.radius_km} km`}
+          {' · '}{showDay(trip.start_date)} to {showDay(trip.end_date)} · checked{' '}
           {formatTimeAgo(brief.generated_at)}
         </Text>
       </View>
@@ -469,6 +484,7 @@ function BriefView({
             <View key={a.alert_id} style={{ gap: spacing.scale[1] }}>
               <Text variant="labelMedium" style={{ color: theme.text.secondary }}>
                 {a.cite_id}
+                {a.near_stop ? ` · near ${a.near_stop}` : ''}
                 {a.ends_before_trip ? ' · ends before your trip starts' : ''}
               </Text>
               <AlertCard
@@ -493,7 +509,8 @@ function BriefView({
           brief.community_reports.map((a) => (
             <View key={a.alert_id} style={{ gap: spacing.scale[1] }}>
               <Text variant="labelMedium" style={{ color: theme.text.secondary }}>
-                {a.cite_id} · {a.reporter_count} {a.reporter_count === 1 ? 'person' : 'people'} · last report{' '}
+                {a.cite_id}{a.near_stop ? ` · near ${a.near_stop}` : ''} · {a.reporter_count}{' '}
+                {a.reporter_count === 1 ? 'person' : 'people'} · last report{' '}
                 {formatTimeAgo(a.last_report_at)}
               </Text>
               <AlertCard alert={a} distanceKm={a.distance_km} />
@@ -565,6 +582,82 @@ function ClaimRow({ claim, titles }: { claim: TripClaim; titles: Record<string, 
 
 // ── Small pieces ──────────────────────────────────────────────────────
 
+/** Search Moby's bundled place list (no geocoder sees the text), or use where the phone is. */
+function PlaceSearch({
+  query,
+  setQuery,
+  matches,
+  onPick,
+  label,
+  here,
+  tip,
+}: {
+  query: string;
+  setQuery: (q: string) => void;
+  matches: TripPlace[];
+  onPick: (d: Destination) => void;
+  label?: string;
+  here?: Destination;
+  tip: boolean;
+}) {
+  const { theme } = useTheme();
+  return (
+    <>
+      {label && <Text variant="labelLarge" style={{ color: theme.text.primary }}>{label}</Text>}
+      <TextInput
+        style={[
+          typography.body,
+          styles.input,
+          { backgroundColor: theme.bg.recessed, borderColor: theme.line.hairline, color: theme.text.primary },
+        ]}
+        placeholder="Search a place, e.g. Phakding or Pokhara"
+        placeholderTextColor={theme.text.faint}
+        value={query}
+        onChangeText={setQuery}
+        accessibilityLabel={label ?? 'Search a destination'}
+        autoCorrect={false}
+        maxLength={60}
+      />
+      {matches.map((p) => (
+        <Pressable
+          key={`${p.name}-${p.country}`}
+          onPress={() => onPick({ lat: p.lat, lon: p.lon, label: placeLabel(p), placeName: p.name, country: p.country })}
+          accessibilityRole="button"
+          accessibilityLabel={`${p.name}, ${p.area}, ${countryName(p.country)}`}
+          style={[styles.match, { backgroundColor: theme.bg.raised }]}
+        >
+          <Text variant="titleSmall" style={{ color: theme.text.primary }}>{p.name}</Text>
+          <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
+            {p.area}, {countryName(p.country)}
+          </Text>
+        </Pressable>
+      ))}
+      {query.trim().length >= 2 && matches.length === 0 && (
+        <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
+          Not in Moby’s list of destinations.{' '}
+          {CAN_DROP_PIN ? 'Use your location, or long-press the map to drop a pin.' : 'Try a nearby town, or use your location.'}
+        </Text>
+      )}
+      {here && (
+        <Button
+          mode="outlined"
+          icon="crosshairs-gps"
+          onPress={() => onPick(here)}
+          style={styles.alignStart}
+          contentStyle={styles.tapTarget}
+        >
+          Use my location
+        </Button>
+      )}
+      {tip && (
+        <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
+          Tip: long-press anywhere on the map to brief that spot.
+        </Text>
+      )}
+    </>
+  );
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   const { theme } = useTheme();
   return (
@@ -575,7 +668,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Options<T extends number>({
+function Options<T extends number | string>({
   label,
   options,
   selected,
@@ -678,6 +771,7 @@ const styles = StyleSheet.create({
   },
   stepper: { flexDirection: 'row', alignItems: 'center' },
   stepLabel: { width: 56 },
+  stopNo: { width: 24, textAlign: 'center' },
   card: { padding: spacing.cardPadding, borderRadius: radius.card, gap: spacing.scale[3] },
   bullet: { flexDirection: 'row', gap: spacing.scale[2] },
   basis: {

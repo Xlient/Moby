@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from moby.ai import trip
-from moby.ai.trip import Cited, TripClaim, TripExplanation
+from moby.ai.trip import Cited, Stop, TripClaim, TripExplanation
 from moby.config import get_settings
 
 from .test_chains_and_preferences import _test_db_url
@@ -292,13 +292,42 @@ def test_spatial_query_picks_rows_by_area_and_distance(db_url):
 
     async def go():
         async with await psycopg.AsyncConnection.connect(db_url) as conn:
-            return (await trip.official_near(conn, *PHAKDING, 25, NOW),
-                    await trip.community_near(conn, *PHAKDING, 25, NOW))
+            return (await trip.official_near(conn, [Stop(*PHAKDING)], 25, NOW),
+                    await trip.community_near(conn, [Stop(*PHAKDING)], 25, NOW))
     official, community = asyncio.run(go())
     assert [r["external_id"] for r in official] == ["area-reaches", "point-near", "area-edge"]   # critical first
     assert official[0]["distance_km"] == pytest.approx(0, abs=0.1)                 # inside the area
     assert official[2]["distance_km"] == pytest.approx(19.5, abs=1.5)              # to the area's edge
     assert [r["alert_headline"] for r in community] == ["Bridge washed out reported"]
+
+
+# A route east-west through Phakding: its ends are ~49 km away, but the line passes the rows.
+WEST, EAST = Stop(PHAKDING[0], PHAKDING[1] - 0.5, "West"), Stop(PHAKDING[0], PHAKDING[1] + 0.5, "East")
+ROUTE = [WEST, Stop(*PHAKDING, "Phakding"), EAST]
+
+
+def test_a_route_is_checked_along_the_line_not_just_at_its_stops(db_url):
+    seed(db_url)
+
+    async def go(stops):
+        async with await psycopg.AsyncConnection.connect(db_url) as conn:
+            return (await trip.official_near(conn, stops, 10, NOW), await trip.community_near(conn, stops, 10, NOW))
+    official, community = asyncio.run(go(ROUTE))
+    # point-near is ~5.5 km off the line; area-reaches covers it; point-far (~33 km) and area-edge (~19 km) don't.
+    assert [r["external_id"] for r in official] == ["area-reaches", "point-near"]
+    assert official[0]["distance_km"] == pytest.approx(0, abs=0.1)
+    assert official[1]["near_stop"] == "Phakding" and community[0]["near_stop"] == "Phakding"
+    assert [r["alert_headline"] for r in community] == ["Bridge washed out reported"]
+    # The same ends checked as points find nothing: the line is what matters.
+    for end in (WEST, EAST):
+        assert asyncio.run(go([end])) == ([], [])
+
+
+def test_route_geometry_and_length():
+    assert trip.trip_wkt([Stop(27.74, 86.71)]) == "SRID=4326;POINT(86.71 27.74)"
+    assert trip.trip_wkt(ROUTE[:2]).startswith("SRID=4326;LINESTRING(86.21 27.74, 86.71 27.74")
+    assert trip.route_length_km([WEST, EAST]) == pytest.approx(98.4, abs=1)
+    assert trip.snapped([Stop(27.7398, 86.713, " Phakding ")]) == [Stop(27.74, 86.71, "Phakding")]
 
 
 class Pool:
@@ -391,6 +420,28 @@ def test_route_returns_a_brief_and_validates_dates(client, db_url, monkeypatch):
     bad = client.post("/v1/trips/brief", json={"lat": 1, "lon": 1, "start_date": "2026-01-01"})
     assert bad.status_code == 422
     assert client.get("/v1/config").json()["flags"]["trip_briefing"] is True
+
+
+def test_route_through_the_api(client, db_url, monkeypatch):
+    seed(db_url)
+    no_web(monkeypatch)
+    monkeypatch.setattr(trip, "_ultra", lambda: None)
+    trip._asked.clear()
+    stops = [{"lat": s.lat, "lon": s.lon, "name": s.name} for s in ROUTE]
+    r = client.post("/v1/trips/brief", json={"stops": stops, "radius_km": 10})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert [s["name"] for s in out["route"]["stops"]] == ["West", "Phakding", "East"]
+    assert out["route"]["length_km"] == pytest.approx(98.4, abs=1)
+    assert out["destination"]["place_name"] == "East"
+    assert [a["near_stop"] for a in out["official_alerts"]] == ["Phakding", "Phakding"]
+    assert any("straight lines between your stops" in n for n in out["uncertainty"])
+    # Either a destination or a route; 2-8 stops; at most 500 km.
+    assert client.post("/v1/trips/brief", json={"stops": stops[:1]}).status_code == 422
+    assert client.post("/v1/trips/brief", json={"stops": stops, "lat": 1, "lon": 1}).status_code == 422
+    assert client.post("/v1/trips/brief", json={"radius_km": 10}).status_code == 422
+    far = [{"lat": 27.7, "lon": 85.3}, {"lat": 27.7, "lon": 91.0}]
+    assert client.post("/v1/trips/brief", json={"stops": far}).status_code == 422
 
 
 def test_dates_default_and_bounds():

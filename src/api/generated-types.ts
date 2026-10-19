@@ -1751,9 +1751,12 @@ export interface components {
             /** @description Language of the answer (ISO 639-1); 'en' unless translated by Moby */
             language?: string;
         };
+        /** @description A destination (lat + lon) or a route (stops), not both. */
         TripBriefRequest: {
-            lat: number;
-            lon: number;
+            lat?: number;
+            lon?: number;
+            /** @description A route, in order. Checked as straight lines between the stops (not the actual trail), with radius_km on either side; at most 500 km in total. */
+            stops?: components["schemas"]["TripStop"][];
             /** @default 25 */
             radius_km: number;
             /**
@@ -1771,6 +1774,12 @@ export interface components {
             /** @description The place picked from the app's list (used in the web search and the text) */
             place_name?: string;
         };
+        TripStop: {
+            lat: number;
+            lon: number;
+            /** @description The place picked from the app's list */
+            name?: string;
+        };
         TripBrief: {
             /** Format: date-time */
             generated_at: string;
@@ -1781,6 +1790,12 @@ export interface components {
                 radius_km: number;
                 place_name?: string;
                 country?: string;
+            };
+            /** @description Present for a route; destination is then its last stop. */
+            route?: {
+                stops: components["schemas"]["TripStop"][];
+                /** @description Sum of the straight legs between stops */
+                length_km: number;
             };
             trip: {
                 /** Format: date */
@@ -1794,6 +1809,8 @@ export interface components {
                 cite_id: string;
                 /** @description The alert expires before start_date */
                 ends_before_trip: boolean;
+                /** @description Routes only */
+                near_stop?: string;
             })[];
             /** @description Reports from people nearby (fused community events), last 72 hours. Never official: clients MUST show them as unverified and apart from official_alerts. */
             community_reports: (components["schemas"]["Alert"] & {
@@ -1803,6 +1820,8 @@ export interface components {
                 reporter_count: number;
                 /** Format: date-time */
                 last_report_at: string;
+                /** @description Routes only */
+                near_stop?: string;
             })[];
             /** @description Hazard types found (for matching offline guidance cards) */
             hazards: components["schemas"]["HazardType"][];
