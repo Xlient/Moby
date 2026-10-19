@@ -70,12 +70,15 @@ def _take_tavily_budget(units: int) -> int:
 
 async def research(state: BriefState) -> dict:
     """Add web pages to the evidence as W1, W2… (after the O and C items): the country's official
-    sites and recent news, via Tavily. The web is optional context, so any problem (no key, no
-    budget, no country, a failed search) means no W items, never a failed brief."""
+    sites and recent news, via Tavily. Only when the event has a place name to search for (official
+    warnings; community events have none). The web is optional context, so any problem (no key,
+    no budget, no place, a failed search) means no W items, never a failed brief."""
     facts = state["facts"]
-    if not facts.get("country"):
-        return {"web": []}                    # nowhere sensible to search
-    granted = await asyncio.to_thread(_take_tavily_budget, 3)
+    if not facts.get("country") or not facts.get("place"):
+        # "flood US" finds general pages about floods anywhere, not this event (seen on the first
+        # real run). Without the official area's name there's nothing specific to search for.
+        return {"web": []}
+    granted = await asyncio.to_thread(_take_tavily_budget, 2)
     calls = plan_calls(facts, granted)
     if not calls:
         log.info("brief %s: no Tavily budget left today; no web sources", state["event_id"])

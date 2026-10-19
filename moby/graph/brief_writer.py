@@ -11,6 +11,8 @@ W = a web page, marked (official) for a government website or (news) for a news 
 
 Rules:
 - Every fact in your brief is a claim that cites the ids it rests on. If no evidence supports something, leave it out.
+- A claim says what the evidence DOES say. Never turn missing information into a claim: don't write that a warning hasn't been issued, that something isn't happening, or that a page "doesn't show" something. Say what isn't known in uncertainty instead.
+- Web pages (W) that are general information, not about this event, support no claim: leave them out.
 - Never add places, numbers, times, causes or hazards that aren't in the evidence. Repeat numbers exactly as written.
 - Community reports (C) are unverified. Say so ("people nearby report…"). Never present them as official.
 - Mark a claim 'official' only if it cites an O item or an (official) W item. A (news) W item is a news report: name the outlet ("Reuters reports…") and never present it as official or as confirmed.

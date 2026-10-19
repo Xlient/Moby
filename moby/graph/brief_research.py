@@ -4,9 +4,10 @@ brief_nodes.py is the glue: budget, numbering, failure handling).
 
 What it searches, in order of value (a smaller budget stops earlier):
   1. the country's official sites (OFFICIAL[country]), last week;
-  2. news, last day, never social media (SOCIAL_DOMAINS);
-  3. then reads the best pages in full (extract); without budget for that, the search
-     snippets are used instead.
+  2. news, last day, never social media (SOCIAL_DOMAINS).
+The text the brief reads is Tavily's snippet for each result: the passage it picked as relevant
+to the query. Full pages (extract) were tried first and dropped: their first 1,500 characters
+were mostly site menus (seen on the first real run, weather.gov).
 
 Privacy: the query is built from structured fields only (hazard, the official area's name,
 country), never from a reporter's note or exact position.
@@ -18,7 +19,7 @@ from moby.search.official import OFFICIAL, SOCIAL_DOMAINS, canonical_url, site_n
 from moby.search.tavily import SearchResult, Tavily
 
 MAX_WEB_ITEMS = 3          # W items per brief: enough context, short enough prompt
-MAX_PAGE_CHARS = 1500      # per page, like Ask Moby's sources
+MAX_PAGE_CHARS = 1500      # per snippet, like Ask Moby's sources
 RESULTS_PER_SEARCH = 5
 TIMEOUT_S = 15
 
@@ -31,9 +32,9 @@ def build_query(facts: dict[str, Any]) -> str:
 
 
 def plan_calls(facts: dict[str, Any], granted: int) -> list[str]:
-    """Which Tavily calls `granted` units buy, most valuable first: official sites (only if the
-    country has a list), news, then reading the pages."""
-    calls = (["official"] if OFFICIAL.get(facts.get("country") or "") else []) + ["news", "extract"]
+    """Which Tavily searches `granted` units buy, most valuable first: official sites (only if
+    the country has a list), then news."""
+    calls = (["official"] if OFFICIAL.get(facts.get("country") or "") else []) + ["news"]
     return calls[:granted]
 
 
@@ -63,13 +64,9 @@ async def search_web(facts: dict[str, Any], *, calls: list[str]) -> list[dict[st
         searches.append(asyncio.to_thread(tavily.search, query, topic="news", time_range="day",
                                           exclude_domains=SOCIAL_DOMAINS, max_results=RESULTS_PER_SEARCH))
     results = [("", r) for batch in await asyncio.gather(*searches) for r in batch]   # both searches at once
-    picked = _pick(results)
-    pages = {}
-    if picked and "extract" in calls:
-        pages = await asyncio.to_thread(tavily.extract, [r.url for _, r in picked])
     return [{
         "kind": kind,
         "title": f"{(r.title or site_name(r.url)).strip()[:90]} · {site_name(r.url)}",
-        "text": (pages.get(r.url) or r.content).strip()[:MAX_PAGE_CHARS],
+        "text": r.content.strip()[:MAX_PAGE_CHARS],
         "url": r.url,
-    } for kind, r in picked]
+    } for kind, r in _pick(results)]

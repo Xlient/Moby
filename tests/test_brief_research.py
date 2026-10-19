@@ -14,9 +14,9 @@ def test_query_uses_structured_fields_only():
 
 def test_plan_calls():
     us = {"country": "US"}
-    assert br.plan_calls(us, 3) == ["official", "news", "extract"]
-    assert br.plan_calls(us, 2) == ["official", "news"] and br.plan_calls(us, 0) == []
-    assert br.plan_calls({"country": "HK"}, 3) == ["news", "extract"]      # no official list for HK
+    assert br.plan_calls(us, 2) == ["official", "news"] and br.plan_calls(us, 1) == ["official"]
+    assert br.plan_calls(us, 0) == []
+    assert br.plan_calls({"country": "HK"}, 2) == ["news"]                  # no official list for HK
 
 
 class FakeTavily:
@@ -47,16 +47,17 @@ def run(monkeypatch, calls):
 
 
 def test_search_web_keeps_trust_order_and_drops_duplicates_and_social(monkeypatch):
-    out, tavily = run(monkeypatch, ["official", "news", "extract"])
+    out, tavily = run(monkeypatch, ["official", "news"])
     assert [(o["kind"], o["url"]) for o in out] == [("official", "https://www.weather.gov/safety/flood"),
                                                     ("news", "https://www.reuters.com/flood")]
-    assert out[0]["title"] == "Flood safety · weather.gov" and len(out[0]["text"]) == br.MAX_PAGE_CHARS
-    assert out[1]["text"] == "News text"                                   # not extracted: the snippet
+    assert out[0]["title"] == "Flood safety · weather.gov"
+    assert [o["text"] for o in out] == ["Snippet", "News text"]            # Tavily's snippets, not full pages
+    assert tavily.extracted == []
     official, news = tavily.searches
     assert official[1]["include_domains"] == ["ready.gov", "weather.gov", "fema.gov", "cdc.gov"]
     assert news[1]["topic"] == "news" and news[1]["exclude_domains"] == SOCIAL_DOMAINS
 
 
-def test_without_extract_budget_snippets_are_used(monkeypatch):
+def test_one_unit_searches_official_sites_only(monkeypatch):
     out, tavily = run(monkeypatch, ["official"])
-    assert tavily.extracted == [] and out[0]["text"] == "Snippet" and len(tavily.searches) == 1
+    assert len(tavily.searches) == 1 and [o["kind"] for o in out] == ["official"]

@@ -62,7 +62,8 @@ class ReportDetails(BaseModel):
 class BriefClaim(BaseModel):
     """One statement in a situational brief, tied to the evidence it rests on."""
 
-    text: str = Field(description="One short, plain-language sentence. No citation markers in the text.")
+    text: str = Field(description="One short, plain-language sentence stating what the cited evidence says. "
+                      "Never a statement that something is absent or hasn't happened. No citation markers.")
     basis: Literal["official", "community", "news"] = Field(
         description="Who says so: 'official' ONLY if it rests on an O item (the agency's warning) or a W item "
         "marked (official) (a government website); 'community' if on C items (people's unverified reports); "

@@ -88,10 +88,20 @@ def test_graph_writes_and_saves_a_brief(conn, monkeypatch):  # noqa: F811
     for r in reports[1:]:
         fuse_one(conn, r)
     calls = run_brief(conn, monkeypatch, eid)
-    assert len(calls) == 1 and [e["id"] for e in calls[0]][0] == "C1" and calls[0][-1]["id"] == "W1"
+    # A community event has no place name to search for: no web sources.
+    assert len(calls) == 1 and all(e["id"].startswith("C") for e in calls[0])
     status, summary, citations = conn.execute(
         "SELECT e.brief_status, b.summary, b.citations FROM events e JOIN briefs b USING (event_id)").fetchone()
-    assert status == "ready" and summary == FAKE.summary and citations[0]["id"] == "C1"
+    assert status == "ready" and summary == FAKE.summary and all(c["kind"] == "community" for c in citations)
+
+
+def test_an_official_warning_gets_web_sources(conn, monkeypatch):  # noqa: F811
+    eid = make_event(conn)
+    conn.execute("""UPDATE events SET source = 'official', source_feed = 'noaa', external_id = 'w',
+                    title = 'Flood Warning', raw_payload = '{"properties": {"areaDesc": "Sonoma"}}'""")
+    calls = run_brief(conn, monkeypatch, eid)
+    assert [e["id"] for e in calls[0]] == ["O1", "C1", "W1"]
+    (citations,) = conn.execute("SELECT citations FROM briefs").fetchone()
     assert citations[-1] == {"id": "W1", "title": "Flood safety · weather.gov", "kind": "official",
                              "url": "https://www.weather.gov/safety/flood"}
 
@@ -129,12 +139,13 @@ def test_research_numbers_web_sources_after_the_rest(monkeypatch):
     found = [{"kind": "official", "title": "a", "text": "1", "url": "https://weather.gov/a"},
              {"kind": "news", "title": "b", "text": "2", "url": "https://reuters.com/b"}]
     out, asked = research_with(monkeypatch, found=found)
-    assert asked["calls"] == ["official", "news", "extract"]
+    assert asked["calls"] == ["official", "news"]
     assert [e["id"] for e in out["evidence"]] == ["C1", "W1", "W2"] and out["web"][1]["kind"] == "news"
 
 
 def test_research_without_country_budget_or_luck_adds_nothing(monkeypatch):
     assert research_with(monkeypatch, facts={**FACTS, "country": None})[0] == {"web": []}
+    assert research_with(monkeypatch, facts={**FACTS, "place": None})[0] == {"web": []}   # "flood US" is too vague
     out, asked = research_with(monkeypatch, granted=0)
     assert out == {"web": []} and "calls" not in asked                       # no Tavily call at all
     assert research_with(monkeypatch, error=RuntimeError("down"))[0] == {"web": []}
