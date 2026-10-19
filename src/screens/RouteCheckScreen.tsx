@@ -14,6 +14,7 @@ import { kv } from '@/lib/storage';
 import { env } from '@/config/env';
 import { useUserCenterPassive } from '@/location/UserLocationContext';
 import { formatTimeAgo } from '@/lib/alerts';
+import { distanceKm } from '@/lib/geo';
 import {
   LIMITS, alternativeProblemCopy, cannotAvoidCopy, detourCost, formatDistance, formatDuration, googleMapsUrl,
   hazardLine, headlineFor, verdict,
@@ -188,6 +189,12 @@ export function RouteCheckScreen({ onBack, onAlertPress }: RouteCheckScreenProps
                   style={styles.place}
                 >
                   <Text variant="bodyLarge" style={{ color: theme.text.primary }}>{p.label}</Text>
+                  {origin && (
+                    // Two places with the same name are told apart by how far they are.
+                    <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
+                      {formatDistance(distanceKm(origin.lat, origin.lon, p.lat, p.lon) * 1000)} away
+                    </Text>
+                  )}
                 </Pressable>
               ))
             )}

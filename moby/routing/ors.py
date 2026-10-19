@@ -93,13 +93,14 @@ async def directions(
     )
 
 
-async def search_places(
-    client: httpx.AsyncClient, api_key: str, text: str, near: tuple[float, float] | None, size: int = 6,
-) -> list[dict[str, Any]]:
-    """Place search (Pelias), biased towards `near` ((lat, lon)) when given."""
-    params: dict[str, Any] = {"text": text, "size": size}
-    if near:
-        params["focus.point.lat"], params["focus.point.lon"] = near
+# Place search ranks big regions (a Bolivian department) above a nearby town of the same
+# name, even with a focus point. So: a few nearby first (this radius), then the best
+# matches anywhere, so "Kathmandu" from California still finds the city, not only restaurants.
+NEARBY_KM = 150
+NEARBY_MAX = 3
+
+
+async def _pelias(client: httpx.AsyncClient, api_key: str, params: dict[str, Any]) -> list[dict[str, Any]]:
     try:
         resp = await client.get(
             f"{GEOCODE_BASE}/search", params=params, headers={"Authorization": api_key}, timeout=TIMEOUT,
@@ -114,3 +115,26 @@ async def search_places(
         props = f.get("properties", {})
         places.append({"label": props.get("label") or props.get("name") or f"{lat:.4f}, {lon:.4f}", "lat": lat, "lon": lon})
     return places
+
+
+async def search_places(
+    client: httpx.AsyncClient, api_key: str, text: str, near: tuple[float, float] | None, size: int = 6,
+) -> list[dict[str, Any]]:
+    """Place search (Pelias): up to NEARBY_MAX places within NEARBY_KM of `near` ((lat, lon))
+    first, then the best matches anywhere, without repeats."""
+    found: list[dict[str, Any]] = []
+    if near:
+        found = await _pelias(client, api_key, {
+            "text": text, "size": NEARBY_MAX,
+            "boundary.circle.lat": near[0], "boundary.circle.lon": near[1], "boundary.circle.radius": NEARBY_KM,
+        })
+    if len(found) < size:
+        params: dict[str, Any] = {"text": text, "size": size}
+        if near:
+            params["focus.point.lat"], params["focus.point.lon"] = near
+        seen = {p["label"] for p in found}
+        for p in await _pelias(client, api_key, params):
+            if p["label"] not in seen:
+                seen.add(p["label"])
+                found.append(p)
+    return found[:size]

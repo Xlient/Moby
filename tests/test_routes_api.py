@@ -167,3 +167,24 @@ def test_place_search_passes_the_bias_point(client, monkeypatch):
     r = client.get("/v1/routes/places", params={"q": "trailhead", "lat": 37.8, "lon": -122.4})
     assert r.status_code == 200 and r.json()["places"][0]["label"] == "Trailhead, Marin"
     assert seen == {"text": "trailhead", "near": (37.8, -122.4)}
+
+
+def test_place_search_puts_a_few_nearby_first_then_the_best_anywhere(monkeypatch):
+    """A focus point alone ranks Santa Cruz, Bolivia above Santa Cruz, CA for someone in
+    California; a nearby search first fixes that, without hiding a far city ("Kathmandu")."""
+    import asyncio
+
+    calls = []
+
+    async def pelias(client, key, params):
+        calls.append(params)
+        if "boundary.circle.radius" in params:
+            return [{"label": "Santa Cruz, CA, USA", "lat": 36.97, "lon": -122.03}]
+        return [{"label": "Santa Cruz, Bolivia", "lat": -17.8, "lon": -63.2},
+                {"label": "Santa Cruz, CA, USA", "lat": 36.97, "lon": -122.03},
+                {"label": "Santa Cruz, Bolivia", "lat": -17.8, "lon": -63.2}]
+
+    monkeypatch.setattr(ors, "_pelias", pelias)
+    out = asyncio.run(ors.search_places(None, "k", "Santa Cruz", (37.42, -122.08)))
+    assert [p["label"] for p in out] == ["Santa Cruz, CA, USA", "Santa Cruz, Bolivia"]
+    assert calls[0]["size"] == ors.NEARBY_MAX
