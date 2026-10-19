@@ -36,6 +36,7 @@ test('distances and durations read naturally', () => {
   assert.equal(formatDistance(430), '430 m');
   assert.equal(formatDistance(4230), '4.2 km');
   assert.equal(formatDistance(42300), '42 km');
+  assert.equal(formatDistance(8_977_000), '8,977 km');
   assert.equal(formatDuration(20), '1 min');
   assert.equal(formatDuration(3900), '1 h 5 min');
   assert.equal(formatDuration(7200), '2 h');

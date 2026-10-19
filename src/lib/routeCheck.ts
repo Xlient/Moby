@@ -7,8 +7,12 @@
 import type { CheckedRoute, RouteCheck, RouteHazard } from '@/api/types';
 import { distanceKm } from './geo';
 
+/** Thousands separated by hand: Hermes' Intl support varies by Android build. */
+const grouped = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
 export function formatDistance(m: number): string {
-  return m < 1000 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(m < 10_000 ? 1 : 0)} km`;
+  if (m < 1000) return `${Math.round(m / 10) * 10} m`;
+  return m < 10_000 ? `${(m / 1000).toFixed(1)} km` : `${grouped(Math.round(m / 1000))} km`;
 }
 
 export function formatDuration(s: number): string {
