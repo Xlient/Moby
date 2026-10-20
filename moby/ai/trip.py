@@ -329,7 +329,7 @@ async def web_sources(pool: AsyncConnectionPool, hazards: list[str], place: str 
     domains = OFFICIAL.get(country or "")
     if not domains:
         return [], "no_official_sites"
-    from moby.search.tavily import Tavily, TavilyNotConfigured
+    from moby.search.tavily import Tavily, TavilyError, TavilyNotConfigured
 
     try:
         tavily = Tavily(timeout=10)
@@ -342,7 +342,7 @@ async def web_sources(pool: AsyncConnectionPool, hazards: list[str], place: str 
         results = await asyncio.to_thread(tavily.search, search_query(hazards, place, country),
                                           include_domains=domains, max_results=3)
     except Exception as e:  # noqa: BLE001 - search is optional; brief from what we have
-        log.warning("Tavily search failed: %s", type(e).__name__)
+        log.warning("Tavily search failed: %s", e if isinstance(e, TavilyError) else type(e).__name__)
         return [], "failed"
     return [Cited(f"W{i}", "web", r.title or _domain(r.url), r.content[:1200], url=r.url, publisher=_domain(r.url))
             for i, r in enumerate(unique_pages(results), 1)], "searched"

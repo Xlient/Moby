@@ -37,6 +37,40 @@ def test_search_and_extract():
     assert set(texts) == {"https://a.gov/x"}                      # failures are simply absent
 
 
+def replies(*responses):
+    """A transport answering each request with the next response; the requests are kept."""
+    seen, queue = [], list(responses)
+
+    def handler(request):
+        seen.append(request)
+        return queue.pop(0)
+    return httpx.MockTransport(handler), seen
+
+
+def test_errors_say_the_status_and_tavilys_reason():
+    t, seen = replies(httpx.Response(400, json={"detail": {"error": "Query is missing."}}))
+    with pytest.raises(tavily_mod.TavilyError) as e:
+        Tavily("tvly-test", transport=t).search("")
+    assert str(e.value) == "Tavily 400: Query is missing." and e.value.status == 400 and len(seen) == 1
+    assert isinstance(e.value, httpx.HTTPStatusError)            # callers catching httpx errors still do
+
+
+def test_rate_limit_is_retried_once_and_used_up_credits_are_not(monkeypatch):
+    waits = []
+    monkeypatch.setattr(tavily_mod.time, "sleep", waits.append)
+    ok = httpx.Response(200, json={"results": [{"title": "t", "url": "https://a.gov/x", "content": "c"}]})
+    t, seen = replies(httpx.Response(429, headers={"retry-after": "30"}), ok)
+    assert [r.url for r in Tavily("tvly-test", transport=t).search("q")] == ["https://a.gov/x"]
+    assert len(seen) == 2 and waits == [tavily_mod.RETRY_AFTER_MAX_S]   # never waits Tavily's 30 s
+    t, seen = replies(httpx.Response(429), httpx.Response(429, json={"detail": {"error": "Rate limit exceeded"}}))
+    with pytest.raises(tavily_mod.TavilyError, match="Tavily 429: Rate limit exceeded"):
+        Tavily("tvly-test", transport=t).search("q")
+    t, seen = replies(httpx.Response(432, json={"detail": {"error": "This request exceeds your plan's set usage limit."}}))
+    with pytest.raises(tavily_mod.TavilyError) as e:
+        Tavily("tvly-test", transport=t).extract(["https://a.gov/x"])
+    assert e.value.out_of_credits and len(seen) == 1
+
+
 def test_missing_key(monkeypatch):
     # Empty, not deleted: settings also read .env, where a developer's real key may be.
     monkeypatch.setenv("TAVILY_API_KEY", "")
