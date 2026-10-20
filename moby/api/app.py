@@ -9,6 +9,7 @@ Public, read-only:
   GET  /v1/events/{event_id}/brief  situational brief (200), or 202 while it is being written
   GET  /v1/events/{event_id}/explain  'What this means for you' (Nemotron Super), 202 while written
   GET  /v1/config                   client feature flags
+  GET  /v1/demo/hot-zones, /v1/demo/replay  trying Moby away from a disaster (see demo.py)
   GET  /v1/guidance/manifest, /v1/guidance/cards  published offline guidance (see guidance.py)
 
 Signed-in users (Firebase ID token):
@@ -68,6 +69,7 @@ from moby.graph.brief_queries import VIEW_SQL as BRIEF_ON_VIEW_SQL
 
 from .alerts import SOURCE_ATTRIBUTION, to_alert
 from .auth import Caller, require_user
+from .demo import router as demo_router
 from .mesh import router as mesh_router
 from .reports import router as reports_router
 from .appcheck import app_check_middleware
@@ -106,6 +108,7 @@ app.include_router(me_router)
 app.include_router(privacy_router)
 app.include_router(guidance_router)
 app.include_router(routes_router)
+app.include_router(demo_router)
 
 # ── Reviewer console (static page; it signs in with Firebase and calls /v1/review) ──
 CONSOLE_DIR = Path(__file__).resolve().parent.parent / "console"

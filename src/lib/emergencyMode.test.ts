@@ -54,3 +54,12 @@ test('picks the most severe, then the newest', () => {
   assert.equal(emergencyAlert([candidate({ severity: 'medium' })], NOW), null);
   assert.equal(emergencyAlert([], NOW), null);
 });
+
+test('a demo replay of an official warning opens emergency mode, so demo mode can show it', () => {
+  const replay = candidate({
+    alert_id: 'demo-1760000000000-e1',
+    demo: true,
+    replay_of: { issued_at: '2026-07-12T03:00:00Z', location_name: 'Dujiangyan' },
+  });
+  assert.equal(qualifiesForEmergency(replay, NOW), true);
+});

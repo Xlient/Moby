@@ -11,7 +11,7 @@ import { cardsForHazard, useGuidance } from '@/guidance/guidanceStore';
 import { formatTimeAgo } from '@/lib/alerts';
 import { EmergencyNumbers } from '@/components/EmergencyNumbers';
 import { countryAt } from '@/data/emergencyNumbers';
-import { useUserCenter } from '@/location/UserLocationContext';
+import { isRealPlace, useUserCenter } from '@/location/UserLocationContext';
 import type { HazardType } from '@/api/types';
 
 interface GuidanceScreenProps {
@@ -40,7 +40,7 @@ export function GuidanceScreen({ onBack, initialHazard }: GuidanceScreenProps) {
   const isOnline = useOnlineStatus();
   const center = useUserCenter();
   // Only from a real fix: never show the demo city's numbers (or guidance) as "where you are".
-  const country = center.source === 'device' ? countryAt(center.lat, center.lon) : undefined;
+  const country = isRealPlace(center) ? countryAt(center.lat, center.lon) : undefined;
   const { cards, syncedAt } = useGuidance(country);
   const [hazard, setHazard] = useState<HazardType | undefined>(initialHazard);
   const shown = cardsForHazard(cards, hazard);

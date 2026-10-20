@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Camera, Map, UserLocation } from '@maplibre/maplibre-react-native';
 import { useTheme } from '@/theme/ThemeContext';
-import { useUserCenter } from '@/location/UserLocationContext';
+import { isRealPlace, useUserCenter } from '@/location/UserLocationContext';
 import { countryAt } from '@/data/emergencyNumbers';
 import type { NearbyAlert } from '@/hooks/useNearbyAlerts';
 import { AlertMapLayers } from '@/maps/AlertMapLayers';
@@ -15,7 +15,7 @@ export function MapLibrePreviewCanvas({ nearby, radiusKm }: { nearby: NearbyAler
   const { isDark } = useTheme();
   const center = useUserCenter();
   const [failed, setFailed] = useState(false);
-  const country = center.source === 'device' ? countryAt(center.lat, center.lon) : undefined;
+  const country = isRealPlace(center) ? countryAt(center.lat, center.lon) : undefined;
 
   // No tiles (no signal, nothing saved): the diagram still shows the alerts.
   if (failed) return <MapDiagram nearby={nearby} radiusKm={radiusKm} />;

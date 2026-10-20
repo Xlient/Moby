@@ -43,6 +43,95 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/demo/hot-zones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Today's hot zones
+         * @description Places with the most going on right now (active alerts first reported or updated in the last 24 hours; marine products and single unconfirmed reports left out), best first: more kinds of hazard, more serious warnings and community reports rank above sheer volume. Cached for about 10 minutes.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            zones: components["schemas"]["HotZone"][];
+                            /** Format: date-time */
+                            generated_at: string;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/demo/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Real past alerts, replayed around a point (demo mode)
+         * @description Up to five real past alerts (the most serious official one on the point, so the person is inside it; the others a few km away), dated now and marked demo, with replay_of saying what each really was. Nothing is stored, pushed or shown to anyone else. event_id is the real event, so its explanation and brief still open.
+         */
+        get: {
+            parameters: {
+                query: {
+                    lat: number;
+                    lon: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            alerts: components["schemas"]["Alert"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/register": {
         parameters: {
             query?: never;
@@ -1820,6 +1909,28 @@ export interface components {
             original_body?: string;
             /** @description GET /alerts only: distance from the query point to the alert, in km. Measured to the alert's area when it has one, so 0 means "you are inside it". */
             distance_km?: number;
+            /** @description GET /demo/replay only: a real past alert replayed for demo mode. Clients MUST label it as a demo and never treat it as a current warning (push, mesh, sharing). */
+            demo?: boolean;
+            /** @description GET /demo/replay only. When and where the alert really was. */
+            replay_of?: {
+                /** Format: date-time */
+                issued_at: string;
+                location_name?: string;
+            };
+        };
+        HotZone: {
+            zone_id: string;
+            /** @description The lead alert's place */
+            name: string;
+            /** @description ISO 3166-1 alpha-2 */
+            country?: string;
+            center: components["schemas"]["GeoPoint"];
+            alert_count: number;
+            /** @description Most common first. */
+            hazard_types: components["schemas"]["HazardType"][];
+            top_severity: components["schemas"]["Severity"];
+            has_community_reports: boolean;
+            lead_headline: string;
         };
         EventReports: {
             event_id: string;

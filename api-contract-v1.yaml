@@ -1,11 +1,18 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.9.1
+  version: 0.10.0
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.10.0 — Trying Moby away from a disaster (additive):
+      + GET /demo/hot-zones: today's busiest places (live alerts), each centred on its most
+        serious alert, for the app to view from instead of the phone's position
+      + GET /demo/replay: real past alerts moved to a point and dated now, for demo mode;
+        never stored, pushed or listed by GET /alerts
+      + Alert.demo, Alert.replay_of (set only on GET /demo/replay)
+      + HotZone schema
     0.9.1 — SituationalBrief.timeline (additive): official and community events over time,
       built from the database when the brief is read.
     0.9.0 — "Before you go" trip briefing (additive):
@@ -99,6 +106,62 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ClientConfig' }
+
+  # ---------- demo ----------
+
+  /demo/hot-zones:
+    get:
+      tags: [demo]
+      security: []
+      summary: Today's hot zones
+      description: >
+        Places with the most going on right now (active alerts first reported or updated in
+        the last 24 hours; marine products and single unconfirmed reports left out), best
+        first: more kinds of hazard, more serious warnings and community reports rank above
+        sheer volume. Cached for about 10 minutes.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 8 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [zones, generated_at]
+                properties:
+                  zones:
+                    type: array
+                    items: { $ref: '#/components/schemas/HotZone' }
+                  generated_at: { type: string, format: date-time }
+
+  /demo/replay:
+    get:
+      tags: [demo]
+      security: []
+      summary: Real past alerts, replayed around a point (demo mode)
+      description: >
+        Up to five real past alerts (the most serious official one on the point, so the
+        person is inside it; the others a few km away), dated now and marked demo, with
+        replay_of saying what each really was. Nothing is stored, pushed or shown to anyone
+        else. event_id is the real event, so its explanation and brief still open.
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: number, format: double } }
+        - { name: lon, in: query, required: true, schema: { type: number, format: double } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [alerts]
+                properties:
+                  alerts:
+                    type: array
+                    items: { $ref: '#/components/schemas/Alert' }
 
   # ---------- auth ----------
 
@@ -1267,6 +1330,35 @@ components:
           description: >
             GET /alerts only: distance from the query point to the alert, in km. Measured to
             the alert's area when it has one, so 0 means "you are inside it".
+        demo:
+          type: boolean
+          description: >
+            GET /demo/replay only: a real past alert replayed for demo mode. Clients MUST label
+            it as a demo and never treat it as a current warning (push, mesh, sharing).
+        replay_of:
+          type: object
+          description: GET /demo/replay only. When and where the alert really was.
+          required: [issued_at]
+          properties:
+            issued_at: { type: string, format: date-time }
+            location_name: { type: string }
+
+    HotZone:
+      type: object
+      required: [zone_id, name, center, alert_count, hazard_types, top_severity, has_community_reports, lead_headline]
+      properties:
+        zone_id: { type: string }
+        name: { type: string, description: The lead alert's place, e.g. "Metro Manila". }
+        country: { type: string, description: ISO 3166-1 alpha-2, when known. }
+        center: { $ref: '#/components/schemas/GeoPoint' }
+        alert_count: { type: integer }
+        hazard_types:
+          type: array
+          description: Most common first.
+          items: { $ref: '#/components/schemas/HazardType' }
+        top_severity: { $ref: '#/components/schemas/Severity' }
+        has_community_reports: { type: boolean }
+        lead_headline: { type: string }
 
     EventReports:
       type: object

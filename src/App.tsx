@@ -40,6 +40,7 @@ import { TrustReviewScreen } from '@/screens/TrustReviewScreen';
 import { AlertCardReviewScreen } from '@/screens/AlertCardReviewScreen';
 import { MyReportsScreen } from '@/screens/MyReportsScreen';
 import { AboutScreen } from '@/screens/AboutScreen';
+import { TryMobyScreen } from '@/screens/TryMobyScreen';
 import { TripBriefScreen } from '@/screens/TripBriefScreen';
 import { useTripPacks } from '@/trips/tripPacks';
 import { OnboardingScreen, hasSeenOnboarding, resetOnboarding } from '@/screens/OnboardingScreen';
@@ -58,6 +59,7 @@ type Screen =
   | { name: 'report' }
   | { name: 'my-reports' }
   | { name: 'about' }
+  | { name: 'try-moby' }
   | { name: 'subscriptions' }
   | { name: 'alert-preferences' }
   | { name: 'privacy' }
@@ -92,6 +94,7 @@ function getActiveTab(screen: Screen): string {
     case 'nearby-mesh':
     case 'offline-answers':
     case 'about':
+    case 'try-moby':
       return 'settings';
   }
 }
@@ -286,12 +289,16 @@ export function App() {
             onAbout={() => push({ name: 'about' })}
             onCardReview={() => push({ name: 'alert-card-review' })}
             onTrustReview={() => push({ name: 'trust-review' })}
+            onTryMoby={() => push({ name: 'try-moby' })}
           />
         )}
         {screen.name === 'guidance' && <GuidanceScreen onBack={goBack} initialHazard={screen.hazard} />}
         {screen.name === 'report' && <ReportScreen onBack={goBack} />}
         {screen.name === 'my-reports' && (
           <MyReportsScreen onBack={goBack} onNewReport={() => push({ name: 'report' })} />
+        )}
+        {screen.name === 'try-moby' && (
+          <TryMobyScreen onBack={goBack} onShow={() => setStack([{ name: 'home' }])} />
         )}
         {screen.name === 'about' && (
           <AboutScreen

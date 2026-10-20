@@ -20,6 +20,7 @@ import type {
   Event,
   EventReports,
   HazardType,
+  HotZone,
   Place,
   RouteCheck,
   RouteCheckRequest,
@@ -283,6 +284,32 @@ export class ApiClient {
       return alert;
     }
     return this.request<Alert>('GET', `/alerts/${encodeURIComponent(alertId)}`);
+  }
+
+  // ── Try Moby (Settings): today's hot zones and demo replays ───────
+
+  /** Places with the most going on today, best first (moby/api/demo.py). */
+  async getHotZones(): Promise<HotZone[]> {
+    if (USE_MOCK) return [];
+    return (await this.request<{ zones: HotZone[] }>('GET', '/demo/hot-zones')).zones;
+  }
+
+  /** Demo mode: real past alerts replayed around a point, marked demo. Never stored or pushed. */
+  async getDemoReplay(lat: number, lon: number): Promise<Alert[]> {
+    if (USE_MOCK) {
+      const worst = getMockAlerts().find((a) => a.verification_label === 'official_confirmed' && a.severity !== 'low');
+      return worst
+        ? [{
+            ...worst,
+            alert_id: `demo-${worst.event_id}`,
+            location: { lat, lon, frame: 'WGS84' },
+            distance_km: 0,
+            demo: true,
+            replay_of: { issued_at: worst.issued_at, location_name: worst.location_name },
+          }]
+        : [];
+    }
+    return (await this.request<{ alerts: Alert[] }>('GET', '/demo/replay', { query: { lat, lon } })).alerts;
   }
 
   // ── Hazard route check ───────────────────────────────────────────

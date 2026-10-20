@@ -11,6 +11,9 @@ import { EmergencyNumbers } from '@/components/EmergencyNumbers';
 import { countryAt } from '@/data/emergencyNumbers';
 import { formatTimeAgo, trustText } from '@/lib/alerts';
 import { qualifiesForEmergency } from '@/lib/emergencyMode';
+import { isDemoAlert } from '@/lib/tryMoby';
+import { useUserCenterPassive } from '@/location/UserLocationContext';
+import { demoText } from '@/components/AlertCard';
 import type { HazardType } from '@/api/types';
 
 interface EmergencyScreenProps {
@@ -38,6 +41,14 @@ export function EmergencyScreen({ alertId, onClose, onHelp, onAlertDetail, onGui
   const found = useMemo(() => nearby.find((c) => c.alert.alert_id === alertId), [nearby, alertId]);
   const alert = found?.alert;
   const stillApplies = !!found && qualifiesForEmergency(found);
+  // Trying Moby (a demo replay, or viewing another place): say so on the band, and give the
+  // numbers for where the phone really is, never the place being looked at.
+  const demo = !!alert && isDemoAlert(alert);
+  const viewing = center.source === 'viewing' ? center.name ?? 'another place' : null;
+  const realCenter = useUserCenterPassive();
+  const numbersCountry = demo || viewing
+    ? countryAt(realCenter.lat, realCenter.lon)
+    : alert?.country ?? countryAt(center.lat, center.lon);
 
   const explained = useExplanation(alert?.event_id, !!alert?.body);
   const { cards } = useGuidance();
@@ -65,11 +76,18 @@ export function EmergencyScreen({ alertId, onClose, onHelp, onAlertDetail, onGui
     <View style={[styles.container, { backgroundColor: theme.bg.base }]}>
       <View style={[styles.band, { backgroundColor: band, paddingHorizontal: r.gutter }]}>
         <Text variant="labelLarge" style={styles.bandLabel} accessibilityRole="header">
-          EMERGENCY MODE
+          {demo ? 'EMERGENCY MODE · DEMO' : 'EMERGENCY MODE'}
         </Text>
+        {(demo || viewing) && (
+          <Text variant="bodyMedium" style={styles.bandMeta}>
+            {demo ? `${demoText(alert)}. Not a current warning.` : `Viewing ${viewing}, not where you are.`}
+          </Text>
+        )}
         <Text variant="headlineSmall" style={styles.bandTitle}>{alert.headline}</Text>
         <Text variant="bodyLarge" style={styles.bandMeta}>
-          {stillApplies ? 'You are in the warning area' : 'You may have left the warning area'}
+          {viewing
+            ? (stillApplies ? 'This place is in the warning area' : 'This place may be outside the warning area')
+            : stillApplies ? 'You are in the warning area' : 'You may have left the warning area'}
           {' · '}
           {formatTimeAgo(alert.issued_at)}
         </Text>
@@ -114,7 +132,7 @@ export function EmergencyScreen({ alertId, onClose, onHelp, onAlertDetail, onGui
         >
           I need help
         </Button>
-        <EmergencyNumbers country={alert.country ?? countryAt(center.lat, center.lon)} />
+        <EmergencyNumbers country={numbersCountry} />
 
         {moreSteps.length > 0 && (
           <View style={styles.block}>

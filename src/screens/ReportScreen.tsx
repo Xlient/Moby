@@ -13,6 +13,7 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { enqueueReport, flushReportQueue, newClientEventId } from '@/lib/reportQueue';
 import { getPrivacySettings } from '@/lib/privacySettings';
 import { formatTimeAgo, hazardIcon } from '@/lib/alerts';
+import { useTryMoby } from '@/lib/tryMoby';
 import type { HazardType, ObservedEffect, Severity } from '@/api/types';
 
 interface ReportScreenProps {
@@ -175,6 +176,7 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
   const [sentId, setSentId] = useState<string | null>(null);
   // Start locating as soon as the form opens, so a fix is ready by the last step.
   const location = useDeviceLocation(step !== 'sent');
+  const { viewing } = useTryMoby();
 
   const hazardLabel = useMemo(() => HAZARDS.find((h) => h.value === hazard)?.label, [hazard]);
 
@@ -282,6 +284,12 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
             </View>
 
             <LocationCard theme={theme} status={location.status} fix={location.fix} onRetry={location.retry} />
+            {viewing && (
+              // Try Moby: a report is about what's in front of you, so it's never placed at the viewed place.
+              <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
+                You’re viewing {viewing.name}, but reports are always placed where you really are.
+              </Text>
+            )}
 
             <Text variant="titleMedium" style={[styles.sectionTitle, { color: theme.text.primary }]}>
               What do you see? <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>Optional</Text>
