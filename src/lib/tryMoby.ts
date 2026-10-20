@@ -78,6 +78,29 @@ export function useTryMoby(): TryMobySettings {
   );
 }
 
+// Whether demo mode's last replay found nothing near the place being viewed: Moby only
+// replays alerts from the region (moby/api/demo.py), so Home says so instead of showing
+// nothing. Not saved: it's about the latest fetch only.
+let noReplayHere = false;
+const replayListeners = new Set<() => void>();
+
+export function setNoReplayHere(none: boolean): void {
+  if (none === noReplayHere) return;
+  noReplayHere = none;
+  replayListeners.forEach((cb) => cb());
+}
+
+export function useNoReplayHere(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      replayListeners.add(cb);
+      return () => replayListeners.delete(cb);
+    },
+    () => noReplayHere,
+    () => noReplayHere,
+  );
+}
+
 /** A demo alert: a replay, never a current warning. */
 export function isDemoAlert(alert: { demo?: boolean; alert_id: string }): boolean {
   return alert.demo === true || alert.alert_id.startsWith('demo-');

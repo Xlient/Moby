@@ -1,7 +1,7 @@
 """Trying Moby away from a disaster: today's hot zones, and replays of real past alerts.
 
 GET /v1/demo/hot-zones  places with the most going on right now, to view the app from
-GET /v1/demo/replay     real past warnings, moved to a point and dated now, for demo mode
+GET /v1/demo/replay     real past warnings from the region, moved to a point and dated now, for demo mode
 
 Judges (and anyone curious) are rarely standing in a flood. Hot zones are real, live
 alerts: the app views one of them instead of the phone's position. Replays are real
@@ -159,21 +159,29 @@ async def hot_zones(limit: Annotated[int, Query(ge=1, le=20)] = 8):
 
 # Past official warnings worth showing: serious, with agency text, explained when possible
 # (so "What this means for you" appears), one per hazard type; plus one community event.
+# Only from the region around the point: a Maryland freeze warning or a Pacific typhoon
+# replayed in the Himalaya reads as made up, however it's labelled. When the region has
+# none, the replay is empty and the app says so, instead of borrowing far-away alerts.
 REPLAY_SQL = """
 (SELECT DISTINCT ON (hazard_type) {cols}
  FROM events
  WHERE source = 'official' AND tier >= 2 AND severity IN ('high', 'critical')
    AND duplicate_of IS NULL AND NOT marine AND length(coalesce(description, '')) >= 40
    AND first_reported_at > %(since)s
+   AND ST_DWithin(location, ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, %(region_m)s)
  ORDER BY hazard_type, explainer_status = 'done' DESC, severity = 'critical' DESC, first_reported_at DESC)
 UNION ALL
 (SELECT {cols}
  FROM events
  WHERE source <> 'official' AND tier >= 1 AND reviewer_decision IS DISTINCT FROM 'reject'
    AND first_reported_at > %(since)s
+   AND ST_DWithin(location, ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography, %(region_m)s)
  ORDER BY distinct_reporter_count DESC, first_reported_at DESC
  LIMIT 1)
 """
+# About a weather region: Kathmandu to Delhi, Rome to Barcelona. Wide enough for a
+# typhoon from Taiwan in Luzon, narrow enough that Maryland's freeze stays out of Florida.
+REPLAY_REGION_KM = 800
 REPLAY_MAX = 5
 
 
@@ -213,13 +221,15 @@ async def replay(
     lat: Annotated[float, Query(ge=-90, le=90)],
     lon: Annotated[float, Query(ge=-180, le=180)],
 ):
-    """Demo mode: up to five real past alerts around (lat, lon). Never stored, never pushed,
-    never in anyone's GET /v1/alerts; event_id is the real event, so its explanation and
-    brief still open."""
+    """Demo mode: up to five real past alerts from the region (REPLAY_REGION_KM), replayed
+    around (lat, lon). Empty when the region has none. Never stored, never pushed, never in
+    anyone's GET /v1/alerts; event_id is the real event, so its explanation and brief still open."""
     from .app import EVENT_COLUMNS
     now = datetime.now(timezone.utc)
     async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
-        await cur.execute(REPLAY_SQL.format(cols=EVENT_COLUMNS), {"since": now - timedelta(days=180)})
+        await cur.execute(REPLAY_SQL.format(cols=EVENT_COLUMNS),
+                          {"since": now - timedelta(days=180), "lat": lat, "lon": lon,
+                           "region_m": REPLAY_REGION_KM * 1000})
         rows = await cur.fetchall()
     return {"alerts": replay_alerts(rows, lat, lon, now)}
 

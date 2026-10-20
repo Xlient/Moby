@@ -3,7 +3,7 @@ import { Avatar, Button, Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import { radius, spacing } from '@/theme/tokens';
 import { env } from '@/config/env';
-import { setDemoMode, setViewing, useTryMoby } from '@/lib/tryMoby';
+import { setDemoMode, setViewing, useNoReplayHere, useTryMoby } from '@/lib/tryMoby';
 
 /**
  * Home, while trying Moby (Settings → Try Moby): what's different and one tap to stop.
@@ -12,12 +12,18 @@ import { setDemoMode, setViewing, useTryMoby } from '@/lib/tryMoby';
 export function TryMobyBanner() {
   const { theme } = useTheme();
   const { viewing, demoMode } = useTryMoby();
+  const noReplayHere = useNoReplayHere();
   const showViewing = !!viewing && !env.useMock;
   if (!showViewing && !demoMode) return null;
 
   const lines = [
     showViewing ? `Viewing ${viewing!.name}, not where you are. Live alerts from there.` : null,
-    demoMode ? 'Demo mode: real past alerts replayed here, marked Demo. Not current warnings.' : null,
+    demoMode
+      ? noReplayHere
+        ? // Only alerts from this region are replayed: say there are none, never borrow far-away ones.
+          'Demo mode: Moby has no serious past alerts from this region to replay, so none are shown. Try a busy place from Try Moby.'
+        : 'Demo mode: real past alerts from this region replayed here, marked Demo. Not current warnings.'
+      : null,
   ].filter(Boolean) as string[];
 
   return (

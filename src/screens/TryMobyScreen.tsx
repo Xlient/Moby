@@ -36,7 +36,7 @@ function zoneSummary(z: HotZone): string {
  * Settings → Try Moby. For judges, and for anyone wanting to see what Moby does when
  * there's nothing happening where they are:
  *   - today's hot zones: view a busy place instead of your own (real, live alerts);
- *   - demo mode: real past alerts replayed where you're looking, marked Demo.
+ *   - demo mode: real past alerts from the region replayed where you're looking, marked Demo.
  * Neither changes what Moby sends about you (push area, SOS, reports use your real GPS).
  */
 export function TryMobyScreen({ onBack, onShow }: TryMobyScreenProps) {
@@ -71,8 +71,9 @@ export function TryMobyScreen({ onBack, onShow }: TryMobyScreenProps) {
             <View style={styles.flex}>
               <Text variant="titleMedium" style={{ color: theme.text.primary }}>Demo mode</Text>
               <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
-                Adds real past warnings around {viewing ? viewing.name : 'you'}, as if they were happening now,
-                so you can see emergency mode and alert details. Each is marked Demo. Only this phone sees them.
+                Adds real past warnings from the region around {viewing ? viewing.name : 'you'}, as if they were
+                happening now, so you can see emergency mode and alert details. Each is marked Demo. Only this
+                phone sees them.
               </Text>
             </View>
             <Switch
