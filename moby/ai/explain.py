@@ -63,6 +63,14 @@ def source_text(row: dict) -> tuple[str, str]:
     return title, text[:6000]
 
 
+def untranslated(row: dict) -> bool:
+    """Agency text in another language without Moby's checked English translation. It isn't
+    explained: the grounding checks compare words with the source, so they only pass an
+    explanation in the source's language (a Spanish one, on an English phone)."""
+    lang = (row.get("language") or "en").split("-")[0].lower()
+    return lang != "en" and not (row.get("translation_status") == "done" and row.get("title_en"))
+
+
 def parse(raw: str) -> dict:
     raw = re.sub(r"^```(?:json)?|```$", "", raw.strip(), flags=re.M).strip()
     data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
@@ -87,6 +95,8 @@ def check(out: dict, title: str, text: str) -> str | None:
 
 
 async def explain_one(llm, row: dict) -> tuple[dict | None, str | None]:
+    if untranslated(row):
+        return None, "no checked English translation to explain"
     title, text = source_text(row)
     if len(text) < 40:
         return None, "too little official text to explain"
@@ -104,7 +114,7 @@ async def explain_one(llm, row: dict) -> tuple[dict | None, str | None]:
 
 PENDING_SQL = """
 SELECT event_id, hazard_type, severity, title, description, product, raw_payload,
-       title_en, description_en, translation_status
+       language, title_en, description_en, translation_status
 FROM events
 WHERE explainer_status = 'pending' AND translation_status <> 'pending'   -- explain the translation once ready
 ORDER BY last_updated_at DESC LIMIT %s
@@ -117,8 +127,11 @@ async def explain_pending(conn: AsyncConnection, llm, model: str) -> dict[str, i
     async with conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(PENDING_SQL, (BATCH,))
         rows = await cur.fetchall()
+    refused = [r for r in rows if untranslated(r)]          # turned down without a model call or budget
+    rows = [r for r in rows if not untranslated(r)]
     rows = rows[:await budget.take(conn, "explain", len(rows))]   # the rest stay pending until tomorrow
     results = await asyncio.gather(*(explain_one(llm, r) for r in rows))
+    rows, results = refused + rows, [await explain_one(llm, r) for r in refused] + results
     counts = {"done": 0, "failed": 0}
     for row, (out, problem) in zip(rows, results, strict=True):
         if out is None:

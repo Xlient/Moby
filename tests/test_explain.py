@@ -81,6 +81,20 @@ def test_explain_one_returns_nothing_when_the_model_fails_or_strays():
     assert out is None and "too little" in problem
 
 
+def test_untranslated_foreign_text_is_not_explained():
+    # 2026-10-20: an SMN (Mexico) alert whose translation failed was explained from the Spanish,
+    # and an English phone got "What this means for you" in Spanish.
+    spanish = ROW | {"language": "es-MX", "title": "Frente núm. 2", "translation_status": "failed",
+                     "description": "Rachas de 60 a 80 km/h en Veracruz. Extremar precauciones."}
+    llm = FakeLLM('{"summary": "Rachas de 60 a 80 km/h en Veracruz.", "actions": []}')
+    out, problem = asyncio.run(explain.explain_one(llm, spanish))
+    assert out is None and problem == "no checked English translation to explain"
+    translated = spanish | {"translation_status": "done", "title_en": "Front no. 2",
+                            "description_en": "Gusts of 60 to 80 km/h in Veracruz. Take extreme care."}
+    assert not explain.untranslated(translated) and not explain.untranslated(ROW | {"language": "en-US"})
+    assert explain.untranslated(spanish) and not explain.untranslated(ROW)       # no language: English
+
+
 # ── The route: generated on first view, cached per event ─────────────
 
 import uuid  # noqa: E402
@@ -141,3 +155,14 @@ def test_route_never_explains_community_reports_or_short_text(client_db):
     assert client.get(f"/v1/events/{add_event(url, source='manual')}/explain").status_code == 404
     assert client.get(f"/v1/events/{add_event(url, description='Short.')}/explain").status_code == 404
     assert client.get(f"/v1/events/{uuid.uuid4()}/explain").status_code == 404
+
+
+def test_route_does_not_serve_an_explanation_of_untranslated_foreign_text(client_db):
+    client, url = client_db
+    eid = add_event(url)
+    with psycopg.connect(url, autocommit=True) as c:
+        c.execute("UPDATE events SET language = 'es-MX', translation_status = 'failed', explainer = %s::jsonb, "
+                  "explainer_status = 'done' WHERE event_id = %s",
+                  ('{"summary": "Se mantiene el frente.", "actions": [], "model": "m", '
+                   '"generated_at": "2026-10-20T00:00:00Z"}', eid))
+    assert client.get(f"/v1/events/{eid}/explain", params={"lang": "en-US"}).status_code == 404
