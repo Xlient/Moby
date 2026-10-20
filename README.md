@@ -156,7 +156,8 @@ EXPO_PUBLIC_USE_MOCK=false EXPO_PUBLIC_API_URL=http://localhost:8000/v1 npx expo
 EXPO_PUBLIC_USE_MOCK=false EXPO_PUBLIC_API_URL=http://10.0.2.2:8000/v1 npx expo run:android
 ```
 
-**4. AI and routing (optional).** Add keys to `.env`, then restart the API and the poller:
+**4. AI and routing (optional).** Add keys to `.env`, then restart the API and recreate the containers that use them
+(Compose reads `.env` when it creates a container, so a plain `restart` keeps the old values):
 
 - `N_FACTORY_ACC_KEY`: a [Nebius Token Factory](https://tokenfactory.nebius.com/) key. Turns on translation,
   *What this means for you*, Ask Moby, trip briefs and situational briefs.
@@ -164,8 +165,8 @@ EXPO_PUBLIC_USE_MOCK=false EXPO_PUBLIC_API_URL=http://10.0.2.2:8000/v1 npx expo 
 - `ORS_API_KEY`: a free [OpenRouteService](https://openrouteservice.org/dev/#/signup) key for the route hazard check.
 
 ```bash
-docker compose up -d poller
-uv run --env-file .env python -m moby.feeds --once explain   # embed guidance for Ask Moby
+docker compose up -d poller fusion briefs                    # recreated with the new keys
+uv run --env-file .env python -m moby.feeds --once --feed explain   # embed guidance for Ask Moby
 uv run --env-file .env python scripts/verify_models.py       # check the key reaches Nano, Super, Ultra and the embedder
 ```
 
