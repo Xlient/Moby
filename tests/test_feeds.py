@@ -269,3 +269,89 @@ def test_gdacs_event_that_leaves_the_list_ends(monkeypatch):
     assert rows[gone] is True
     assert len(rows) > 1 and not any(ended for ext, ended in rows.items() if ext != gone)
     assert FEEDS["eonet"].snapshot
+
+
+# ── NOAA areas (migration 0024) ──────────────────────────────────────────────
+
+def test_polygons_wkt():
+    from moby.feeds.geo import polygons_wkt
+    square = [[[-112, 35], [-111, 35], [-111, 36], [-112, 36], [-112, 35]]]
+    assert polygons_wkt({"type": "Polygon", "coordinates": square}) == (
+        "MULTIPOLYGON(((-112.00000 35.00000, -111.00000 35.00000, -111.00000 36.00000, "
+        "-112.00000 36.00000, -112.00000 35.00000)))")
+    multi = polygons_wkt({"type": "MultiPolygon", "coordinates": [square, square]})
+    assert multi.count("((") == 2
+    assert polygons_wkt({"type": "GeometryCollection", "geometries": [
+        {"type": "Point", "coordinates": [1, 2]}, {"type": "Polygon", "coordinates": square}]}).count("((") == 1
+    assert polygons_wkt({"type": "Point", "coordinates": [1, 2]}) is None and polygons_wkt(None) is None
+
+
+def test_noaa_alert_with_polygon_keeps_it_as_its_area():
+    (located,) = [e for e in noaa.normalize(load("noaa_alerts")).events if e.has_location]
+    assert located.area_wkt.startswith("MULTIPOLYGON(((")
+
+
+def square(lon, lat, d=1.0):
+    return {"type": "Polygon", "coordinates": [[[lon, lat], [lon + d, lat], [lon + d, lat + d], [lon, lat + d],
+                                                 [lon, lat]]]}
+
+
+ZONES = {f"https://api.weather.gov/zones/forecast/AZZ00{i}": square(-114 + 2 * i, 34) for i in range(3)}
+
+
+def resolve(db_url, events, *, fetch_max=None, monkeypatch=None):
+    from moby.feeds import poller
+    if fetch_max is not None:
+        monkeypatch.setattr(poller, "ZONE_FETCH_MAX", fetch_max)
+    fetched = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        fetched.append(str(request.url))
+        g = ZONES.get(str(request.url))
+        return httpx.Response(200, json={"geometry": g, "properties": {"name": "Zone"}}) if g else httpx.Response(404)
+
+    async def go():
+        async with await psycopg.AsyncConnection.connect(db_url, autocommit=True) as conn, \
+                httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+            return await poller.resolve_zones(events, conn, http)
+    return asyncio.run(go()), fetched
+
+
+def zoned_event():
+    r = noaa.normalize(load("noaa_alerts"))
+    e = next(e for e in r.events if not e.has_location and not e.marine)
+    e.zone_urls = list(ZONES)
+    return e
+
+
+@pytest.fixture
+def db_url():
+    url = _test_db_url()
+    if url is None:
+        pytest.skip("Postgres not reachable (docker compose up -d)")
+    return url
+
+
+def test_zone_alerts_get_the_union_of_their_zones_as_area(db_url, monkeypatch):
+    # 2026-10-20: a Flood Watch for "All of northern and central Arizona" was one point, so
+    # the Grand Canyon (100 km away) didn't see it. Zones cached before 0024 have no area.
+    first, last = list(ZONES)[0], list(ZONES)[-1]
+    with psycopg.connect(db_url, autocommit=True) as c:
+        c.execute("DELETE FROM nws_zones")
+        c.execute("INSERT INTO nws_zones (zone_id, zone_url, centroid) "
+                  "VALUES ('AZZ000', %s, ST_SetSRID(ST_MakePoint(-113.5, 34.5), 4326)::geography)", (first,))
+
+    partial = zoned_event()
+    unlocated, fetched = resolve(db_url, [partial], fetch_max=1, monkeypatch=monkeypatch)
+    assert unlocated == 0 and partial.has_location and partial.area_wkt is None   # placed, but no area yet
+    assert fetched in ([list(ZONES)[1]], [last])                                   # new zones before old ones
+
+    e = zoned_event()
+    unlocated, fetched = resolve(db_url, [e], fetch_max=10, monkeypatch=monkeypatch)
+    assert unlocated == 0 and first in fetched                                     # the old zone refetched
+    with psycopg.connect(db_url) as c:
+        inside, area_km2 = c.execute(
+            "SELECT ST_Intersects(ST_GeomFromText(%s, 4326), ST_SetSRID(ST_MakePoint(-109.5, 34.5), 4326)), "
+            "ST_Area(ST_GeomFromText(%s, 4326)::geography) / 1e6", (e.area_wkt, e.area_wkt)).fetchone()
+    assert inside and 25_000 < area_km2 < 40_000                                  # all three ~100 km squares
+    assert resolve(db_url, [zoned_event()], fetch_max=10, monkeypatch=monkeypatch)[1] == []   # cached now

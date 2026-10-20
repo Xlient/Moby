@@ -6,7 +6,7 @@ Polled every 60 s. Sends a (weak) ETag; we send If-None-Match.
 from datetime import datetime
 from typing import Any
 
-from .geo import centroid
+from .geo import centroid, polygons_wkt
 from .schema import HazardType, NormalizedEvent, NormalizeResult, Severity
 
 URL = "https://api.weather.gov/alerts/active?status=actual"
@@ -119,8 +119,10 @@ def normalize(payload: dict[str, Any]) -> NormalizeResult:
         point = centroid(feature.get("geometry"))
         if point:
             ev.lat, ev.lon = point
+            # The warned polygon itself: near-me, trips and route checks use it (events.area).
+            ev.area_wkt = polygons_wkt(feature.get("geometry"))
         else:
-            # Located later from the cached zone centroids (poller.resolve_zones).
+            # Located later from the cached zones: their centres and areas (poller.resolve_zones).
             ev.zone_urls = list(p.get("affectedZones") or [])
             if not ev.zone_urls:
                 result.skipped["no_location"] += 1
