@@ -48,6 +48,9 @@ services:
       DATABASE_URL: postgresql://moby:moby@db:5432/moby
       # Optional: identify yourself to api.weather.gov (they ask for a contact).
       NWS_USER_AGENT: ${NWS_USER_AGENT:-moby-early-warning/0.1 (github.com/Xlient/Moby)}
+      # From your .env: without it alerts stay in their original language and get no
+      # "What this means for you" explanation; everything else is polled as usual.
+      N_FACTORY_ACC_KEY: ${N_FACTORY_ACC_KEY:-}
     depends_on:
       db: { condition: service_healthy }
       migrate: { condition: service_completed_successfully }
@@ -61,6 +64,8 @@ services:
     command: ["python", "-m", "moby.graph.worker"]
     environment:
       DATABASE_URL: postgresql://moby:moby@db:5432/moby
+      # From your .env: without it reports are fused without the details Nano reads from the note.
+      N_FACTORY_ACC_KEY: ${N_FACTORY_ACC_KEY:-}
     depends_on:
       db: { condition: service_healthy }
       migrate: { condition: service_completed_successfully }
