@@ -70,10 +70,24 @@ def parse(raw: str) -> Translation:
     return Translation(str(data.get("headline") or "").strip(), str(data.get("body") or "").strip())
 
 
+def no_text_reason(resp) -> str | None:
+    """Why a reply has no text to parse, said plainly (instead of a JSONDecodeError)."""
+    content = resp.content if isinstance(resp.content, str) else str(resp.content)
+    if content.strip():
+        return None
+    meta = resp.response_metadata or {}
+    used = (meta.get("token_usage") or {}).get("completion_tokens")
+    if meta.get("finish_reason") == "length":
+        return f"model returned no text: hit max_tokens ({used} tokens used)"
+    return f"model returned no text (finish_reason={meta.get('finish_reason')})"
+
+
 async def translate_one(llm, language: str, headline: str, body: str) -> tuple[Translation | None, str | None]:
     msg = PROMPT.format(lang=language, headline=headline or "", body=(body or "")[:3000])
     try:
         resp = await llm.ainvoke(msg)
+        if reason := no_text_reason(resp):
+            return None, reason
         t = parse(resp.content if isinstance(resp.content, str) else str(resp.content))
     except Exception as e:  # noqa: BLE001 - model/network/JSON problems all mean "no translation"
         return None, f"{type(e).__name__}: {e}"[:200]
@@ -123,7 +137,11 @@ async def run_translator(pool: AsyncConnectionPool, *, once: bool) -> None:
     if get_settings().token_factory_api_key is None:
         log.warning("N_FACTORY_ACC_KEY not set: alerts stay in their original language")
         return
-    llm = chat_model("nano", temperature=0, max_tokens=1500)
+    # Reasoning off, as for localize.py: with it on, Nano thought for 1,000-1,500+ tokens even
+    # on a 40-character alert and often hit max_tokens before writing any answer (empty
+    # reply, so every long-ish alert failed). Off, the same alerts take 50-200 tokens.
+    llm = chat_model("nano", temperature=0, max_tokens=1500,
+                     extra_body={"chat_template_kwargs": {"enable_thinking": False}})
     model = model_name("nano")
     while True:
         try:

@@ -221,6 +221,28 @@ def test_translation_checks():
     assert check(src_h, src_b, Translation("", "x")) == "empty headline"
 
 
+def test_empty_translation_reply_says_why():
+    """A reply cut off by max_tokens before any text is rejected with that reason, not a JSONDecodeError."""
+    from langchain_core.messages import AIMessage
+
+    from moby.feeds.translate import translate_one
+
+    class Llm:
+        def __init__(self, reply):
+            self.reply = reply
+
+        async def ainvoke(self, _msg):
+            return self.reply
+
+    cut = AIMessage("", response_metadata={"finish_reason": "length", "token_usage": {"completion_tokens": 1500}})
+    t, why = asyncio.run(translate_one(Llm(cut), "es-MX", "Frente núm. 2", "Rachas de 60 a 80 km/h."))
+    assert t is None and why == "model returned no text: hit max_tokens (1500 tokens used)"
+    ok = AIMessage('{"headline": "Front no. 2", "body": "Gusts of 60 to 80 km/h."}',
+                   response_metadata={"finish_reason": "stop"})
+    t, why = asyncio.run(translate_one(Llm(ok), "es-MX", "Frente núm. 2", "Rachas de 60 a 80 km/h."))
+    assert why is None and t.headline == "Front no. 2"
+
+
 def test_translated_alert_shape_and_push_label():
     from moby.api.alerts import to_alert
     from moby.delivery.worker import build_push
