@@ -26,9 +26,10 @@ def haversine_km(lat1, lon1, lat2, lon2):
     return 2 * 6371.0 * math.asin(math.sqrt(a))
 
 
-def ev(cell=(0, 0), hazard="flood", severity="medium", source="official"):
+def ev(cell=(0, 0), hazard="flood", severity="medium", source="official", country=None, feed="cap"):
     return {"event_id": uuid.uuid4(), "cy": cell[0], "cx": cell[1], "hazard_type": hazard,
-            "severity": severity, "source": source}
+            "severity": severity, "source": source, "country": country,
+            "source_feed": feed if source == "official" else None}
 
 
 def test_variety_and_severity_beat_sheer_volume():
@@ -45,6 +46,39 @@ def test_community_reports_add_to_a_zone_and_the_lead_is_the_worst_official_aler
     zones = rank_zones([report, official, quiet], 5)
     assert zones[0].cell == (3, 3)
     assert zones[0].lead is official            # an agency's warning before a report of the same severity
+
+
+def test_a_busy_zone_beats_one_with_a_few_more_high_warnings():
+    # 2026-10-20: Pingyao County (16 medium alerts) ranked below Italian regions with 2-3 high.
+    busy = [ev((5, 5), "storm", "medium", country="CN") for _ in range(16)]
+    sharp = [ev((6, 6), "storm", "high", country="IT") for _ in range(3)]
+    assert [z.cell for z in rank_zones(busy + sharp, 5)] == [(5, 5), (6, 6)]
+
+
+def test_at_most_two_zones_per_country_until_the_list_would_be_short():
+    italy = [ev((40, c), "storm", "critical", country="IT") for c in range(6)]   # the best zones
+    others = [ev((10, 0), "flood", "medium", country="MX"),
+              ev((20, 0), "flood", "low", country="CN"),
+              ev((30, 0), "flood", "low", feed="noaa")]                          # NWS: no country stored
+    zones = rank_zones(italy + others, 5)
+    assert [z.country for z in zones] == ["IT", "IT", "MX", "CN", "US"]
+    # Too few other countries: Italy's next best fill the rest, after everyone else.
+    zones = rank_zones(italy + others, 8)
+    assert [z.country for z in zones] == ["IT", "IT", "MX", "CN", "US", "IT", "IT", "IT"]
+    assert rank_zones(italy, 4, per_country=2)[2].country == "IT"
+
+
+def test_zones_with_no_known_country_are_not_capped_together():
+    unknown = [ev((-15, 168 + c), "storm", "high", feed="gdacs") for c in range(3)]   # e.g. Vanuatu
+    zones = rank_zones(unknown + [ev((0, 0), "flood", "low", country="PH")], 4)
+    assert [z.country for z in zones] == [None, None, None, "PH"]
+
+
+def test_zone_country_is_the_feeds_or_us_for_nws():
+    assert rank_zones([ev(feed="noaa")], 1)[0].country == "US"
+    assert rank_zones([ev(country="GU", feed="noaa")], 1)[0].country == "GU"     # a stored country wins
+    assert rank_zones([ev(country="IT"), ev(country="IT"), ev(country="SM")], 1)[0].country == "IT"
+    assert rank_zones([ev(feed="eonet"), ev(source="manual")], 1)[0].country is None
 
 
 def raw(severity="high", source="official", hazard="flood", **kw):
@@ -122,6 +156,7 @@ def test_hot_zones_lists_todays_busiest_places_centred_on_their_worst_alert(clie
     top = zones[0]
     assert top["center"] == {"lat": 14.6, "lon": 121.0} and top["top_severity"] == "critical"
     assert top["alert_count"] == 3 and top["has_community_reports"] is True
+    assert top["country"] == "US"                       # NWS rows store no country
     assert set(top["hazard_types"]) == {"flood", "landslide"}
     assert zones[1]["center"] == {"lat": 37.8, "lon": -122.3}
 
