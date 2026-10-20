@@ -8,6 +8,11 @@
 //  agency, violet for unverified reports from people nearby.
 //  Neither hue is used anywhere else, so they never read as
 //  a severity.
+//
+//  Brand (v3): navy, river teal and sunbeam yellow, taken from
+//  the Moby mark. Chrome only — headers, controls, tiles, the
+//  active tab. Never on an alert card, severity chip, trust
+//  label or map hazard, so it never competes with the ramp.
 // ─────────────────────────────────────────────────────────────
 
 // ── Colour interfaces ────────────────────────────────────────
@@ -65,6 +70,27 @@ export interface SeverityColors {
   critical: string;
 }
 
+export interface BrandColors {
+  /** Home header and launch screen */
+  navy: string;
+  /** Text and the mark on navy */
+  onNavy: string;
+  /** Secondary text on navy */
+  onNavySecondary: string;
+  /** Primary buttons, Report FAB, switches, links */
+  primary: string;
+  /** Text and icons on `primary` */
+  onPrimary: string;
+  /** Icon wells, tiles */
+  soft: string;
+  /** Text and icons on `soft` */
+  onSoft: string;
+  /** Sunbeam yellow: the one accent pop (active tab, "Do this first", header underline) */
+  pop: string;
+  /** Text and icons on `pop` */
+  onPop: string;
+}
+
 // ── Theme interface ──────────────────────────────────────────
 
 export interface Theme {
@@ -74,6 +100,7 @@ export interface Theme {
   accent: AccentColors;
   severity: SeverityColors;
   trust: TrustColors;
+  brand: BrandColors;
   shadow: string;
 }
 
@@ -107,6 +134,17 @@ export const lightTheme: Theme = {
     official: { text: '#1E4FAE', bg: '#E4EDFC', border: '#1E4FAE' },     // 6.4:1 on bg, 7.5:1 on white
     unverified: { text: '#7339A8', bg: '#F3EAFB', border: '#7339A8' },   // 6.2:1 on bg, 6.4:1 on recessed
   },
+  brand: {
+    navy: '#0B1F33',
+    onNavy: '#F4F7FA',            // 15.5:1
+    onNavySecondary: '#B9C7D3',   // 9.7:1
+    primary: '#0B7A70',           // white on it 5.2:1
+    onPrimary: '#FFFFFF',
+    soft: '#DCF2EE',
+    onSoft: '#075E56',            // 6.6:1
+    pop: '#FFD34D',
+    onPop: '#3D2E00',             // 9.2:1; yellow is 11.7:1 on navy
+  },
   shadow: '0 1px 3px rgba(0, 0, 0, 0.08)',
 };
 
@@ -139,6 +177,17 @@ export const darkTheme: Theme = {
   trust: {
     official: { text: '#A3C2F7', bg: '#1C2A42', border: '#A3C2F7' },     // 8.0:1 on bg, 8.3:1 on raised
     unverified: { text: '#D2B0F4', bg: '#2B2238', border: '#B88AE8' },   // 8.1:1 on bg, 9.6:1 on recessed
+  },
+  brand: {
+    navy: '#0E2A44',              // lifted off the charcoal background
+    onNavy: '#F4F7FA',
+    onNavySecondary: '#B9C7D3',
+    primary: '#5CCFBF',
+    onPrimary: '#06302B',         // 7.6:1
+    soft: '#173733',
+    onSoft: '#9BE5DA',            // 9.0:1
+    pop: '#FFD34D',
+    onPop: '#3D2E00',
   },
   shadow: '0 1px 3px rgba(0, 0, 0, 0.32)',
 };

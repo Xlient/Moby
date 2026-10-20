@@ -10,6 +10,7 @@ import { useRetryLocation } from '@/location/UserLocationContext';
 import { useNearbyAlerts } from '@/hooks/useNearbyAlerts';
 import { AlertCard } from '@/components/AlertCard';
 import { MapPreviewCard } from '@/components/MapPreviewCard';
+import { MobyMark } from '@/components/MobyMark';
 import { RadiusPicker } from '@/components/RadiusPicker';
 import { formatTimeAgo } from '@/lib/alerts';
 import { useReportQueue } from '@/hooks/useReportQueue';
@@ -128,6 +129,31 @@ function LoadingCards({ theme }: { theme: Theme }) {
   );
 }
 
+/** A home shortcut: icon well, short title, one-line note. Two per row; wraps at large text. */
+function Tile({
+  theme, icon, title, note, label, onPress,
+}: {
+  theme: Theme;
+  icon: string;
+  title: string;
+  note: string;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.tile, { backgroundColor: theme.bg.raised, opacity: pressed ? 0.85 : 1 }]}
+    >
+      <Avatar.Icon size={40} icon={icon} style={{ backgroundColor: theme.brand.soft }} color={theme.brand.onSoft} />
+      <Text variant="titleSmall" style={{ color: theme.text.primary }}>{title}</Text>
+      <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>{note}</Text>
+    </Pressable>
+  );
+}
+
 export function HomeScreen({
   onReportPress, onAlertPress, onSeeAllPress, onMapPress, onGuidancePress, onMyReportsPress, onEmergencyPress, onHelpPress, onSosCallsPress, onTripPress, onRouteCheckPress,
 }: HomeScreenProps) {
@@ -152,8 +178,10 @@ export function HomeScreen({
   const greeting = firstName
     ? `${greetingFor(new Date().getHours())}, ${firstName}`
     : greetingFor(new Date().getHours());
-  // Offline changes the subline only — no banner (spec v3, H1).
-  const subline = isOffline ? 'Offline — showing saved info' : `Watching within ${radiusKm} km`;
+  // Offline changes the pill and subline only — no banner (spec v3, H1).
+  const subline = isOffline
+    ? 'Showing what’s saved on this phone'
+    : `Everything within ${radiusKm} km of ${center.source === 'viewing' ? center.name ?? 'this place' : 'you'}`;
 
   const inArea = center.source === 'viewing' ? `${center.name ?? 'This place'} is in the warning area` : 'You are in the warning area';
   const visible = nearby.slice(0, MAX_HOME_CARDS);
@@ -164,11 +192,37 @@ export function HomeScreen({
       {/* One vertical scroll; nothing inside it scrolls on its own. */}
       <ScrollView
         contentContainerStyle={{
-          paddingTop: spacing.scale[3],
           paddingHorizontal: r.gutter,
           paddingBottom: FAB_CLEARANCE + spacing.scale[3],
         }}
       >
+        <View
+          style={[
+            styles.header,
+            { backgroundColor: theme.brand.navy, marginHorizontal: -r.gutter, paddingHorizontal: r.gutter },
+          ]}
+        >
+          <View style={styles.brandRow}>
+            <MobyMark size={28} />
+            <Text variant="titleMedium" style={{ color: theme.brand.onNavy }} accessibilityRole="header">
+              Moby
+            </Text>
+            <View style={[styles.statusPill, { backgroundColor: isOffline ? 'rgba(244, 247, 250, 0.12)' : 'rgba(45, 212, 191, 0.18)' }]}>
+              <View style={[styles.dot, { backgroundColor: isOffline ? theme.brand.onNavySecondary : '#2DD4BF' }]} />
+              <Text variant="labelSmall" style={{ color: isOffline ? theme.brand.onNavy : '#9BF2E4' }}>
+                {isOffline ? 'Offline' : 'Watching'}
+              </Text>
+            </View>
+          </View>
+          <Text variant="headlineMedium" accessibilityRole="header" style={[styles.greeting, { color: theme.brand.onNavy }]}>
+            {greeting}
+          </Text>
+          <Text variant="bodyLarge" style={{ color: theme.brand.onNavySecondary }}>
+            {subline}
+          </Text>
+          <View style={[styles.underline, { backgroundColor: theme.brand.pop }]} />
+        </View>
+
         <TryMobyBanner />
 
         {emergency && (
@@ -205,20 +259,6 @@ export function HomeScreen({
             </View>
           </Pressable>
         )}
-
-        <View style={styles.section}>
-          <Text variant="headlineMedium" accessibilityRole="header" style={{ color: theme.text.primary }}>
-            {greeting}
-          </Text>
-          <View style={styles.sublineRow}>
-            <View
-              style={[styles.dot, { backgroundColor: isOffline ? theme.text.faint : theme.accent.calm }]}
-            />
-            <Text variant="bodyLarge" style={[styles.subline, { color: theme.text.secondary }]}>
-              {subline}
-            </Text>
-          </View>
-        </View>
 
         <View style={styles.section}>
           <Text variant="titleMedium" accessibilityRole="header" style={[styles.sectionTitle, { color: theme.text.primary }]}>
@@ -304,75 +344,38 @@ export function HomeScreen({
         </View>
 
         <View style={styles.section}>
-          <Pressable
-            onPress={onGuidancePress}
-            accessibilityRole="button"
-            accessibilityLabel="Safety guidance. Works without signal."
-            style={[styles.guidanceRow, { backgroundColor: theme.bg.raised }]}
-          >
-            <Avatar.Icon size={40} icon="book-open-variant" style={{ backgroundColor: theme.bg.recessed }} color={theme.text.primary} />
-            <View style={styles.guidanceText}>
-              <Text variant="titleMedium" style={{ color: theme.text.primary }}>Safety guidance</Text>
-              <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>What to do in a flood, fire, quake or storm. Works without signal.</Text>
-            </View>
-          </Pressable>
+          <Text variant="titleMedium" accessibilityRole="header" style={[styles.sectionTitle, { color: theme.text.primary }]}>
+            Get ready, get help
+          </Text>
           <Pressable
             onPress={onHelpPress}
             accessibilityRole="button"
             accessibilityLabel="I need help. Your exact location and emergency numbers. Works without signal."
-            style={[styles.guidanceRow, styles.rowGap, { backgroundColor: theme.bg.raised }]}
+            style={[styles.helpRow, { backgroundColor: theme.bg.raised, borderColor: theme.line.hairline }]}
           >
-            <Avatar.Icon size={40} icon="lifebuoy" style={{ backgroundColor: theme.bg.recessed }} color={theme.severity.critical} />
+            <Avatar.Icon size={44} icon="lifebuoy" style={{ backgroundColor: theme.bg.recessed }} color={theme.severity.critical} />
             <View style={styles.guidanceText}>
               <Text variant="titleMedium" style={{ color: theme.text.primary }}>I need help</Text>
               <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>Your exact location and emergency numbers. Works without signal.</Text>
             </View>
           </Pressable>
-          <Pressable
-            onPress={onRouteCheckPress}
-            accessibilityRole="button"
-            accessibilityLabel="Check a route. See whether the way to somewhere crosses a known hazard."
-            style={[styles.guidanceRow, styles.rowGap, { backgroundColor: theme.bg.raised }]}
-          >
-            <Avatar.Icon size={40} icon="map-marker-path" style={{ backgroundColor: theme.bg.recessed }} color={theme.text.primary} />
-            <View style={styles.guidanceText}>
-              <Text variant="titleMedium" style={{ color: theme.text.primary }}>Check a route</Text>
-              <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>Does the way there cross a warning area or a reported hazard?</Text>
-            </View>
-          </Pressable>
-          {onTripPress && (
-            <Pressable
-              onPress={onTripPress}
-              accessibilityRole="button"
-              accessibilityLabel="Before you go. Check a destination and save it for offline."
-              style={[styles.guidanceRow, styles.rowGap, { backgroundColor: theme.bg.raised }]}
-            >
-              <Avatar.Icon size={40} icon="bag-personal-outline" style={{ backgroundColor: theme.bg.recessed }} color={theme.text.primary} />
-              <View style={styles.guidanceText}>
-                <Text variant="titleMedium" style={{ color: theme.text.primary }}>Before you go</Text>
-                <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>Check a destination’s alerts and save a safety pack for when signal runs out.</Text>
-              </View>
-            </Pressable>
-          )}
-          {myReports.length > 0 && (
-            // Only once there's something to show: where the person's reports are now.
-            <Pressable
-              onPress={onMyReportsPress}
-              accessibilityRole="button"
-              accessibilityLabel={`Your reports: ${myReports.length}${waitingReports ? `, ${waitingReports} waiting to send` : ''}`}
-              style={[styles.guidanceRow, styles.rowGap, { backgroundColor: theme.bg.raised }]}
-            >
-              <Avatar.Icon size={40} icon="clipboard-text-clock-outline" style={{ backgroundColor: theme.bg.recessed }} color={theme.text.primary} />
-              <View style={styles.guidanceText}>
-                <Text variant="titleMedium" style={{ color: theme.text.primary }}>Your reports</Text>
-                <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
-                  {waitingReports
-                    ? `${waitingReports} waiting to send. See what happened to the others.`
-                    : 'See what happened to the reports you sent.'}
-                </Text>
-              </View>
-            </Pressable>
-          )}
+          <View style={styles.tiles}>
+            <Tile theme={theme} icon="book-open-variant" title="What to do" note="Works offline" onPress={onGuidancePress}
+              label="Safety guidance. What to do in a flood, fire, quake or storm. Works without signal." />
+            <Tile theme={theme} icon="map-marker-path" title="Check a route" note="Hazards on the way" onPress={onRouteCheckPress}
+              label="Check a route. See whether the way to somewhere crosses a known hazard." />
+            {onTripPress && (
+              <Tile theme={theme} icon="bag-personal-outline" title="Before you go" note="Save a safety pack" onPress={onTripPress}
+                label="Before you go. Check a destination and save it for offline." />
+            )}
+            {myReports.length > 0 && (
+              // Only once there's something to show: where the person's reports are now.
+              <Tile theme={theme} icon="clipboard-text-clock-outline" title="Your reports"
+                note={waitingReports ? `${waitingReports} waiting to send` : `${myReports.length} sent`}
+                onPress={onMyReportsPress}
+                label={`Your reports: ${myReports.length}${waitingReports ? `, ${waitingReports} waiting to send` : ''}`} />
+            )}
+          </View>
         </View>
       </ScrollView>
 
@@ -381,7 +384,8 @@ export function HomeScreen({
         label="Report"
         onPress={onReportPress}
         accessibilityLabel="Report a hazard"
-        style={[styles.fab, { right: r.gutter }]}
+        color={theme.brand.onPrimary}
+        style={[styles.fab, { right: r.gutter, backgroundColor: theme.brand.primary }]}
       />
 
       <RadiusPicker
@@ -408,29 +412,62 @@ const styles = StyleSheet.create({
   sectionTitle: {
     marginBottom: spacing.scale[2],
   },
-  sublineRow: {
+  header: {
+    paddingTop: spacing.scale[3],
+    paddingBottom: spacing.scale[5],
+    marginBottom: spacing.sectionGap,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: spacing.scale[0],
     gap: spacing.scale[1],
   },
-  subline: {
-    flexShrink: 1,
+  statusPill: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.scale[1],
+    paddingVertical: spacing.scale[0],
+    paddingHorizontal: spacing.scale[2],
+    borderRadius: radius.pill,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  greeting: {
+    marginTop: spacing.scale[4],
   },
-  guidanceRow: {
+  underline: {
+    width: 44,
+    height: 3,
+    borderRadius: 2,
+    marginTop: spacing.scale[3],
+  },
+  helpRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.scale[3],
     padding: spacing.scale[4],
     borderRadius: radius.card,
+    borderWidth: 1,
   },
-  rowGap: {
+  tiles: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.scale[2],
     marginTop: spacing.scale[2],
+  },
+  tile: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    minHeight: 120,
+    padding: spacing.scale[3],
+    borderRadius: radius.card,
+    gap: spacing.scale[1],
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   emergencyBanner: {
     flexDirection: 'row',

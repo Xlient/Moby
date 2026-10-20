@@ -27,6 +27,8 @@ interface Treatment {
   cardColor: string;
   iconContainer: string;
   iconColor: string;
+  /** Thick left edge in the severity colour; never on unverified reports. */
+  edgeColor?: string;
   severityNeutral: boolean;
 }
 
@@ -39,6 +41,7 @@ function treatmentFor(alert: Alert, theme: Theme): Treatment {
         cardColor: theme.bg.raised,
         iconContainer: withAlpha(severityColor, 0.18),
         iconColor: severityColor,
+        edgeColor: severityColor,
         severityNeutral: false,
       };
     case 'corroborated_report':
@@ -47,6 +50,7 @@ function treatmentFor(alert: Alert, theme: Theme): Treatment {
         cardColor: theme.bg.raised,
         iconContainer: withAlpha(severityColor, 0.09),
         iconColor: severityColor,
+        edgeColor: withAlpha(severityColor, 0.5),
         severityNeutral: false,
       };
     case 'unverified_report':
@@ -145,6 +149,7 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
       style={[
         styles.card,
         { backgroundColor: t.cardColor, opacity: expired ? 0.7 : 1 },
+        t.edgeColor && { borderLeftWidth: 6, borderLeftColor: t.edgeColor },
         // Single unverified reports: a dashed violet outline, matching their label.
         t.mode === 'outlined' && { borderColor: theme.trust.unverified.border, borderStyle: 'dashed' as const },
       ]}
@@ -152,7 +157,7 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
     >
       <View style={styles.row}>
         <Avatar.Icon
-          size={40}
+          size={44}
           icon={hazardIcon(alert.hazard_type)}
           color={t.iconColor}
           style={{ backgroundColor: t.iconContainer }}

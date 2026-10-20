@@ -1,17 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <!-- Moby mark: a map pin broadcasting a warning. Works on dark and light. -->
-  <defs>
-    <linearGradient id="pin" x1="0.2" y1="0" x2="0.8" y2="1">
-      <stop offset="0" stop-color="#FFB020"/>
-      <stop offset="1" stop-color="#FF5A3C"/>
-    </linearGradient>
-  </defs>
-  <path d="M512 868 C 430 768, 282 612, 282 430 A 230 230 0 1 1 742 430 C 742 612, 594 768, 512 868 Z" fill="url(#pin)"/>
-  <circle cx="512" cy="430" r="62" fill="#F4F7FA"/>
-  <g fill="none" stroke="#F4F7FA" stroke-linecap="round" stroke-width="34">
-    <path d="M603.9 338.1 A130 130 0 0 1 603.9 521.9"/>
-    <path d="M420.1 338.1 A130 130 0 0 0 420.1 521.9"/>
-    <path d="M642.8 299.2 A185 185 0 0 1 642.8 560.8" opacity="0.7"/>
-    <path d="M381.2 299.2 A185 185 0 0 0 381.2 560.8" opacity="0.7"/>
+  <!-- Moby mark ("Sheltered"): a person under two arcs, watched over and warned early. For dark backgrounds. -->
+  <g fill="none" stroke-linecap="round" stroke-width="60">
+    <path d="M246.1 603.9 A270 270 0 1 1 777.9 603.9" stroke="#FFD34D"/>
+    <path d="M335 588.5 A180 180 0 1 1 689 588.5" stroke="#2DD4BF"/>
   </g>
+  <circle cx="512" cy="527" r="71" fill="#F4F7FA"/>
+  <path d="M384.5 767 Q384.5 632 512 632 Q639.5 632 639.5 767 Z" fill="#F4F7FA"/>
 </svg>
