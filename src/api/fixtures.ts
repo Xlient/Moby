@@ -405,7 +405,7 @@ export function getMockExplanation(eventId: string): AlertExplanation | undefine
 // Ask Moby sample: answers about floods, abstains on anything else (like the real one off-topic).
 export function getMockAnswer(question: string): AskAnswer {
   if (!/flood|water|road/i.test(question)) {
-    return { answer: null, abstained: true, sources: [], model: 'nvidia/nemotron-3-super-120b-a12b', searched_web: false };
+    return { answer: null, abstained: true, sources: [], model: 'nvidia/nemotron-3-super-120b-a12b', searched_web: false, search_limited: false };
   }
   return {
     answer: 'Turn around and find another route: never drive through a flooded road [1]. '

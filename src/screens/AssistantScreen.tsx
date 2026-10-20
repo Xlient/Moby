@@ -230,6 +230,12 @@ export function AssistantScreen({ onTripPress }: { onTripPress?: () => void } = 
   );
 }
 
+/** When the daily search allowance comes back (00:00 UTC), in the phone's own time: "8:00 AM". */
+function searchResetTime(now = new Date()): string {
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  return next.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
 function AnswerCard({ answer }: { answer: AskAnswer }) {
   const { theme } = useTheme();
   if (answer.abstained || !answer.answer) {
@@ -237,8 +243,10 @@ function AnswerCard({ answer }: { answer: AskAnswer }) {
       <MobyMessage via="official sources">
         <AnswerSurface quiet>
           <Text style={[typography.body, { color: theme.text.primary }]}>
-            I couldn’t find an answer to that in official alerts or safety guidance, so I won’t guess. Try asking about
-            what to do in a specific hazard, or check the Safety guidance section.
+            {answer.search_limited
+              ? // Say why: it isn't that the question is out of scope, it's today's limit on website searches.
+                `I’ve used today’s searches of official websites, and official alerts and safety guidance don’t cover this, so I won’t guess. Website searches come back at ${searchResetTime()}. Until then, try asking about what to do in a specific hazard.`
+              : 'I couldn’t find an answer to that in official alerts or safety guidance, so I won’t guess. Try asking about what to do in a specific hazard, or check the Safety guidance section.'}
           </Text>
         </AnswerSurface>
       </MobyMessage>

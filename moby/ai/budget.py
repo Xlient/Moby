@@ -5,7 +5,9 @@ the way it already does when a call fails:
   translate  the alert stays in its original language (translated the next day)
   explain    the app shows only the official text (explained the next day)
   ask        Ask Moby says it has reached today's limit; guidance still works offline
-  tavily     Ask Moby answers from alerts and guidance only
+  ask_search Ask Moby's own official-website searches (Tavily): past it, Ask Moby answers
+             from alerts and guidance only, and says so when that leaves it unable to answer
+  tavily     official-website searches for briefs and trip briefings
   localize   Moby's AI text stays in English (moby/ai/localize.py)
   structure  a report's note isn't read for details; the report is fused anyway (moby/graph)
   route      route checks answer 429 and the app says to try tomorrow (moby/api/routes.py)
@@ -19,20 +21,23 @@ Caps reset at 00:00 UTC. Override with MOBY_DAILY_CAP_<FEATURE> (e.g. MOBY_DAILY
 Defaults are sized for judging and a small user base: even if every cap is hit every
 day, roughly $0.75 a day of Token Factory use (Nano ~$0.0003 per translation, Super
 ~$0.002 per explanation or answer), and Tavily stays inside its free 1,000 searches a
-month. Explanations are cached per event (and per language), so a cap covers far more
+month (25 + 7 = 32 a day, at most 992 in a 31-day month). Explanations are cached per event (and per language), so a cap covers far more
 readers than its number; new warnings that are pushed get explained up front.
 Route checks (up to 2 OpenRouteService directions calls each) and place searches stay
 inside ORS's free daily quota (2,000 directions, 1,000 searches).
 The brief caps are on top of that figure: `brief` counts Ultra briefs (a retry claims
 another unit), `brief_changes` Super "what changed" notes. Briefs share the `tavily` cap.
 `trip_brief` counts Ultra trip briefings (a retry claims another unit); they share `tavily` too.
+Ask Moby searches under its own `ask_search` cap, so a busy day of briefs can't leave
+someone's question unanswered.
 """
 import os
 from datetime import datetime, timezone
 
 from psycopg import AsyncConnection, Connection
 
-DEFAULT_CAPS = {"translate": 800, "explain": 150, "ask": 60, "tavily": 25, "localize": 400, "structure": 300,
+DEFAULT_CAPS = {"translate": 800, "explain": 150, "ask": 60, "ask_search": 7, "tavily": 25, "localize": 400,
+                "structure": 300,
                 "brief": 20, "brief_changes": 40, "trip_brief": 20, "route": 400, "places": 500}
 
 
