@@ -63,7 +63,7 @@ from moby.feeds.poller import FEEDS, health as feeds_health
 from moby.feeds.schema import Severity
 from moby.llm import EMBEDDING_DIM
 
-from moby.ai import ask, budget, localize, trip
+from moby.ai import ask, budget, explain, localize, trip
 from moby.graph.brief_queries import TIMELINE_EVENT_SQL, TIMELINE_REPORTS_SQL, build_timeline
 from moby.graph.brief_queries import VIEW_SQL as BRIEF_ON_VIEW_SQL
 
@@ -370,7 +370,9 @@ async def event_explain(event_id: uuid.UUID,
         row = await cur.fetchone()
         if row is None:
             raise HTTPException(404, "event not found")
-        if row["explainer_status"] == "done":
+        # Explained before Moby required an English translation (explain.untranslated): it's in
+        # the agency's language, not the reader's, so it isn't served.
+        if row["explainer_status"] == "done" and not explain.untranslated(row):
             explained = {k: row["explainer"].get(k) for k in ("summary", "actions", "model", "generated_at")}
             # In the phone's language when we can (moby/ai/localize.py); English otherwise.
             if (code := localize.normalize(lang)) and (loc := await localize.explanation_in(conn, row, code)):
