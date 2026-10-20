@@ -164,10 +164,22 @@ def test_hot_zones_lists_todays_busiest_places_centred_on_their_worst_alert(clie
 def test_replay_returns_real_past_alerts_without_storing_or_listing_them(client, db_url):
     past = add(db_url, lat=30.9, lon=103.6, severity="critical", age="40 days", expires="-39 days")
     add(db_url, lat=30.9, lon=103.6, hazard="earthquake", age="50 days", expires="-49 days", description="short")
-    out = client.get("/v1/demo/replay", params={"lat": 14.6, "lon": 121.0}).json()["alerts"]
+    out = client.get("/v1/demo/replay", params={"lat": 30.66, "lon": 104.07}).json()["alerts"]   # Chengdu, ~60 km
     assert [a["event_id"] for a in out] == [past]          # too little text to explain: not replayed
     assert out[0]["demo"] is True and out[0]["distance_km"] == 0
     # Nobody else sees it: the real list at that point is empty, and nothing was written.
-    assert client.get("/v1/alerts", params={"lat": 14.6, "lon": 121.0}).json()["alerts"] == []
+    assert client.get("/v1/alerts", params={"lat": 30.66, "lon": 104.07}).json()["alerts"] == []
     with psycopg.connect(db_url) as c:
         assert c.execute("SELECT count(*) FROM events").fetchone()[0] == 2
+
+
+def test_replay_only_borrows_alerts_from_the_region(client, db_url):
+    # 2026-10-20: Phakding (Nepal) got a Pacific typhoon, a Wyoming red-flag warning and a
+    # Maryland freeze warning. Far-away alerts and reports stay where they were.
+    add(db_url, lat=39.4, lon=-77.4, hazard="other", severity="high", age="20 days", expires="-19 days")
+    add(db_url, lat=39.4, lon=-77.4, source="manual", age="20 days", expires="-19 days")
+    nepal = {"lat": 27.7394, "lon": 86.7114}
+    assert client.get("/v1/demo/replay", params=nepal).json() == {"alerts": []}   # none nearby: say so, don't borrow
+    near = add(db_url, lat=28.2, lon=83.98, hazard="landslide", severity="high", age="30 days", expires="-29 days")
+    out = client.get("/v1/demo/replay", params=nepal).json()["alerts"]            # Pokhara, ~280 km
+    assert [a["event_id"] for a in out] == [near] and out[0]["hazard_type"] == "landslide"

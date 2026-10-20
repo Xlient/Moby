@@ -97,7 +97,7 @@ export interface paths {
         };
         /**
          * Real past alerts, replayed around a point (demo mode)
-         * @description Up to five real past alerts (the most serious official one on the point, so the person is inside it; the others a few km away), dated now and marked demo, with replay_of saying what each really was. Nothing is stored, pushed or shown to anyone else. event_id is the real event, so its explanation and brief still open.
+         * @description Up to five real past alerts from the region (within 800 km of the point), replayed around it: the most serious official one on the point, so the person is inside it; the others a few km away. Dated now and marked demo, with replay_of saying what each really was. Empty when the region has none: alerts from far away are never borrowed. Nothing is stored, pushed or shown to anyone else. event_id is the real event, so its explanation and brief still open.
          */
         get: {
             parameters: {

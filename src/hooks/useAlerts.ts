@@ -4,7 +4,7 @@ import type { Alert } from '@/api/types';
 import { useOnlineStatus } from './useOnlineStatus';
 import { kv } from '@/lib/storage';
 import { env } from '@/config/env';
-import { isDemoAlert, useTryMoby } from '@/lib/tryMoby';
+import { isDemoAlert, setNoReplayHere, useTryMoby } from '@/lib/tryMoby';
 
 const ALERTS_CACHE_KEY = 'cached-alerts';
 const ALERTS_CACHE_TS_KEY = 'cached-alerts-ts';
@@ -50,11 +50,12 @@ export function useAlerts(lat?: number, lon?: number, radiusKm?: number): UseAle
       // on the phone (useNearbyAlerts), so changing it is instant and works offline.
       const [data, replays] = await Promise.all([
         api.getAlerts({ lat, lon, radius_km: radiusKm, community_reports: 'all' }),
-        // A failed replay never hides the real alerts.
-        demo ? api.getDemoReplay(lat!, lon!).catch(() => [] as Alert[]) : Promise.resolve([] as Alert[]),
+        // A failed replay never hides the real alerts (null: failed, so not "none here").
+        demo ? api.getDemoReplay(lat!, lon!).catch(() => null) : Promise.resolve([] as Alert[]),
       ]);
+      if (demo && replays) setNoReplayHere(replays.length === 0);
       // A new id per demo run, so its emergency screen opens again each time demo mode is turned on.
-      const list = [...(data.alerts ?? []), ...replays.map((a) => ({ ...a, alert_id: `demo-${demo}-${a.event_id}` }))];
+      const list = [...(data.alerts ?? []), ...(replays ?? []).map((a) => ({ ...a, alert_id: `demo-${demo}-${a.event_id}` }))];
       persistAlerts(list);
       return list;
     },
