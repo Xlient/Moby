@@ -8,6 +8,12 @@
 # service (that requires an App Check token only the official signed app can get).
 
 LICENSE
+CODE_OF_CONDUCT.md
+SECURITY.md
+SPONSORS.md
+.github/FUNDING.yml
+.github/ISSUE_TEMPLATE/**
+.github/pull_request_template.md
 index.ts
 app.json
 app.config.ts

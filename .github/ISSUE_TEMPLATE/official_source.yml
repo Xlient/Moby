@@ -1,0 +1,40 @@
+name: Official source
+description: Suggest an official warning feed or safety guidance source for a country or region.
+labels: ["feeds"]
+body:
+  - type: input
+    id: country
+    attributes:
+      label: Country or region
+    validations:
+      required: true
+  - type: input
+    id: agency
+    attributes:
+      label: Issuing agency
+      placeholder: National Meteorological Service of …
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Feed or page URL
+      description: A Common Alerting Protocol (CAP) feed, an API, or an official guidance page.
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is it?
+      options:
+        - Warning feed (CAP / RSS / Atom)
+        - Warning API (JSON / XML)
+        - Safety guidance page
+        - Emergency numbers
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Hazards covered, language, terms of use
+      description: Anything you know about which hazards it covers, its language, and whether it may be reused.
