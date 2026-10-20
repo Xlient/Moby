@@ -36,12 +36,13 @@ def _pool():
 # Zones are 1° cells (~110 km): about a region, and inside the app's 500 km fetch.
 CELL_DEG = 1.0
 HOT_ZONES_TTL_S = 600           # the list changes slowly; don't rescan events per request
+PER_COUNTRY = 2                 # so one busy national feed (MeteoAlarm Italy) can't fill the list
 _hot_cache: tuple[float, list[dict[str, Any]]] | None = None
 
 # Active now, and new or updated today: what Home would show someone standing there.
 # Marine products and single unconfirmed reports are left out (Home hides them by default).
 HOT_EVENTS_SQL = """
-SELECT event_id, hazard_type, severity, source,
+SELECT event_id, hazard_type, severity, source, source_feed, country,
        floor(ST_Y(location::geometry) / %(cell)s)::int AS cy,
        floor(ST_X(location::geometry) / %(cell)s)::int AS cx
 FROM events
@@ -70,11 +71,22 @@ class Zone:
     def score(self) -> float:
         """What makes a good place to try Moby: many kinds of hazard (each shows a different
         part of the app), serious warnings (emergency mode) and community reports, more
-        than sheer volume, so 40 rain advisories don't beat a quake, a flood and a fire."""
+        than sheer volume, so 40 rain advisories don't beat a quake, a flood and a fire.
+        Serious warnings count up to three each: past that, a busy zone (16 alerts) is
+        more worth seeing than one with a couple more high warnings."""
         return (4 * len(self.hazards)
-                + 3 * self.count("critical") + 2 * self.count("high")
+                + 3 * min(self.count("critical"), 3) + 2 * min(self.count("high"), 3)
                 + 2 * min(sum(e["source"] != "official" for e in self.events), 3)
-                + math.log2(1 + len(self.events)))
+                + 3 * math.log2(1 + len(self.events)))
+
+    @property
+    def country(self) -> str | None:
+        """The zone's country: what its feeds say, or 'US' for National Weather Service
+        alerts (NWS rows carry no country). None when nothing says."""
+        known = Counter(e.get("country") or ("US" if e.get("source_feed") == "noaa" else None)
+                        for e in self.events)
+        known.pop(None, None)
+        return known.most_common(1)[0][0] if known else None
 
     @property
     def lead(self) -> dict[str, Any]:
@@ -84,11 +96,22 @@ class Zone:
                                                 e["source"] != "official"))
 
 
-def rank_zones(events: list[dict[str, Any]], limit: int) -> list[Zone]:
+def rank_zones(events: list[dict[str, Any]], limit: int, per_country: int = PER_COUNTRY) -> list[Zone]:
+    """Best zones first, at most `per_country` from one country so the list shows the
+    world, not one busy feed. Only when that leaves the list short do the next best
+    zones from the same countries fill it, after the others. Zones whose country is
+    unknown aren't grouped together."""
     zones: dict[tuple[int, int], Zone] = {}
     for e in events:
         zones.setdefault((e["cy"], e["cx"]), Zone((e["cy"], e["cx"]))).events.append(e)
-    return sorted(zones.values(), key=lambda z: z.score, reverse=True)[:limit]
+    picked, held, taken = [], [], Counter()
+    for z in sorted(zones.values(), key=lambda z: z.score, reverse=True):
+        if z.country is None or taken[z.country] < per_country:
+            picked.append(z)
+            taken[z.country] += 1
+        else:
+            held.append(z)
+    return (picked + held)[:limit]
 
 
 async def _hot_zones(conn, now: datetime, limit: int) -> list[dict[str, Any]]:
@@ -109,7 +132,7 @@ async def _hot_zones(conn, now: datetime, limit: int) -> list[dict[str, Any]]:
         out.append({
             "zone_id": f"{z.cell[0]}:{z.cell[1]}",
             "name": lead.get("location_name") or lead["headline"],
-            "country": lead.get("country"),
+            "country": z.country or lead.get("country"),
             "center": {"lat": lead["location"]["lat"], "lon": lead["location"]["lon"]},
             "alert_count": len(z.events),
             "hazard_types": [h for h, _ in z.hazards.most_common()],
