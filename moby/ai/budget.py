@@ -9,6 +9,8 @@ the way it already does when a call fails:
              from alerts and guidance only, and says so when that leaves it unable to answer
   tavily     official-website searches for briefs and trip briefings
   localize   Moby's AI text stays in English (moby/ai/localize.py)
+  alert_language  official alerts stay in English (or their original language) instead of
+             the phone's (moby/ai/alert_text.py); cached per event and language
   structure  a report's note isn't read for details; the report is fused anyway (moby/graph)
   route      route checks answer 429 and the app says to try tomorrow (moby/api/routes.py)
   places     place search answers 429 the same way
@@ -37,7 +39,7 @@ from datetime import datetime, timezone
 from psycopg import AsyncConnection, Connection
 
 DEFAULT_CAPS = {"translate": 800, "explain": 150, "ask": 60, "ask_search": 7, "tavily": 25, "localize": 400,
-                "structure": 300,
+                "alert_language": 400, "structure": 300,
                 "brief": 20, "brief_changes": 40, "trip_brief": 20, "route": 400, "places": 500}
 
 

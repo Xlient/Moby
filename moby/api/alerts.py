@@ -77,14 +77,23 @@ def _translated(row: dict[str, Any]) -> bool:
     return row.get("translation_status") == "done" and bool(row.get("title_en"))
 
 
-def to_alert(row: dict[str, Any]) -> dict[str, Any]:
-    translated = _translated(row)
+def to_alert(row: dict[str, Any], lang: str | None = None) -> dict[str, Any]:
+    """The app's Alert. With `lang` (the phone's language, e.g. "ja-JP"), an official alert
+    reads in that language when it can: the agency's original if it's the same language, else
+    Moby's cached translation into it (moby/ai/alert_text.py), else as without `lang`."""
+    from moby.ai import alert_text
+
+    official = row.get("source", "official") == "official" and not row.get("alert_headline")
+    original = official and alert_text.same_language(row, lang)
+    local = alert_text.cached(row, lang) if official and not original else None
+    translated = not original and (bool(local) or _translated(row))
+    text = local or ({"headline": row["title_en"], "body": row.get("description_en")} if translated else None)
     alert = {
         "alert_id": str(row["event_id"]),
         "event_id": str(row["event_id"]),
         # Contract 3: draft_alert's wording when present, so the app and the push agree.
-        "headline": row.get("alert_headline") or (row["title_en"][:120] if translated else _headline(row)),
-        "body": (row.get("alert_body") or (row.get("description_en") if translated else None)
+        "headline": row.get("alert_headline") or (text["headline"][:120] if text else _headline(row)),
+        "body": (row.get("alert_body") or (text or {}).get("body")
                  or row.get("description") or "")[:600] or None,
         "severity": row["severity"],
         "location": {"lat": row["lat"], "lon": row["lon"], "frame": "WGS84"},
@@ -106,10 +115,10 @@ def to_alert(row: dict[str, Any]) -> dict[str, Any]:
         "distance_km": round(row["distance_km"], 1) if row.get("distance_km") is not None else None,
     }
     if translated:
-        lang = (row.get("language") or "").split("-")[0].lower()
+        source = alert_text.base(row.get("language"))
         alert.update({
             "translated": True,
-            "original_language": LANGUAGE_NAMES.get(lang, row.get("language")),
+            "original_language": "English" if source == "en" else LANGUAGE_NAMES.get(source, row.get("language")),
             "original_headline": (row.get("title") or "")[:300],
             "original_body": (row.get("description") or "")[:600] or None,
         })

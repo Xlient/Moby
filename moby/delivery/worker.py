@@ -36,7 +36,7 @@ from typing import Any
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 
-from moby.ai import localize
+from moby.ai import alert_text, localize
 from moby.api.alerts import to_alert
 
 from .fcm import Push, Result, Sender
@@ -52,7 +52,7 @@ CANDIDATES_SQL = """
 SELECT DISTINCT ON (e.event_id, d.device_id)
        e.event_id, e.source, e.source_feed, e.external_id, e.hazard_type, e.product, e.marine, e.severity, e.tier,
        e.title, e.description, e.alert_headline, e.alert_body, e.distinct_reporter_count, e.reports_disagree,
-       e.language, e.title_en, e.description_en, e.translation_status, e.country,
+       e.language, e.title_en, e.description_en, e.translation_status, e.translations, e.country,
        e.first_reported_at, e.last_updated_at, e.expires_at, e.raw_payload,
        e.explainer, e.explainer_status,
        ST_Y(e.location::geometry) AS lat, ST_X(e.location::geometry) AS lon,
@@ -125,8 +125,9 @@ def waits_for_explanation(row: dict[str, Any], now: datetime) -> bool:
 
 def build_push(row: dict[str, Any], localized: dict | None = None) -> Push:
     """Contract 3: draft_alert's text when present, then Moby's checked explanation (in the
-    phone's language when `localized` is given), else the official wording."""
-    alert = to_alert(row)
+    phone's language when `localized` is given), else the official wording: in the phone's
+    language when Moby has translated it (alert_text), else its English translation or the original."""
+    alert = to_alert(row, row.get("device_language"))
     title = row.get("alert_headline") or alert["headline"]
     translated = bool(alert.get("translated"))
     if not row.get("alert_body") and _explained(row):
@@ -189,10 +190,20 @@ async def deliver_once(conn: AsyncConnection, sender: Sender) -> dict[str, int]:
                 (list({r["event_id"] for r in held}),))
             counts["held"] = len(held)
             rows = [r for r in rows if not waits_for_explanation(r, now)]
+    translated: dict[tuple, dict] = {}     # one translation per event and language, not per device
     for row in rows:
         loc = None
         if _explained(row) and (code := localize.normalize(row.get("device_language"))):
             loc = await localize.explanation_in(conn, row, code)
+        elif not row.get("alert_body") and (code := localize.normalize(row.get("device_language"))):
+            # The official wording in the phone's language. Critical warnings too: a 1-3 s
+            # translation is worth it to someone who can't read the agency's language.
+            key = (row["event_id"], code)
+            if key in translated:
+                row["translations"] = translated[key]
+            else:
+                await alert_text.alert_in(conn, row, row["device_language"])
+                translated[key] = row.get("translations") or {}
         result: Result = await asyncio.to_thread(sender.send, build_push(row, loc))
         counts[result.outcome] += 1
         async with conn.transaction():

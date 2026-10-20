@@ -41,6 +41,7 @@ import {
 } from './fixtures';
 import { env } from '@/config/env';
 import { appCheckToken } from '@/lib/appCheck';
+import { phoneLanguage } from '@/lib/language';
 
 export interface AlertAreas {
   type: 'FeatureCollection';
@@ -262,10 +263,12 @@ export class ApiClient {
     min_tier?: 0 | 1 | 2;
     community_reports?: 'off' | 'corroborated' | 'all';
     since?: string;
+    /** Phone language (default: this phone's): official alerts already translated into it come back in it. */
+    lang?: string;
   }): Promise<{ alerts?: Alert[] }> {
     if (USE_MOCK) return { alerts: getMockAlerts() };
     return this.request<{ alerts?: Alert[] }>('GET', '/alerts', {
-      query: params as Record<string, string | number | boolean | undefined>,
+      query: { lang: phoneLanguage(), ...params } as Record<string, string | number | boolean | undefined>,
     });
   }
 
@@ -275,7 +278,8 @@ export class ApiClient {
     return this.request<AlertAreas>('GET', '/alerts/areas', { query: params });
   }
 
-  async getAlert(alertId: string): Promise<Alert> {
+  /** With `lang`, an official alert comes back in the phone's language (translated on first open). */
+  async getAlert(alertId: string, lang?: string): Promise<Alert> {
     if (USE_MOCK) {
       const alert = getMockAlert(alertId);
       if (!alert) {
@@ -283,7 +287,7 @@ export class ApiClient {
       }
       return alert;
     }
-    return this.request<Alert>('GET', `/alerts/${encodeURIComponent(alertId)}`);
+    return this.request<Alert>('GET', `/alerts/${encodeURIComponent(alertId)}`, { query: { lang } });
   }
 
   // ── Try Moby (Settings): today's hot zones and demo replays ───────

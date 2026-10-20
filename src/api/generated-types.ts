@@ -1131,6 +1131,8 @@ export interface paths {
                     /** @description Which community reports to include: off (none), corroborated (reported by 2+ different people), all (single reports too). Defaults to the caller's saved preferences, else corroborated. */
                     community_reports?: "off" | "corroborated" | "all";
                     since?: string;
+                    /** @description Phone language (e.g. ja-JP). Official alerts already translated into it are returned in it (translated: true, original_* set); an alert in that same language comes back in its original words. Listing never translates: opening one does (GET /alerts/{alert_id}). */
+                    lang?: string;
                     /** @description Only these hazard types. Defaults to the caller's saved preferences, else all. */
                     hazard_types?: components["schemas"]["HazardType"][];
                     /** @description Defaults to the caller's saved preferences, else low. */
@@ -1232,7 +1234,10 @@ export interface paths {
         /** Alert detail */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description Phone language (e.g. ja-JP). An official alert is translated into it from the agency's own words the first time anyone with that language opens it (checked: every number must survive; cached per alert and language), and comes back translated: true with original_* set. Same language as the alert: its original words. English, a language Moby doesn't translate into, or a failed check: as without lang. */
+                    lang?: string;
+                };
                 header?: never;
                 path: {
                     alert_id: string;
@@ -1899,9 +1904,9 @@ export interface components {
             marine?: boolean;
             /** @description ISO 3166-1 alpha-2 of the issuing authority or event, when known (e.g. for emergency numbers). */
             country?: string;
-            /** @description headline/body are Moby's machine translation into English (issue #11). Clients MUST label it ("Translated by Moby") and offer the original. Absent = the agency's own words. */
+            /** @description headline/body are Moby's machine translation: into the phone's language when `lang` was sent and Moby has translated it, else into English (issue #11). Clients MUST label it ("Translated by Moby") and offer the original. Absent = the agency's own words. */
             translated?: boolean;
-            /** @description Language the agency wrote in, e.g. "Spanish". Present when translated. */
+            /** @description Language the agency wrote in, e.g. "Spanish" (or "English"). Present when translated. */
             original_language?: string;
             /** @description The agency's own headline. Present when translated. */
             original_headline?: string;
