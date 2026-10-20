@@ -59,12 +59,13 @@ from psycopg_pool import AsyncConnectionPool
 
 from moby.alerts.preferences import AlertPreferences, alerts_near
 from moby.config import get_settings
+from moby.ai import alert_text
 from moby.db import make_pool
 from moby.feeds.poller import FEEDS, health as feeds_health
 from moby.feeds.schema import Severity
 from moby.llm import EMBEDDING_DIM
 
-from moby.ai import ask, budget, localize, trip
+from moby.ai import ask, budget, explain, localize, trip
 from moby.graph.brief_queries import TIMELINE_EVENT_SQL, TIMELINE_REPORTS_SQL, build_timeline
 from moby.graph.brief_queries import VIEW_SQL as BRIEF_ON_VIEW_SQL
 
@@ -181,7 +182,10 @@ async def get_alerts(
     min_severity: Severity | None = None,
     include_marine: bool | None = None,
     community_reports: Literal["off", "corroborated", "all"] | None = None,
+    lang: Annotated[str | None, Query(max_length=16, description="phone language, e.g. ja-JP")] = None,
 ):
+    """Active alerts near a point. With `lang`, official alerts read in the phone's language
+    where a translation is already cached (opening one makes it: GET /v1/alerts/{id})."""
     prefs = AlertPreferences.from_dict({
         "hazard_types": hazard_types.split(",") if hazard_types else None,
         "min_severity": min_severity,
@@ -190,7 +194,7 @@ async def get_alerts(
     })
     async with _pool().connection() as conn:
         rows = await alerts_near(conn, lat, lon, radius_km, prefs, min_tier=min_tier)
-    return {"alerts": [to_alert(r) for r in rows]}
+    return {"alerts": [to_alert(r, lang) for r in rows]}
 
 
 @app.get("/v1/alerts/areas")
@@ -235,23 +239,27 @@ async def alert_areas(
 # What to_alert needs from an event row.
 EVENT_COLUMNS = """event_id, source, source_feed, external_id, hazard_type, product, marine, severity, tier,
     title, description, alert_headline, alert_body, distinct_reporter_count, reports_disagree,
-    language, title_en, description_en, translation_status, country,
+    language, title_en, description_en, translation_status, translations, country,
     first_reported_at, last_updated_at, expires_at, raw_payload,
     ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon"""
 
 
 @app.get("/v1/events/{event_id}")
 @app.get("/v1/alerts/{event_id}")  # contract /alerts/{alert_id}: alert_id is the event_id
-async def get_event(event_id: uuid.UUID):
+async def get_event(event_id: uuid.UUID,
+                    lang: Annotated[str | None, Query(max_length=16, description="phone language, e.g. ja-JP")] = None):
+    """One alert. With `lang`, an official alert is translated into the phone's language the
+    first time anyone with that language opens it (moby/ai/alert_text.py), then cached."""
     async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
             f"SELECT {EVENT_COLUMNS} FROM events WHERE event_id = %s",
             (event_id,),
         )
         row = await cur.fetchone()
-    if row is None:
-        raise HTTPException(404, "event not found")
-    return to_alert(row)
+        if row is None:
+            raise HTTPException(404, "event not found")
+        await alert_text.alert_in(conn, row, lang)
+    return to_alert(row, lang)
 
 
 @app.get("/v1/events/{event_id}/reports")
@@ -391,7 +399,9 @@ async def event_explain(event_id: uuid.UUID,
         row = await cur.fetchone()
         if row is None:
             raise HTTPException(404, "event not found")
-        if row["explainer_status"] == "done":
+        # Explained before Moby required an English translation (explain.untranslated): it's in
+        # the agency's language, not the reader's, so it isn't served.
+        if row["explainer_status"] == "done" and not explain.untranslated(row):
             explained = {k: row["explainer"].get(k) for k in ("summary", "actions", "model", "generated_at")}
             # In the phone's language when we can (moby/ai/localize.py); English otherwise.
             if (code := localize.normalize(lang)) and (loc := await localize.explanation_in(conn, row, code)):

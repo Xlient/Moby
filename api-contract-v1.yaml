@@ -1,11 +1,17 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.10.1
+  version: 0.11.0
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.11.0 — Official alerts in the phone's language (additive):
+      + GET /alerts/{alert_id}?lang=: translates an official alert into the phone's language
+        from the agency's own words on first open (cached per alert and language)
+      + GET /alerts?lang=: alerts already translated into it come back in it; alerts in the
+        phone's own language come back in their original words
+      ~ Alert.translated / original_*: now also set for a translation out of English
     0.10.1 — Ask Moby's search allowance (additive):
       + AskAnswer.search_limited: official websites would have been searched, but today's
         allowance for Ask Moby is used up (resets 00:00 UTC). Clients say so when abstained.
@@ -693,6 +699,14 @@ paths:
         - name: since
           in: query
           schema: { type: string, format: date-time }
+        - name: lang
+          in: query
+          description: >
+            Phone language (e.g. ja-JP). Official alerts already translated into it are
+            returned in it (translated: true, original_* set); an alert in that same language
+            comes back in its original words. Listing never translates: opening one does
+            (GET /alerts/{alert_id}).
+          schema: { type: string, maxLength: 16 }
         - name: hazard_types
           in: query
           description: Only these hazard types. Defaults to the caller's saved preferences, else all.
@@ -767,6 +781,16 @@ paths:
           in: path
           required: true
           schema: { type: string }
+        - name: lang
+          in: query
+          description: >
+            Phone language (e.g. ja-JP). An official alert is translated into it from the
+            agency's own words the first time anyone with that language opens it (checked:
+            every number must survive; cached per alert and language), and comes back
+            translated: true with original_* set. Same language as the alert: its original
+            words. English, a language Moby doesn't translate into, or a failed check: as
+            without lang.
+          schema: { type: string, maxLength: 16 }
       responses:
         '200':
           description: OK
@@ -1322,11 +1346,12 @@ components:
         translated:
           type: boolean
           description: >
-            headline/body are Moby's machine translation into English (issue #11). Clients
-            MUST label it ("Translated by Moby") and offer the original. Absent = the agency's own words.
+            headline/body are Moby's machine translation: into the phone's language when `lang`
+            was sent and Moby has translated it, else into English (issue #11). Clients MUST label
+            it ("Translated by Moby") and offer the original. Absent = the agency's own words.
         original_language:
           type: string
-          description: Language the agency wrote in, e.g. "Spanish". Present when translated.
+          description: Language the agency wrote in, e.g. "Spanish" (or "English"). Present when translated.
         original_headline: { type: string, description: The agency's own headline. Present when translated. }
         original_body: { type: string, description: The agency's own text. Present when translated. }
         distance_km:

@@ -339,3 +339,31 @@ def test_disagreeing_reports_say_so(client, db_url):
     deliver(db_url, sender)
     assert sender.pushes[0].critical and "reports disagree" in sender.pushes[0].body.lower()
     assert client.get(f"/v1/alerts/{eid}").json()["reports_disagree"] is True
+
+
+def test_push_is_translated_into_the_phone_language_once_per_language(client, db_url, monkeypatch):
+    from moby.ai import alert_text
+
+    class FakeLLM:
+        calls = 0
+
+        async def ainvoke(self, _prompt):
+            FakeLLM.calls += 1
+            return type("R", (), {"content": '{"headline": "洪水警報", "body": "川が急に増水しています。"}'})()
+
+    monkeypatch.setattr(alert_text, "model", lambda: FakeLLM())
+    for n in (1, 2):                                       # two phones in Japanese
+        assert client.post("/v1/me/devices", json={"device_id": f"device-ja-{n}", "push_provider": "fcm",
+                                                   "push_token": f"{TOKEN}{n}", "platform": "android",
+                                                   "language": "ja-JP"}).status_code == 204
+    setup_device(client, db_url)
+    eid = add_event(db_url, severity="critical")          # critical: pushed now, translated first
+    sender = FakeSender()
+    assert deliver(db_url, sender)["sent"] == 3
+    titles = sorted(p.title for p in sender.pushes)
+    assert titles == ["Critical: Flood warning", "Critical: 洪水警報", "Critical: 洪水警報"]
+    ja = next(p for p in sender.pushes if "洪水" in p.title)
+    assert ja.body.endswith("(Translated by Moby from English)") and FakeLLM.calls == 1
+    with psycopg.connect(db_url) as c:
+        assert c.execute("SELECT translations->'ja'->>'headline' FROM events WHERE event_id = %s",
+                         (eid,)).fetchone()[0] == "洪水警報"

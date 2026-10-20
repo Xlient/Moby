@@ -124,8 +124,13 @@ async def translate_pending(conn: AsyncConnection, llm, model: str) -> dict[str,
         else:
             counts["done"] += 1
             await conn.execute(
+                # Normally nothing is explained before its translation. If something was (a retried
+                # translation), it was turned down or is in the agency's language: write it afresh
+                # from the English on next view.
                 "UPDATE events SET title_en = %s, description_en = %s, translation_status = 'done', "
-                "translation_model = %s WHERE event_id = %s AND translation_status = 'pending'",
+                "translation_model = %s, explainer = NULL, explainer_status = CASE explainer_status "
+                "WHEN 'pending' THEN 'pending' ELSE 'none' END "
+                "WHERE event_id = %s AND translation_status = 'pending'",
                 (t.headline[:300], t.body[:4000] or None, model, event_id))
     return counts
 

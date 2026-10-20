@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { Button, Text } from 'react-native-paper';
@@ -25,6 +25,7 @@ import { EmergencyNumbers } from '@/components/EmergencyNumbers';
 import { countryAt } from '@/data/emergencyNumbers';
 import { fetchCenter, isRealPlace, useUserCenter, useUserCenterPassive } from '@/location/UserLocationContext';
 import { isDemoAlert } from '@/lib/tryMoby';
+import { phoneLanguage } from '@/lib/language';
 
 interface AlertDetailScreenProps {
   alertId: string;
@@ -48,14 +49,24 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
     [alerts, alertId],
   );
   // Opened from a notification, the alert may not be in the nearby list (a saved area
-  // elsewhere, or not fetched yet): load it on its own.
+  // elsewhere, or not fetched yet): load it on its own. On a phone in another language, an
+  // official alert is loaded too: opening it is what gets it translated into that language.
+  const lang = phoneLanguage();
+  const otherLanguage = !!lang && !lang.toLowerCase().startsWith('en');
+  const queryClient = useQueryClient();
   const single = useQuery({
-    queryKey: ['alert', alertId],
-    queryFn: () => api.getAlert(alertId),
-    enabled: !listed,
+    queryKey: ['alert', alertId, lang],
+    queryFn: () => api.getAlert(alertId, lang),
+    enabled: !listed || (otherLanguage && listed.verification_label === 'official_confirmed' && !isDemoAlert(listed)),
     staleTime: 60_000,
   });
-  const alert = listed ?? single.data;
+  // The listed copy keeps what only the list knows (distance); the fetched one has the language.
+  const alert = listed && single.data ? { ...listed, ...single.data } : listed ?? single.data;
+  // Newly translated: refresh the list so its card reads the same as this screen.
+  const newlyTranslated = !!listed && !!single.data && single.data.headline !== listed.headline;
+  useEffect(() => {
+    if (newlyTranslated) void queryClient.invalidateQueries({ queryKey: ['alerts'] });
+  }, [newlyTranslated, queryClient]);
 
   const { state: briefState, refetch: refetchBrief } = useBrief(alert?.event_id);
   // Official alerts come from agencies, not people nearby; only community alerts have reports.
