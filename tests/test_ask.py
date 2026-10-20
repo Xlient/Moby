@@ -67,7 +67,7 @@ class FakePool:
         yield None
 
 
-def wire(monkeypatch, *, cards, answer_json, web=()):
+def wire(monkeypatch, *, cards, answer_json, web=(), exhausted=()):
     nano, sup = Fake("flooded road safety advice"), Fake(answer_json)
     monkeypatch.setattr(ask, "_models", lambda: {"embed": Fake(), "nano": nano, "super": sup, "super_name": "super"})
 
@@ -87,8 +87,9 @@ def wire(monkeypatch, *, cards, answer_json, web=()):
             searched.append((query, include_domains))
             return list(web)
 
-    async def take(_conn, _feature, n=1):
-        return n
+    async def take(_conn, feature, n=1):
+        assert feature in ("ask_search", "localize"), feature   # never the briefs' `tavily` allowance
+        return 0 if feature in exhausted else n
 
     monkeypatch.setattr(ask.budget, "take", take)
     monkeypatch.setattr(ask, "card_sources", card_sources)
@@ -125,8 +126,22 @@ def test_no_country_domains_and_no_sources_means_no_model_call(monkeypatch):
     _, sup, searched = wire(monkeypatch, cards=[], answer_json="{}")
     out = asyncio.run(ask.answer(FakePool(), "What is the capital of France?", country="ZZ"))
     assert out == {"answer": None, "abstained": True, "sources": [], "model": "super", "searched_web": False,
-                   "language": "en"}
+                   "search_limited": False, "language": "en"}
     assert sup.prompts == [] and searched == []
+
+
+def test_a_used_up_search_allowance_is_reported_when_moby_cannot_answer(monkeypatch):
+    _, sup, searched = wire(monkeypatch, cards=[], answer_json='{"abstain": true}', exhausted=("ask_search",))
+    out = asyncio.run(ask.answer(FakePool(), "Is the road to Qingcheng open?", country="CN"))
+    assert out["abstained"] is True and out["search_limited"] is True and out["searched_web"] is False
+    assert searched == [] and sup.prompts == []       # no alerts asked for (no position), no cards, no search
+
+
+def test_a_used_up_allowance_still_answers_from_alerts_and_guidance(monkeypatch):
+    _, _, searched = wire(monkeypatch, cards=[(CARD, 0.52)], exhausted=("ask_search",),
+                          answer_json='{"answer": "Turn around and find another route [2].", "citations": [2]}')
+    out = asyncio.run(ask.answer(FakePool(), "Road ahead is flooded, what now?", lat=1.0, lon=2.0, country="US"))
+    assert out["abstained"] is False and out["search_limited"] is True and searched == []
 
 
 def test_ungrounded_answer_is_withheld(monkeypatch):

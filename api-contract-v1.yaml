@@ -1,11 +1,14 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.10.0
+  version: 0.10.1
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.10.1 — Ask Moby's search allowance (additive):
+      + AskAnswer.search_limited: official websites would have been searched, but today's
+        allowance for Ask Moby is used up (resets 00:00 UTC). Clients say so when abstained.
     0.10.0 — Trying Moby away from a disaster (additive):
       + GET /demo/hot-zones: today's busiest places (live alerts), each centred on its most
         serious alert, for the app to view from instead of the phone's position
@@ -1432,6 +1435,12 @@ components:
               url: { type: string, nullable: true }
         model: { type: string }
         searched_web: { type: boolean, description: True when official websites were searched via Tavily }
+        search_limited:
+          type: boolean
+          description: >
+            True when official websites would have been searched but Ask Moby's daily search
+            allowance is used up (it resets at 00:00 UTC). The answer, if any, comes from alerts
+            and guidance only. Clients should say so when abstained is true.
         language: { type: string, description: "Language of the answer (ISO 639-1); 'en' unless translated by Moby" }
 
     TripBriefRequest:

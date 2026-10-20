@@ -1989,6 +1989,8 @@ export interface components {
             model: string;
             /** @description True when official websites were searched via Tavily */
             searched_web: boolean;
+            /** @description True when official websites would have been searched but Ask Moby's daily search allowance is used up (it resets at 00:00 UTC). The answer, if any, comes from alerts and guidance only. Clients should say so when abstained is true. */
+            search_limited?: boolean;
             /** @description Language of the answer (ISO 639-1); 'en' unless translated by Moby */
             language?: string;
         };

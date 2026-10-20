@@ -148,29 +148,32 @@ def _domain(url: str) -> str:
     return re.sub(r"^https?://(www\.)?", "", url).split("/")[0]
 
 
-async def web_sources(pool: AsyncConnectionPool, question: str, country: str | None) -> tuple[list[Source], str | None]:
-    """Official websites via Tavily. ([], None) when there's no domain list, no key or no budget left."""
+async def web_sources(pool: AsyncConnectionPool, question: str,
+                      country: str | None) -> tuple[list[Source], str | None, bool]:
+    """Official websites via Tavily: (sources, the query searched, whether today's search
+    allowance stopped it). ([], None, False) when there's no domain list or no key."""
     domains = OFFICIAL.get(country or "")
     if not domains:
-        return [], None
+        return [], None, False
     from moby.search.tavily import Tavily, TavilyNotConfigured
 
     try:
         tavily = Tavily(timeout=10)
     except TavilyNotConfigured:
-        return [], None
+        return [], None, False
     async with pool.connection() as conn:
-        if not await budget.take(conn, "tavily"):
-            return [], None
+        # Ask Moby's own allowance: briefs and trip briefings use `tavily`, so they can't use it up.
+        if not await budget.take(conn, "ask_search"):
+            return [], None, True
     query = (await _models()["nano"].ainvoke(QUERY_PROMPT.format(question=question))).content
     query = str(query).strip().strip('"')[:150]
     try:
         results = await asyncio.to_thread(tavily.search, query, include_domains=domains, max_results=3)
     except Exception as e:  # noqa: BLE001 - search is optional; answer from what we have
         log.warning("Tavily search failed: %s", type(e).__name__)
-        return [], query
+        return [], query, False
     return [Source("web", r.title or _domain(r.url), _domain(r.url), r.url, r.content[:1500])
-            for r in results if r.content], query
+            for r in results if r.content], query, False
 
 
 # ── Answer and check ────────────────────────────────────────────────────────
@@ -218,12 +221,16 @@ async def answer(pool: AsyncConnectionPool, question: str, *, lat: float | None 
             alerts = await alert_sources(conn, lat, lon) if lat is not None and lon is not None else []
             cards = await card_sources(conn, vector)
         sources = alerts + [s for s, _ in cards]
-        web, query = [], None
+        web, query, limited = [], None, False
         if not cards or cards[0][1] < WEB_WHEN_BEST_BELOW:
-            web, query = await web_sources(pool, question, country)
+            web, query, limited = await web_sources(pool, question, country)
             sources += web
+        # search_limited: a web search would have run but today's allowance is used up, so the
+        # app can say why when Moby can't answer, instead of a plain "I can't answer that".
         result = {"answer": None, "abstained": True, "sources": [], "model": m["super_name"],
-                  "searched_web": query is not None, "language": "en"}
+                  "searched_web": query is not None, "search_limited": limited, "language": "en"}
+        if limited:
+            log.info("ask: today's search allowance is used up; answering from alerts and guidance only")
         if not sources:
             return result
         try:
