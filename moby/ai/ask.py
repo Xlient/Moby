@@ -111,7 +111,10 @@ def _models():
 
     return {
         "embed": embeddings(),
-        "nano": chat_model("nano", temperature=0, max_tokens=200),
+        # Reasoning off: with it on, Nano thought through all 200 tokens and returned no
+        # query, which Tavily rejects (400 "Query is missing."). Off, it takes ~10 tokens.
+        "nano": chat_model("nano", temperature=0, max_tokens=200,
+                           extra_body={"chat_template_kwargs": {"enable_thinking": False}}),
         # Super reasons before answering: leave room for the JSON after it.
         "super": chat_model("super", temperature=0, max_tokens=3000),
         "super_name": model_name("super"),
@@ -155,22 +158,25 @@ async def web_sources(pool: AsyncConnectionPool, question: str,
     domains = OFFICIAL.get(country or "")
     if not domains:
         return [], None, False
-    from moby.search.tavily import Tavily, TavilyNotConfigured
+    from moby.search.tavily import Tavily, TavilyError, TavilyNotConfigured
 
     try:
         tavily = Tavily(timeout=10)
     except TavilyNotConfigured:
         return [], None, False
+    query = (await _models()["nano"].ainvoke(QUERY_PROMPT.format(question=question))).content
+    query = str(query).strip().strip('"')[:150]
+    if not query:   # no search to run: don't spend the allowance on it
+        log.warning("ask: Nano wrote no search query; answering without official websites")
+        return [], None, False
     async with pool.connection() as conn:
         # Ask Moby's own allowance: briefs and trip briefings use `tavily`, so they can't use it up.
         if not await budget.take(conn, "ask_search"):
             return [], None, True
-    query = (await _models()["nano"].ainvoke(QUERY_PROMPT.format(question=question))).content
-    query = str(query).strip().strip('"')[:150]
     try:
         results = await asyncio.to_thread(tavily.search, query, include_domains=domains, max_results=3)
     except Exception as e:  # noqa: BLE001 - search is optional; answer from what we have
-        log.warning("Tavily search failed: %s", type(e).__name__)
+        log.warning("Tavily search failed: %s", e if isinstance(e, TavilyError) else type(e).__name__)
         return [], query, False
     return [Source("web", r.title or _domain(r.url), _domain(r.url), r.url, r.content[:1500])
             for r in results if r.content], query, False

@@ -137,6 +137,16 @@ def test_a_used_up_search_allowance_is_reported_when_moby_cannot_answer(monkeypa
     assert searched == [] and sup.prompts == []       # no alerts asked for (no position), no cards, no search
 
 
+def test_no_search_query_means_no_search_and_no_allowance_spent(monkeypatch):
+    # Nano can come back empty (it once reasoned through all its tokens); Tavily rejects an
+    # empty query with a 400, so don't send it, and don't spend the day's allowance on it.
+    nano, _, searched = wire(monkeypatch, cards=[], answer_json='{"abstain": true}', exhausted=("ask_search",))
+    nano.content = ""
+    out = asyncio.run(ask.answer(FakePool(), "How do I prepare for a glacial lake outburst flood?", country="NP"))
+    assert searched == [] and out["searched_web"] is False
+    assert out["search_limited"] is False          # the allowance was never checked: it isn't why
+
+
 def test_a_used_up_allowance_still_answers_from_alerts_and_guidance(monkeypatch):
     _, _, searched = wire(monkeypatch, cards=[(CARD, 0.52)], exhausted=("ask_search",),
                           answer_json='{"answer": "Turn around and find another route [2].", "citations": [2]}')
