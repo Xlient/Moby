@@ -116,53 +116,81 @@ async def _record_failure(pool: AsyncConnectionPool, feed: FeedName, status: int
 
 # ── NOAA zones ───────────────────────────────────────────────────────────────
 
+# Zones fetched per poll at most. Zones cached before migration 0024 have no area and are
+# refetched as alerts name them; the first poll after it could otherwise want ~2,000 at once.
+ZONE_FETCH_MAX = 150
+ZONE_SIMPLIFY_DEG = 0.005   # ~500 m, as cap_geocodes
+
+ZONE_UPSERT_SQL = """
+INSERT INTO nws_zones (zone_id, zone_url, name, centroid, area)
+VALUES (%(id)s, %(url)s, %(name)s,
+        CASE WHEN %(lat)s::float8 IS NULL THEN NULL
+             ELSE ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography END,
+        CASE WHEN %(geom)s::text IS NULL THEN NULL
+             ELSE ST_Multi(ST_CollectionExtract(ST_MakeValid(ST_SimplifyPreserveTopology(
+                 ST_SetSRID(ST_GeomFromGeoJSON(%(geom)s::text), 4326), %(tol)s)), 3))::geography END)
+ON CONFLICT (zone_id) DO UPDATE
+    SET centroid = EXCLUDED.centroid, area = EXCLUDED.area, name = EXCLUDED.name, fetched_at = now()"""
+
+ZONES_AREA_SQL = """
+SELECT ST_AsText(ST_Multi(ST_Union(area::geometry))) FROM nws_zones
+WHERE zone_url = ANY(%s) AND area IS NOT NULL"""
+
+
 async def resolve_zones(
     events: list[NormalizedEvent], conn: AsyncConnection, http: httpx.AsyncClient
 ) -> int:
-    """Locate geometry-less NOAA alerts at the mean centroid of their zones.
-    Zones are fetched once and cached in nws_zones. Returns how many stay unlocated."""
+    """Locate geometry-less NOAA alerts from their zones: the mean of the zones' centres as
+    the point, and the union of their boundaries as the area. Zones are fetched once and
+    cached in nws_zones. An alert gets an area only when all its zones are known (a partial
+    one would be too small); until then it keeps the point. Returns how many stay unlocated."""
     pending = [e for e in events if not e.has_location and e.zone_urls]
     if not pending:
         return 0
     urls = {u for e in pending for u in e.zone_urls}
     rows = await (await conn.execute(
-        "SELECT zone_url, ST_Y(centroid::geometry), ST_X(centroid::geometry) "
+        "SELECT zone_url, ST_Y(centroid::geometry), ST_X(centroid::geometry), "
+        "       area IS NOT NULL OR centroid IS NULL "       # complete: has its area, or has no geometry
         "FROM nws_zones WHERE zone_url = ANY(%s)",
         (list(urls),),
     )).fetchall()
     cache: dict[str, tuple[float, float] | None] = {
         r[0]: (r[1], r[2]) if r[1] is not None else None for r in rows
     }
+    complete = {r[0] for r in rows if r[3]}
 
-    missing = [u for u in urls if u not in cache]
+    # New zones first (an alert can't be placed without them), then ones still missing an area.
+    missing = sorted((u for u in urls if u not in complete), key=lambda u: u in cache)[:ZONE_FETCH_MAX]
     sem = asyncio.Semaphore(4)  # be polite to api.weather.gov
     # Fetch concurrently, write sequentially (one connection).
     bodies = await asyncio.gather(*(_fetch_zone(http, sem, u) for u in missing))
     for url, body in zip(missing, bodies, strict=True):
         if body is None:
             continue  # not cached: retried on the next poll
-        point = centroid(body.get("geometry"))  # (lat, lon) or None
+        geometry = body.get("geometry")
+        point = centroid(geometry)  # (lat, lon) or None
         cache[url] = point
+        complete.add(url)
         lat, lon = point if point else (None, None)
-        await conn.execute(
-            """INSERT INTO nws_zones (zone_id, zone_url, name, centroid)
-               VALUES (%(id)s, %(url)s, %(name)s,
-                       CASE WHEN %(lat)s::float8 IS NULL THEN NULL
-                            ELSE ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography END)
-               ON CONFLICT (zone_id) DO UPDATE
-                   SET centroid = EXCLUDED.centroid, name = EXCLUDED.name, fetched_at = now()""",
-            {"id": url.rstrip("/").rsplit("/", 1)[-1], "url": url,
-             "name": (body.get("properties") or {}).get("name"), "lat": lat, "lon": lon},
-        )
+        await conn.execute(ZONE_UPSERT_SQL, {
+            "id": url.rstrip("/").rsplit("/", 1)[-1], "url": url,
+            "name": (body.get("properties") or {}).get("name"), "lat": lat, "lon": lon,
+            "geom": json.dumps(geometry) if point else None, "tol": ZONE_SIMPLIFY_DEG})
 
     unlocated = 0
+    areas: dict[tuple[str, ...], str | None] = {}   # many alerts name the same zones
     for e in pending:
         points = [p for u in e.zone_urls if (p := cache.get(u))]
-        if points:
-            e.lat = sum(p[0] for p in points) / len(points)
-            e.lon = sum(p[1] for p in points) / len(points)
-        else:
+        if not points:
             unlocated += 1
+            continue
+        e.lat = sum(p[0] for p in points) / len(points)
+        e.lon = sum(p[1] for p in points) / len(points)
+        if all(u in complete for u in e.zone_urls):
+            key = tuple(sorted(e.zone_urls))
+            if key not in areas:
+                areas[key] = (await (await conn.execute(ZONES_AREA_SQL, (list(key),))).fetchone())[0]
+            e.area_wkt = areas[key]
     return unlocated
 
 
@@ -257,7 +285,10 @@ _REBRIEF = """events.brief_status <> 'pending'
          OR EXCLUDED.description IS DISTINCT FROM events.description
          OR EXCLUDED.severity IS DISTINCT FROM events.severity
          OR EXCLUDED.expires_at IS DISTINCT FROM events.expires_at
-         OR ST_AsBinary(EXCLUDED.area::geometry) IS DISTINCT FROM ST_AsBinary(events.area::geometry))"""
+         -- A changed area, not one that's newly known: NWS areas (migration 0024) arrive on
+         -- warnings already stored as points, and shouldn't rebrief each of them at once.
+         OR (events.area IS NOT NULL
+             AND ST_AsBinary(EXCLUDED.area::geometry) IS DISTINCT FROM ST_AsBinary(events.area::geometry)))"""
 
 UPSERT_SQL = """
 INSERT INTO events (

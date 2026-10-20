@@ -55,3 +55,26 @@ def centroid(geometry: dict[str, Any] | None) -> tuple[float, float] | None:
     lon = sum(c[0] for c in coords) / len(coords)
     lat = sum(c[1] for c in coords) / len(coords)
     return lat, lon
+
+
+def polygons_wkt(geometry: dict[str, Any] | None) -> str | None:
+    """A GeoJSON Polygon / MultiPolygon (or a collection holding them) as WKT MULTIPOLYGON,
+    for events.area. None for points, lines or nothing."""
+    if not geometry:
+        return None
+    kind = geometry.get("type")
+    if kind == "Polygon":
+        polygons = [geometry.get("coordinates") or []]
+    elif kind == "MultiPolygon":
+        polygons = geometry.get("coordinates") or []
+    elif kind == "GeometryCollection":
+        parts = [w[len("MULTIPOLYGON("):-1] for g in geometry.get("geometries", []) if (w := polygons_wkt(g))]
+        return f"MULTIPOLYGON({', '.join(parts)})" if parts else None
+    else:
+        return None
+
+    def ring(r: list) -> str:
+        return "(" + ", ".join(f"{float(p[0]):.5f} {float(p[1]):.5f}" for p in r) + ")"
+
+    parts = ["(" + ", ".join(ring(r) for r in poly if len(r) >= 4) + ")" for poly in polygons if poly and len(poly[0]) >= 4]
+    return f"MULTIPOLYGON({', '.join(parts)})" if parts else None
