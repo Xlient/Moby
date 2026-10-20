@@ -41,6 +41,7 @@ the network and jobs need no database credentials.
 import asyncio
 import json
 import hmac
+import logging
 import os
 import shutil
 import uuid
@@ -80,6 +81,26 @@ from .privacy import router as privacy_router
 from .review import router as review_router
 
 pool: AsyncConnectionPool | None = None
+
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"   # as the workers' basicConfig
+
+
+def configure_logging() -> None:
+    """Send moby.* INFO lines (trip brief attempts, Ask Moby, explanations…) to stderr.
+    uvicorn sets up only its own loggers, so under a plain `uvicorn moby.api.app:app`
+    (deploy/endpoint/start.sh) ours fell through to Python's last-resort handler, which
+    prints warnings and errors only. Left alone when a --log-config gave the root logger
+    handlers, so nothing is logged twice."""
+    moby_log = logging.getLogger("moby")
+    if moby_log.handlers or logging.getLogger().handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    moby_log.addHandler(handler)
+    moby_log.setLevel(logging.INFO)
+
+
+configure_logging()
 
 
 @asynccontextmanager
