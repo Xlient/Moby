@@ -65,3 +65,21 @@ def test_internal_routes_require_the_service_token(monkeypatch):
     with pytest.raises(HTTPException):
         require_service_token(None)
     assert require_service_token("Bearer s3cret") is None
+
+
+def test_api_logs_moby_info_lines_under_plain_uvicorn(monkeypatch):
+    # Plain `uvicorn moby.api.app:app` configures only uvicorn's loggers: trip brief and Ask
+    # Moby INFO lines were dropped. With a --log-config root handler, don't log twice.
+    import logging
+
+    from moby.api.app import configure_logging
+    moby_log, root = logging.getLogger("moby"), logging.getLogger()
+    monkeypatch.setattr(moby_log, "handlers", [])
+    monkeypatch.setattr(moby_log, "level", logging.NOTSET)
+    monkeypatch.setattr(root, "handlers", [])
+    configure_logging()
+    assert len(moby_log.handlers) == 1 and moby_log.getEffectiveLevel() == logging.INFO
+    monkeypatch.setattr(moby_log, "handlers", [])
+    monkeypatch.setattr(root, "handlers", [logging.NullHandler()])
+    configure_logging()
+    assert moby_log.handlers == []
