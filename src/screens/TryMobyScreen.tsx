@@ -62,7 +62,8 @@ export function TryMobyScreen({ onBack, onShow }: TryMobyScreenProps) {
       <ScrollView contentContainerStyle={{ padding: r.gutter, paddingBottom: spacing.scale[7], gap: spacing.sectionGap }}>
         <Text variant="bodyLarge" style={{ color: theme.text.primary }}>
           Nothing happening where you are? See what Moby does somewhere busy, or replay real past alerts.
-          Your push alerts, reports, SOS and emergency numbers keep using where you really are.
+          Push alerts and reports keep using where you really are. “I need help” becomes a practice screen,
+          with one tap back to your real location.
         </Text>
 
         <View style={[styles.card, { backgroundColor: theme.bg.raised, padding: r.cardPadding }]}>

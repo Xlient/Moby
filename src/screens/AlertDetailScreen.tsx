@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 import { View, ScrollView, StyleSheet } from 'react-native';
 import { Button, Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
-import { spacing, typography } from '@/theme/tokens';
+import { radius, spacing, typography } from '@/theme/tokens';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useFeatureFlags } from '@/hooks/useFeatureFlags';
 import { AlertCard } from '@/components/AlertCard';
@@ -85,18 +85,19 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
           {/* Near the top on purpose: the brief puts the warning and the reports together. */}
           {isEnabled('situational_brief') && <BriefPanel state={briefState} onRetry={refetchBrief} />}
           {alert.body ? (
-            // The agency's message: what's happening and what to do.
-            <Text variant="bodyLarge" style={[styles.body, { color: theme.text.primary }]}>
-              {alert.body}
-            </Text>
-          ) : null}
-          {alert.translated && (
-            <TranslationNote
-              language={alert.original_language ?? 'the original language'}
-              headline={alert.original_headline}
-              body={alert.original_body}
+            // The agency's message: what's happening and what to do, in their words.
+            <OfficialText
+              body={alert.body}
+              source={fromCommunity ? null : alert.source_attribution ?? null}
+              translation={alert.translated ? (
+                <TranslationNote
+                  language={alert.original_language ?? 'the original language'}
+                  headline={alert.original_headline}
+                  body={alert.original_body}
+                />
+              ) : null}
             />
-          )}
+          ) : null}
           <TierLadder alert={alert} />
           {/* Demo replay or viewing another place: the numbers for where the phone really is. */}
           <EmergencyNumbers
@@ -137,6 +138,45 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
   );
 }
 
+/** Past this, the text starts folded: agency messages run to 600 characters. */
+const FOLD_CHARS = 360;
+const FOLDED_LINES = 8;
+
+/**
+ * The warning in the issuer's own words, as a card like "What this means for you" above
+ * it, so it reads as one source among the others, not loose text on the page. Long
+ * messages start folded; the full text is one tap away.
+ */
+function OfficialText({ body, source, translation }: { body: string; source: string | null; translation: ReactNode }) {
+  const { theme } = useTheme();
+  const long = body.length > FOLD_CHARS;
+  const [open, setOpen] = useState(!long);
+  return (
+    <View style={[styles.official, { backgroundColor: theme.bg.raised }]}>
+      <Text variant="titleMedium" accessibilityRole="header" style={{ color: theme.text.primary }}>
+        {source ? 'The official warning' : 'Details'}
+      </Text>
+      {source && (
+        <Text style={[typography.meta, { color: theme.text.secondary }]}>From {source}, in their words</Text>
+      )}
+      <Text
+        variant="bodyLarge"
+        selectable
+        numberOfLines={open ? undefined : FOLDED_LINES}
+        style={[styles.officialBody, { color: theme.text.primary }]}
+      >
+        {body}
+      </Text>
+      {long && (
+        <Button mode="text" onPress={() => setOpen((o) => !o)} style={styles.alignStart} textColor={theme.text.primary}>
+          {open ? 'Show less' : 'Show all'}
+        </Button>
+      )}
+      {translation}
+    </View>
+  );
+}
+
 /**
  * Issue #11: Moby's translation is always labelled, and the agency's own words are
  * one tap away — a translation must never pass as the agency's instruction.
@@ -163,8 +203,14 @@ function TranslationNote({ language, headline, body }: { language: string; headl
 }
 
 const styles = StyleSheet.create({
-  body: {
+  official: {
+    borderRadius: radius.card,
     marginTop: spacing.scale[3],
+    padding: spacing.scale[4],
+    gap: spacing.scale[1],
+  },
+  officialBody: {
+    marginTop: spacing.scale[1],
   },
   translation: {
     marginTop: spacing.scale[3],
