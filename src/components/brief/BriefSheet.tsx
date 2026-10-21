@@ -8,6 +8,7 @@ import { formatTimeAgo } from '@/lib/alerts';
 import { useTheme } from '@/theme/ThemeContext';
 import { radius, spacing, typography } from '@/theme/tokens';
 import { BriefTimeline } from './BriefTimeline';
+import { FlagAction } from '../FlagContent';
 
 // The full situation brief. Colour says who says so: blue = an official agency, violet =
 // people nearby (unverified), the calm teal = Moby's own voice. Saturated colour appears
@@ -124,6 +125,7 @@ export function BriefSheet({ brief, visible, onClose }: { brief: SituationalBrie
               <Text style={[typography.meta, styles.footnote, { color: theme.text.faint }]}>
                 An AI summary of the sources above, written only from them. Follow official instructions if they differ.
               </Text>
+              <FlagAction target={{ kind: 'brief', targetId: brief.event_id }} />
             </>
           )}
         </ScrollView>

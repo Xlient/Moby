@@ -230,6 +230,66 @@ async def sos_signals(_: Reviewer, hours: int = Query(default=24, ge=1, le=72)):
     ]
 
 
+FLAGS_SQL = """
+SELECT f.flag_id, f.kind, f.target_id, f.event_id, f.excerpt, f.reason, f.note, f.created_at,
+       e.title, e.hazard_type, e.source, e.reviewer_decision,
+       q.status AS review_status,
+       (SELECT count(*) FROM content_flags o
+         WHERE o.status = 'open' AND o.kind = f.kind
+           AND coalesce(o.target_id, o.excerpt) = coalesce(f.target_id, f.excerpt)) AS same_count
+FROM content_flags f
+LEFT JOIN events e USING (event_id)
+LEFT JOIN review_queue q USING (event_id)
+WHERE f.status = 'open'
+ORDER BY f.created_at DESC
+LIMIT 200
+"""
+
+
+@router.get("/flags")
+async def content_flags(_: Reviewer):
+    """"This looks wrong" flags people sent from the app, newest first. A flag hides
+    nothing by itself; for a community report its event is in the queue (reason
+    user_flag), where Reject takes it down."""
+    from .app import _pool
+
+    async with _pool().connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(FLAGS_SQL)
+        rows = await cur.fetchall()
+    out = []
+    for r in rows:
+        flag = {
+            "flag_id": str(r["flag_id"]),
+            "kind": r["kind"],
+            "target_id": r["target_id"],
+            "event_id": str(r["event_id"]) if r["event_id"] else None,
+            "event_title": r["title"] or r["hazard_type"],
+            "excerpt": r["excerpt"],
+            "reason": r["reason"],
+            "note": r["note"],
+            "created_at": _iso(r["created_at"]),
+            "same_count": r["same_count"],
+            # Whether the console's Events tab can take it down right now.
+            "in_review_queue": r["review_status"] == "open",
+            "taken_down": r["reviewer_decision"] == "reject",
+        }
+        out.append({k: v for k, v in flag.items() if v is not None})
+    return out
+
+
+@router.post("/flags/{flag_id}/resolve", status_code=204)
+async def resolve_flag(flag_id: int, reviewer: Reviewer):
+    from .app import _pool
+
+    async with _pool().connection() as conn:
+        cur = await conn.execute(
+            """UPDATE content_flags SET status = 'resolved', resolved_by = %s, resolved_at = now()
+               WHERE flag_id = %s AND status = 'open'""", (reviewer.reporter_hash, flag_id))
+        if cur.rowcount == 0:
+            raise HTTPException(404, "no open flag with that id")
+    return Response(status_code=204)
+
+
 @router.post("/{event_id}/decision", status_code=204)
 async def decide(event_id: uuid.UUID, body: DecisionIn, reviewer: Reviewer):
     from .app import _pool

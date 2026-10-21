@@ -2,7 +2,7 @@
 
   GET    /v1/me/export   everything the server holds about the caller, as JSON
   DELETE /v1/me          erase it: reports, saved areas, "near me", preferences, devices
-                         (and their delivery logs); reviewer attribution is cleared
+                         (and their delivery logs), content flags; reviewer attribution is cleared
 
 The app combines these with the Firestore profile it holds (export) and deletes that
 profile and the Firebase account itself (erase). Aggregates that no longer identify
@@ -58,6 +58,10 @@ async def export_my_data(caller: User):
             """SELECT x.event_id::text AS event_id, x.severity, x.status, x.sent_at, x.device_id
                FROM deliveries x JOIN devices d USING (device_id) WHERE d.owner = %s ORDER BY x.sent_at""", (me,))
         deliveries = await cur.fetchall()
+        await cur.execute(
+            """SELECT kind, target_id, excerpt, reason, note, created_at, status
+               FROM content_flags WHERE reporter_hash = %s ORDER BY created_at""", (me,))
+        flags = await cur.fetchall()
     return {
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "note": ("Data held by the Moby service for your account. Your profile and settings stored with "
@@ -67,6 +71,7 @@ async def export_my_data(caller: User):
         "alert_preferences": _iso(prefs["alert_preferences"]) if prefs else None,
         "devices": _rows(devices),
         "push_notifications_received": _rows(deliveries),
+        "content_flags": _rows(flags),
     }
 
 
@@ -78,6 +83,8 @@ async def erase_my_data(caller: User):
         devices = (await conn.execute("DELETE FROM devices WHERE owner = %s", (me,))).rowcount   # cascades deliveries
         areas = (await conn.execute("DELETE FROM subscriptions WHERE owner = %s", (me,))).rowcount
         await conn.execute("DELETE FROM user_preferences WHERE owner = %s", (me,))
+        await conn.execute("DELETE FROM content_flags WHERE reporter_hash = %s", (me,))
+        await conn.execute("UPDATE content_flags SET resolved_by = NULL WHERE resolved_by = %s", (me,))
         # Reviewer attribution is about the reviewer: drop it, keep the decision.
         await conn.execute("UPDATE review_queue SET decided_by = NULL WHERE decided_by = %s", (me,))
         await conn.execute("UPDATE guidance_bundles SET published_by = NULL WHERE published_by = %s", (me,))

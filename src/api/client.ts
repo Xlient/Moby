@@ -7,6 +7,8 @@ import type {
   AskRequest,
   CascadeAssessment,
   ClientConfig,
+  ContentFlag,
+  ContentFlagReceived,
   GuidanceCard,
   GuidanceBundle,
   RegionCode,
@@ -314,6 +316,14 @@ export class ApiClient {
         : [];
     }
     return (await this.request<{ alerts: Alert[] }>('GET', '/demo/replay', { query: { lat, lon } })).alerts;
+  }
+
+  // ── "This looks wrong" ───────────────────────────────────────────
+
+  /** Report an AI answer, explanation, brief or community report (moby/api/flags.py). */
+  async flagContent(body: ContentFlag): Promise<ContentFlagReceived> {
+    if (USE_MOCK) return { flag_id: 'mock', status: 'received' };
+    return this.request<ContentFlagReceived>('POST', '/flags', { body });
   }
 
   // ── Hazard route check ───────────────────────────────────────────

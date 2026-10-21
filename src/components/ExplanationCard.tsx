@@ -4,12 +4,21 @@ import { useTheme } from '@/theme/ThemeContext';
 import { typography, spacing, radius } from '@/theme/tokens';
 import type { AlertExplanation } from '@/api/types';
 import { languageName } from '@/lib/language';
+import { FlagAction } from './FlagContent';
 
 /**
  * Plain-language explanation of an official warning. Always labelled as AI and always
  * shown above — never instead of — the agency's own text.
  */
-export function ExplanationCard({ explanation, pending }: { explanation?: AlertExplanation; pending: boolean }) {
+export function ExplanationCard({
+  eventId,
+  explanation,
+  pending,
+}: {
+  eventId?: string;
+  explanation?: AlertExplanation;
+  pending: boolean;
+}) {
   const { theme } = useTheme();
   if (!explanation && !pending) return null;
 
@@ -39,6 +48,11 @@ export function ExplanationCard({ explanation, pending }: { explanation?: AlertE
             {languageName(explanation.language) ? `, translated into ${languageName(explanation.language)}` : ''}, from
             the official text below. If they differ, follow the official text.
           </Text>
+          {eventId && (
+            <View style={styles.gap}>
+              <FlagAction target={{ kind: 'explanation', targetId: eventId }} />
+            </View>
+          )}
         </>
       )}
     </View>

@@ -7,6 +7,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { useTheme } from '@/theme/ThemeContext';
 import { radius, spacing, typography } from '@/theme/tokens';
 import { BriefSheet, Byline } from './brief/BriefSheet';
+import { FlagAction } from './FlagContent';
 import { TimelineStrip } from './brief/BriefTimeline';
 
 interface BriefPanelProps {
@@ -176,6 +177,9 @@ function ReadyCard({ brief }: { brief: SituationalBrief }) {
             <Animated.View style={{ transform: [{ translateX: nudge.interpolate({ inputRange: [0, 1], outputRange: [0, 5] }) }] }}>
               <Icon source="arrow-right" size={18} color={theme.accent.calm} />
             </Animated.View>
+          </View>
+          <View style={styles.gap}>
+            <FlagAction target={{ kind: 'brief', targetId: brief.event_id }} />
           </View>
         </Card>
       </Pressable>

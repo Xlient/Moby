@@ -29,6 +29,7 @@ import { NANO_MODEL } from '@/ondevice/model';
 import type { LocalSource } from '@/ondevice/retrieve';
 import { askOnDevice, warmUp } from '@/ondevice/runtime';
 import { useModelState } from '@/ondevice/useModel';
+import { FlagAction } from '@/components/FlagContent';
 
 const SUGGESTIONS = [
   'What should I do if the road ahead is flooded?',
@@ -269,6 +270,7 @@ function AnswerCard({ answer }: { answer: AskAnswer }) {
           {answer.searched_web ? 'Official websites searched with Tavily. ' : ''}Follow official instructions if they
           differ.
         </Footnote>
+        <FlagAction target={{ kind: 'ask_answer', excerpt: answer.answer }} />
       </AnswerSurface>
     </MobyMessage>
   );
@@ -305,6 +307,7 @@ function LocalAnswerCard({ sources, answer }: { sources: LocalSource[]; answer?:
           <CitedText text={answer.answer} />
           <SourceList sources={answer.sources} />
           <Footnote>From guidance saved on your phone. Follow official instructions if they differ.</Footnote>
+          <FlagAction target={{ kind: 'ask_answer', excerpt: answer.answer }} />
         </AnswerSurface>
       </MobyMessage>
     );

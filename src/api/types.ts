@@ -46,6 +46,10 @@ export type ReportAccepted = components['schemas']['ReportAccepted'];
 export type EventReports = components['schemas']['EventReports'];
 export type ReportSummary = components['schemas']['ReportSummary'];
 
+// ── "This looks wrong" ───────────────────────────────────────────────
+export type ContentFlag = components['schemas']['ContentFlag'];
+export type ContentFlagReceived = components['schemas']['ContentFlagReceived'];
+
 // ── Subscriptions ────────────────────────────────────────────────────
 export type Subscription = components['schemas']['Subscription'];
 

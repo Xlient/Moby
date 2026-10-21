@@ -21,12 +21,14 @@ Signed-in users (Firebase ID token):
   GET|PUT /v1/me/alert-preferences  what may notify you (critical always does)
   PUT|DELETE /v1/me/near-me         the area around the phone (~1 km precision)
   GET|POST /v1/subscriptions, DELETE /v1/subscriptions/{id}  saved areas
+  POST /v1/flags                    "This looks wrong" on AI output or a community report
 
 Reviewer console: /console/ (static page; Google sign-in via Firebase)
 
 Reviewers (Firebase custom claim reviewer=true):
   GET  /v1/review/queue             events paused for human review
   POST /v1/review/{event_id}/decision  approve / reject / hold
+  GET  /v1/review/flags             open "This looks wrong" flags; POST .../{flag_id}/resolve
 
 Internal (Bearer MOBY_SERVICE_TOKEN; used by Serverless Jobs, never by the app):
   GET  /internal/v1/embedding-queue events still missing an embedding
@@ -72,6 +74,7 @@ from moby.graph.brief_queries import VIEW_SQL as BRIEF_ON_VIEW_SQL
 from .alerts import SOURCE_ATTRIBUTION, to_alert
 from .auth import Caller, require_user
 from .demo import router as demo_router
+from .flags import router as flags_router
 from .mesh import router as mesh_router
 from .reports import router as reports_router
 from .appcheck import app_check_middleware
@@ -131,6 +134,7 @@ app.include_router(privacy_router)
 app.include_router(guidance_router)
 app.include_router(routes_router)
 app.include_router(demo_router)
+app.include_router(flags_router)
 
 # ── Reviewer console (static page; it signs in with Firebase and calls /v1/review) ──
 CONSOLE_DIR = Path(__file__).resolve().parent.parent / "console"
@@ -274,7 +278,7 @@ async def event_reports(event_id: uuid.UUID):
         if await cur.fetchone() is None:
             raise HTTPException(404, "event not found")
         await cur.execute(
-            """SELECT r.hazard_type, r.observed_effect, r.severity, r.observed_at, r.captured_offline, r.source,
+            """SELECT r.report_id, r.hazard_type, r.observed_effect, r.severity, r.observed_at, r.captured_offline, r.source,
                       round(ST_Distance(r.location, e.location) / 100) * 100 AS distance_m
                FROM reports r JOIN events e USING (event_id)
                WHERE r.event_id = %s AND r.fusion_status = 'fused'
@@ -292,6 +296,7 @@ async def event_reports(event_id: uuid.UUID):
         "distinct_reporter_count": people,
         "reports": [
             {
+                "report_id": str(r["report_id"]),   # only so "This looks wrong" can name it
                 "hazard_type": r["hazard_type"],
                 **({"observed_effect": r["observed_effect"]} if r["observed_effect"] else {}),
                 "severity": r["severity"],

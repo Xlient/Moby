@@ -20,6 +20,7 @@ import { useUserCenter } from '@/location/UserLocationContext';
 import { useTheme } from '@/theme/ThemeContext';
 import { radius, spacing, typography } from '@/theme/tokens';
 import { deleteTripPack, saveTripPack, useTripPacks, type TripPack } from '@/trips/tripPacks';
+import { FlagAction } from '@/components/FlagContent';
 
 // "Before you go" (POST /v1/trips/brief): pick a destination, get the official alerts and
 // recent community reports there with Nemotron Ultra's cited explanation, and save it all
@@ -468,6 +469,7 @@ function BriefView({
                 {brief.searched_web ? '. Official websites searched with Tavily' : ''}. Follow official instructions
                 if they differ.
               </Text>
+              <FlagAction target={{ kind: 'trip_brief', excerpt: tripBriefExcerpt(label, brief) }} />
             </>
           ) : (
             <Text variant="bodyMedium" style={{ color: theme.text.primary }}>
@@ -855,3 +857,10 @@ const styles = StyleSheet.create({
   },
   actions: { gap: spacing.scale[2] },
 });
+
+/** What a flag on a briefing carries: the server keeps briefings for 2 days only, so send
+ *  the AI statements themselves, with where and when the trip was. */
+function tripBriefExcerpt(label: string, brief: TripBrief): string {
+  const claims = (brief.explanation?.claims ?? []).map((c) => `- ${c.text}`).join('\n');
+  return `${label}, ${brief.trip.start_date} to ${brief.trip.end_date}\n${claims}`;
+}
