@@ -2082,7 +2082,7 @@ export interface components {
             }[];
             searched_web: boolean;
             /** @enum {string} */
-            web_status: "searched" | "no_official_sites" | "no_key" | "over_cap" | "failed";
+            web_status: "searched" | "nothing_to_search" | "no_official_sites" | "no_key" | "over_cap" | "failed";
             /** @description Absent unless ai_status is ok or partial. */
             explanation?: {
                 /** @description e.g. nvidia/Nemotron-3-Ultra-550b-a55b */

@@ -48,6 +48,28 @@ export const TRIP_PLACES: TripPlace[] = [
   P('Darjeeling', 'West Bengal', 'IN', 27.041, 88.2663),
   P('Munnar', 'Kerala', 'IN', 10.0889, 77.0595),
   P('Panaji', 'Goa', 'IN', 15.4909, 73.8278),
+  // China
+  P('Beijing', 'Beijing', 'CN', 39.9042, 116.4074),
+  P('Shanghai', 'Shanghai', 'CN', 31.2304, 121.4737),
+  P('Hangzhou', 'Zhejiang', 'CN', 30.2741, 120.1551),
+  P('Guangzhou', 'Guangdong', 'CN', 23.1291, 113.2644),
+  P("Xi'an", 'Shaanxi', 'CN', 34.3416, 108.9398),
+  P('Chengdu', 'Sichuan', 'CN', 30.6586, 104.0647),
+  P('Dujiangyan', 'Sichuan', 'CN', 30.9886, 103.6476),
+  P('Leshan', 'Sichuan', 'CN', 29.5521, 103.7656),
+  P('Emeishan', 'Mount Emei, Sichuan', 'CN', 29.5714, 103.4448),
+  P('Jiuzhaigou', 'Ngawa, Sichuan', 'CN', 33.2627, 103.9188),
+  P('Kangding', 'Garzê, Sichuan', 'CN', 30.05, 101.9647),
+  P('Kunming', 'Yunnan', 'CN', 25.0389, 102.7183),
+  P('Dali', 'Yunnan', 'CN', 25.6065, 100.2676),
+  P('Lijiang', 'Yunnan', 'CN', 26.8721, 100.2299),
+  P('Shangri-La', 'Dêqên, Yunnan', 'CN', 27.8257, 99.7066),
+  P('Kaili', 'Qiandongnan, Guizhou', 'CN', 26.5667, 107.98),
+  P('Guilin', 'Guangxi', 'CN', 25.2736, 110.29),
+  P('Yangshuo', 'Guilin, Guangxi', 'CN', 24.7781, 110.4966),
+  P('Zhangjiajie', 'Wulingyuan, Hunan', 'CN', 29.3477, 110.5463),
+  P('Huangshan', 'Tangkou, Anhui', 'CN', 30.0846, 118.1585),
+  P('Lhasa', 'Tibet', 'CN', 29.652, 91.1721),
   // Japan
   P('Tokyo', 'Kanto', 'JP', 35.6762, 139.6503),
   P('Hakone', 'Kanagawa', 'JP', 35.2324, 139.1069),
@@ -139,7 +161,7 @@ export const TRIP_PLACES: TripPlace[] = [
 ];
 
 const COUNTRY_NAMES: Record<string, string> = {
-  NP: 'Nepal', IN: 'India', JP: 'Japan', ID: 'Indonesia', PH: 'Philippines', TH: 'Thailand', NZ: 'New Zealand',
+  NP: 'Nepal', IN: 'India', CN: 'China', JP: 'Japan', ID: 'Indonesia', PH: 'Philippines', TH: 'Thailand', NZ: 'New Zealand',
   IS: 'Iceland', IT: 'Italy', GR: 'Greece', ES: 'Spain', PT: 'Portugal', MX: 'Mexico', US: 'United States',
 };
 

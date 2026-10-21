@@ -1,11 +1,13 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.11.0
+  version: 0.11.1
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.11.1 — Trip briefings search official websites only for hazards found (additive):
+      + TripBrief.web_status: nothing_to_search (no alerts or reports there, so no search)
     0.11.0 — Official alerts in the phone's language (additive):
       + GET /alerts/{alert_id}?lang=: translates an official alert into the phone's language
         from the agency's own words on first open (cached per alert and language)
@@ -1569,7 +1571,7 @@ components:
               url: { type: string }
               publisher: { type: string }
         searched_web: { type: boolean }
-        web_status: { type: string, enum: [searched, no_official_sites, no_key, over_cap, failed] }
+        web_status: { type: string, enum: [searched, nothing_to_search, no_official_sites, no_key, over_cap, failed] }
         explanation:
           type: object
           description: Absent unless ai_status is ok or partial.

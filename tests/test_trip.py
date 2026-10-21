@@ -142,6 +142,21 @@ def test_uncertainty_is_never_empty_and_says_the_pack_goes_stale():
     assert any("unverified" in n for n in over) and any("weren't searched" in n for n in over)
 
 
+def test_every_country_with_official_sites_has_a_name():
+    from moby.search.official import OFFICIAL
+    assert set(OFFICIAL) <= set(trip.COUNTRY_NAMES)
+
+
+def test_no_hazards_no_web_search(monkeypatch):
+    """Nothing found there: a search for "natural hazard warning China" only finds unrelated pages."""
+    import moby.search.tavily as tavily
+
+    monkeypatch.setattr(tavily, "Tavily", lambda **_: pytest.fail("searched with no hazard to search for"))
+    web, status = asyncio.run(trip.web_sources(None, [], None, "CN"))
+    assert (web, status) == ([], "nothing_to_search")
+    assert "didn't search" in trip.WEB_NOTES["nothing_to_search"]
+
+
 def test_search_query_uses_structured_fields_only():
     assert trip.search_query(["flood", "landslide"], "Phakding", "NP") == \
         "flooding landslide warning travel safety Phakding Nepal"

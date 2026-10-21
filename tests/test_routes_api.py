@@ -188,3 +188,20 @@ def test_place_search_puts_a_few_nearby_first_then_the_best_anywhere(monkeypatch
     out = asyncio.run(ors.search_places(None, "k", "Santa Cruz", (37.42, -122.08)))
     assert [p["label"] for p in out] == ["Santa Cruz, CA, USA", "Santa Cruz, Bolivia"]
     assert calls[0]["size"] == ors.NEARBY_MAX
+
+
+def test_place_search_lists_each_label_once_even_among_nearby_places(monkeypatch):
+    """A town and its district come back under one label; the person sees it once (the nearer)."""
+    import asyncio
+
+    async def pelias(client, key, params):
+        if "boundary.circle.radius" in params:
+            return [{"label": "Dujiangyan, SC, China", "lat": 30.99, "lon": 103.65},
+                    {"label": "Dujiangyan, SC, China", "lat": 31.05, "lon": 103.60},
+                    {"label": "Dujiangyan City, SC, China", "lat": 30.99, "lon": 103.62}]
+        return [{"label": "Dujiangyan, SC, China", "lat": 31.05, "lon": 103.60}]
+
+    monkeypatch.setattr(ors, "_pelias", pelias)
+    out = asyncio.run(ors.search_places(None, "k", "Dujiangyan", (30.63, 104.03)))
+    assert [p["label"] for p in out] == ["Dujiangyan, SC, China", "Dujiangyan City, SC, China"]
+    assert out[0]["lat"] == 30.99
