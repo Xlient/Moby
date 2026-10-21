@@ -121,20 +121,25 @@ async def search_places(
     client: httpx.AsyncClient, api_key: str, text: str, near: tuple[float, float] | None, size: int = 6,
 ) -> list[dict[str, Any]]:
     """Place search (Pelias): up to NEARBY_MAX places within NEARBY_KM of `near` ((lat, lon))
-    first, then the best matches anywhere, without repeats."""
+    first, then the best matches anywhere. One place per label: Pelias returns a town and its
+    district under the same name ("Dujiangyan, SC, China" twice), which reads as a bug."""
     found: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add(places: list[dict[str, Any]]) -> None:
+        for p in places:
+            if p["label"] not in seen:
+                seen.add(p["label"])
+                found.append(p)
+
     if near:
-        found = await _pelias(client, api_key, {
+        add(await _pelias(client, api_key, {
             "text": text, "size": NEARBY_MAX,
             "boundary.circle.lat": near[0], "boundary.circle.lon": near[1], "boundary.circle.radius": NEARBY_KM,
-        })
+        }))
     if len(found) < size:
         params: dict[str, Any] = {"text": text, "size": size}
         if near:
             params["focus.point.lat"], params["focus.point.lon"] = near
-        seen = {p["label"] for p in found}
-        for p in await _pelias(client, api_key, params):
-            if p["label"] not in seen:
-                seen.add(p["label"])
-                found.append(p)
+        add(await _pelias(client, api_key, params))
     return found[:size]

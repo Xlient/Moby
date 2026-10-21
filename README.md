@@ -42,10 +42,14 @@ explains them in plain words with NVIDIA Nemotron, and tells you what to do.
 |---|---|---|
 | **Android** (phone or emulator) | `Moby-<version>.apk` from [Releases](https://github.com/Xlient/Moby/releases) | Signed release build. Connects to the live service. |
 | **iOS Simulator** (Mac) | `Moby-simulator.zip` from [Releases](https://github.com/Xlient/Moby/releases) | Push notifications are Android-only for now. |
-| **iPhone** | Build from source ([iOS](#ios-from-source)) | Not on the App Store or TestFlight. |
+| **iPhone** | Build from source ([iOS](#ios-from-source)) | Not on the App Store or TestFlight yet; the [TestFlight pipeline](#releasing-maintainers) is ready once there is an Apple Developer membership. |
 | **Browser** | Run from source with demo data ([2 minutes](#a-the-app-with-demo-data)) | No account or keys needed. |
 
 **Sign in** with any Google account. Judges can use the test account in the Devpost testing instructions.
+
+**Bluetooth mesh and SOS to nearby phones are Android-only.** iOS doesn't let apps put data in Bluetooth
+advertisements, so on iPhone and the iOS Simulator those two options are hidden. The iPhone design is tracked
+in [#83](https://github.com/Xlient/Moby/issues/83). Everything else works on both.
 
 ### Android
 
@@ -230,7 +234,7 @@ in a language they don't read, from agencies they don't know.
 | **Rumours can look official** | Every item is labelled **Official** or **Unverified**, with how many people reported it. |
 | **Warnings in an unfamiliar language** | Translated and explained in 17 languages. Every number is checked against the original, which stays one tap away. |
 | **No signal** | Safety steps and local emergency numbers are stored on the phone, and Ask Moby can answer with an on-device model. |
-| **No signal and you need help** | **Bluetooth mesh SOS** (Android, opt-in). Nearby Moby phones repeat an SOS for up to 6 hours and upload it once one of them reconnects. |
+| **No signal and you need help** | **Bluetooth mesh SOS** (Android only, opt-in; iPhone in [#83](https://github.com/Xlient/Moby/issues/83)). Nearby Moby phones repeat an SOS for up to 6 hours and upload it once one of them reconnects. |
 | **Is the road ahead safe?** | **Route hazard check** against active warnings and reports, with a way around them. |
 | **Planning a trip** | **Before you go** briefs for a destination or route, saved for offline use. |
 
@@ -425,6 +429,30 @@ Evaluations that call models run only in the gated [`model-evals`](.github/workf
 
 The entry points are `moby.api.app`, `python -m moby.feeds` and `python -m moby.delivery`. Deployment to Nebius
 is `deploy/nebius/deploy.sh` (maintainer only).
+
+### Releasing (maintainers)
+
+Push a version tag: `git tag v1.1.0 && git push origin v1.1.0`.
+
+| Workflow | On a `v*` tag | By hand |
+|---|---|---|
+| [`android-release.yml`](.github/workflows/android-release.yml) | Signed APK + AAB, attached to the GitHub Release | Optional Google Play upload, approved in the `play` environment |
+| [`ios-simulator.yml`](.github/workflows/ios-simulator.yml) | Simulator `.app`, attached to the GitHub Release | Any time |
+| [`ios-release.yml`](.github/workflows/ios-release.yml) | App Store build uploaded to **TestFlight** (once `IOS_RELEASE_ENABLED` is set) | `testflight` again, or `submit`: send a tested TestFlight build to App Store review, approved in the `app-store` environment |
+
+One-time iOS setup (needs the paid Apple Developer Program):
+
+1. Create the app in App Store Connect with bundle id `com.xlient.moby`, and add an iOS app with that bundle id
+   in Firebase. Turn on App Attest and DeviceCheck for App Check, and upload an APNs key for push.
+2. App Store Connect → Users and Access → Integrations: create an API key with the **Admin** role. Xcode needs
+   it to create the distribution certificate and profile; nothing is stored in the repo.
+3. Repository secrets: `APP_STORE_CONNECT_API_KEY_BASE64` (`base64 -i AuthKey_XXXX.p8`),
+   `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APPLE_TEAM_ID`, and
+   `GOOGLE_SERVICES_PLIST_BASE64` (`base64 -i GoogleService-Info.plist`). `EXPO_PUBLIC_API_URL` is shared.
+4. Repository variable `IOS_RELEASE_ENABLED` = `true`, and an environment `app-store` with yourself as
+   required reviewer.
+5. Before the first `submit`, fill in the store listing, screenshots, privacy answers and review notes (with a
+   test account) in App Store Connect. The workflow submits the build; it doesn't write the listing.
 
 ---
 

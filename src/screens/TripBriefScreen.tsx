@@ -14,6 +14,8 @@ import { useGuidance } from '@/guidance/guidanceStore';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResponsive } from '@/hooks/useResponsive';
 import { formatTimeAgo } from '@/lib/alerts';
+import { distanceKm } from '@/lib/geo';
+import { formatDistance } from '@/lib/routeCheck';
 import { useUserCenter } from '@/location/UserLocationContext';
 import { useTheme } from '@/theme/ThemeContext';
 import { radius, spacing, typography } from '@/theme/tokens';
@@ -284,6 +286,7 @@ export function TripBriefScreen({ onBack, initialPoint, onAlertPress }: TripBrie
                           ? { lat: center.lat, lon: center.lon, label: 'Where you are now', country: countryAt(center.lat, center.lon) }
                           : undefined
                       }
+                      near={{ lat: center.lat, lon: center.lon }}
                       tip={mode === 'place' && CAN_DROP_PIN}
                     />
                   )}
@@ -582,7 +585,11 @@ function ClaimRow({ claim, titles }: { claim: TripClaim; titles: Record<string, 
 
 // ── Small pieces ──────────────────────────────────────────────────────
 
-/** Search Moby's bundled place list (no geocoder sees the text), or use where the phone is. */
+/**
+ * Search Moby's bundled place list (no geocoder sees the text), or use where the phone is.
+ * Only when the list has nothing, and the person asks, the text goes to the same place
+ * search Check a route uses (OpenRouteService).
+ */
 function PlaceSearch({
   query,
   setQuery,
@@ -590,6 +597,7 @@ function PlaceSearch({
   onPick,
   label,
   here,
+  near,
   tip,
 }: {
   query: string;
@@ -598,9 +606,15 @@ function PlaceSearch({
   onPick: (d: Destination) => void;
   label?: string;
   here?: Destination;
+  /** Where to rank online results around. */
+  near: { lat: number; lon: number };
   tip: boolean;
 }) {
   const { theme } = useTheme();
+  const isOnline = useOnlineStatus();
+  const online = useMutation({ mutationFn: (q: string) => api.searchPlaces(q, near) });
+  const onlineFor = online.variables === query.trim() ? online : null;
+  const notListed = query.trim().length >= 2 && matches.length === 0;
   return (
     <>
       {label && <Text variant="labelLarge" style={{ color: theme.text.primary }}>{label}</Text>}
@@ -632,12 +646,58 @@ function PlaceSearch({
           </Text>
         </Pressable>
       ))}
-      {query.trim().length >= 2 && matches.length === 0 && (
+      {notListed && (
         <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
           Not in Moby’s list of destinations.{' '}
           {CAN_DROP_PIN ? 'Use your location, or long-press the map to drop a pin.' : 'Try a nearby town, or use your location.'}
         </Text>
       )}
+      {notListed && isOnline && !onlineFor?.data && (
+        <>
+          <Button
+            mode="outlined"
+            icon="magnify"
+            onPress={() => online.mutate(query.trim())}
+            loading={onlineFor?.isPending}
+            disabled={onlineFor?.isPending}
+            style={styles.alignStart}
+            contentStyle={styles.tapTarget}
+          >
+            Search online
+          </Button>
+          <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
+            {onlineFor?.isError
+              ? 'Couldn’t search just now. Try again, or use your location.'
+              : 'Sends only what you typed to OpenRouteService (© OpenStreetMap contributors).'}
+          </Text>
+        </>
+      )}
+      {notListed && onlineFor?.data?.length === 0 && (
+        <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>No places found online either.</Text>
+      )}
+      {notListed &&
+        onlineFor?.data?.map((p) => (
+          <Pressable
+            key={`${p.lat},${p.lon}`}
+            onPress={() =>
+              onPick({
+                lat: p.lat,
+                lon: p.lon,
+                label: p.label,
+                placeName: p.label.split(',')[0]!.trim(),
+                country: countryAt(p.lat, p.lon),
+              })
+            }
+            accessibilityRole="button"
+            accessibilityLabel={p.label}
+            style={[styles.match, { backgroundColor: theme.bg.raised }]}
+          >
+            <Text variant="titleSmall" style={{ color: theme.text.primary }}>{p.label}</Text>
+            <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
+              {formatDistance(distanceKm(near.lat, near.lon, p.lat, p.lon) * 1000)} away
+            </Text>
+          </Pressable>
+        ))}
       {here && (
         <Button
           mode="outlined"

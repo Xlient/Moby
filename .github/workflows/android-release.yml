@@ -2,6 +2,12 @@
 #
 #   git tag v0.2.0 && git push origin v0.2.0      → signed APK + AAB, GitHub Release
 #   Actions → Android release → Run workflow        → same, optionally to Play
+#   Mondays (schedule, on main)                     → build only, to keep the caches warm
+#
+# Caches: tag runs can only restore caches saved from main (GitHub scopes caches by ref),
+# so main saves them: the weekly run, or Run workflow on main. Gradle's dependencies and
+# build cache come from setup-gradle; compiled C++ from ccache (CMake picks ccache up from
+# CMAKE_*_COMPILER_LAUNCHER). A cold build takes far longer than a warm one.
 #
 # Secrets (Settings → Secrets and variables → Actions):
 #   ANDROID_UPLOAD_KEYSTORE_BASE64  base64 of the upload keystore (.jks)
@@ -17,6 +23,8 @@ name: Android release
 on:
   push:
     tags: ["v*"]
+  schedule:
+    - cron: "0 5 * * 1"   # Mondays 05:00 UTC: warm the caches (see above)
   workflow_dispatch:
     inputs:
       publish:
@@ -36,7 +44,7 @@ jobs:
   build:
     name: Build signed APK + AAB
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 75
     outputs:
       version_name: ${{ steps.version.outputs.name }}
     steps:
@@ -62,7 +70,20 @@ jobs:
           distribution: temurin
           java-version: "17"   # the React Native CMake step fails on newer JDKs
 
+      # Saves its cache from main only (its default); tags and other branches restore it.
       - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install ccache
+        run: sudo apt-get install -y --no-install-recommends ccache
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-android-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            ccache-android-${{ hashFiles('package-lock.json') }}-
+            ccache-android-
 
       - name: Install
         run: npm ci
@@ -116,9 +137,25 @@ jobs:
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
           # Official builds prove themselves to the API with Play Integrity (App Check).
           EXPO_PUBLIC_APP_CHECK: "true"
-        # Phones are arm64; emulators are x86_64 (or arm64 on Apple Silicon). All four ABIs
-        # take over an hour of native compiling on a hosted runner.
-        run: ./gradlew assembleRelease bundleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,x86_64
+          # Compiled C++ (React Native / Expo modules, per ABI) goes through ccache.
+          CMAKE_C_COMPILER_LAUNCHER: ccache
+          CMAKE_CXX_COMPILER_LAUNCHER: ccache
+        run: |
+          export CCACHE_DIR="$HOME/.cache/ccache" CCACHE_BASEDIR="$GITHUB_WORKSPACE" CCACHE_NOHASHDIR=true \
+                 CCACHE_COMPILERCHECK=content CCACHE_MAXSIZE=2G
+          ccache --zero-stats
+          # 64-bit only: arm64-v8a is every phone from recent years (Play has required 64-bit
+          # since 2019), x86_64 is the emulator. 32-bit ABIs doubled the native work.
+          ./gradlew assembleRelease bundleRelease --no-daemon --build-cache \
+            -PreactNativeArchitectures=arm64-v8a,x86_64
+          ccache --show-stats
+
+      - name: Save ccache
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-android-${{ hashFiles('package-lock.json') }}-${{ github.sha }}
 
       - name: Collect outputs
         run: |
@@ -129,6 +166,7 @@ jobs:
           rm -f "$RUNNER_TEMP/upload.jks"
 
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'schedule'   # the weekly run only warms caches
         with:
           name: moby-android-${{ steps.version.outputs.name }}
           path: dist/
