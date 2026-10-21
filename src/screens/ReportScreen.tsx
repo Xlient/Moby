@@ -14,6 +14,9 @@ import { enqueueReport, flushReportQueue, newClientEventId } from '@/lib/reportQ
 import { getPrivacySettings } from '@/lib/privacySettings';
 import { formatTimeAgo, hazardIcon } from '@/lib/alerts';
 import { useTryMoby } from '@/lib/tryMoby';
+import { callFirstLine } from '@/lib/callFirst';
+import { countryAt, emergencyFor } from '@/data/emergencyNumbers';
+import { isRealPlace, useUserCenterPassive } from '@/location/UserLocationContext';
 import type { HazardType, ObservedEffect, Severity } from '@/api/types';
 
 interface ReportScreenProps {
@@ -167,6 +170,12 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
   const isOnline = useOnlineStatus();
+  // Where the phone really is (never a place viewed in Try Moby); the demo fallback city is no country.
+  const here = useUserCenterPassive();
+  const callFirst = useMemo(
+    () => callFirstLine(isRealPlace(here) ? emergencyFor(countryAt(here.lat, here.lon)) : undefined),
+    [here],
+  );
 
   const [step, setStep] = useState<Step>('hazard');
   const [hazard, setHazard] = useState<HazardType | null>(null);
@@ -217,7 +226,7 @@ export function ReportScreen({ onBack }: ReportScreenProps) {
         {step === 'hazard' && (
           <>
             <Text variant="bodyMedium" style={[styles.urgent, { color: theme.text.secondary }]}>
-              In immediate danger? Call 911 first.
+              {callFirst}
             </Text>
             <Text variant="titleLarge" accessibilityRole="header" style={[styles.question, { color: theme.text.primary }]}>
               What’s happening?
