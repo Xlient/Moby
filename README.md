@@ -1,3 +1,5 @@
+<a id="top"></a>
+
 <div align="center">
 
 <img src="assets/brand/moby-mark.png" width="96" alt="Moby logo">
@@ -51,7 +53,8 @@ explains them in plain words with NVIDIA Nemotron, and tells you what to do.
 advertisements, so on iPhone and the iOS Simulator those two options are hidden. The iPhone design is tracked
 in [#83](https://github.com/Xlient/Moby/issues/83). Everything else works on both.
 
-### Android
+<details>
+<summary><b>Android: install the APK</b></summary>
 
 1. **Emulator:** install [Android Studio](https://developer.android.com/studio), open **Device Manager**, create
    any Pixel phone with a recent Google APIs image, and start it. **Phone:** skip this step.
@@ -63,7 +66,10 @@ in [#83](https://github.com/Xlient/Moby/issues/83). Everything else works on bot
 To place an emulator somewhere specific, use the emulator's **⋯ → Location** panel, or
 `adb emu geo fix <lon> <lat>`.
 
-### iOS Simulator
+</details>
+
+<details>
+<summary><b>iOS Simulator: install the app</b></summary>
 
 Needs a Mac with Xcode. No Apple account is required. Open Xcode once and accept the iOS Simulator download
 it offers (or run `xcodebuild -downloadPlatform iOS`). Unzip `Moby-simulator.zip` to get `Moby.app`, then:
@@ -76,13 +82,20 @@ xcrun simctl launch booted com.xlient.moby
 
 Set a location with the Simulator's **Features → Location** menu.
 
-### The live service
+</details>
+
+<details>
+<summary><b>The live service</b></summary>
 
 Release builds talk to Moby's API on a Nebius Serverless Endpoint. It stays up at the same address through
 the end of judging (15 December 2026), and a health check runs every 30 minutes
 ([`uptime.yml`](.github/workflows/uptime.yml)). The address is built into the release builds rather than
 published, because every request needs a Firebase App Check token that only the official signed app can get.
 Builds from source without an API address run on built-in demo data instead.
+
+</details>
+
+<p align="right"><a href="#top">Back to top ↑</a></p>
 
 ---
 
@@ -220,6 +233,8 @@ When you're done, tap **Stop demo** on Home.
 
 **Settings → About Moby → How Moby uses AI** lists which model does what, and what AI never decides.
 
+<p align="right"><a href="#top">Back to top ↑</a></p>
+
 ---
 
 ## What Moby does
@@ -244,9 +259,14 @@ Two rules hold everywhere:
 2. **Models never decide whether something is confirmed or how urgent it is.** Those are plain rules in
    `moby/escalation/`.
 
+<p align="right"><a href="#top">Back to top ↑</a></p>
+
 ---
 
 ## Models
+
+<details>
+<summary><b>Model tiers, what each one does, and how its output is checked</b></summary>
 
 Server-side models run on [Nebius Token Factory](https://tokenfactory.nebius.com/) through its
 OpenAI-compatible API. `moby/llm.py` chooses the tier for each feature (model ids in `moby/config.py`). Every
@@ -268,9 +288,16 @@ only** with [Tavily](https://tavily.com/) (`moby/search/official.py`). Every pai
 (`moby/ai/budget.py`); past it, features fall back to the official text. `scripts/list_models.py` and
 `scripts/verify_models.py` list and check the models a Token Factory key can reach.
 
+</details>
+
+<p align="right"><a href="#top">Back to top ↑</a></p>
+
 ---
 
 ## Architecture
+
+<details>
+<summary><b>Diagram and where each part lives</b></summary>
 
 ```mermaid
 flowchart LR
@@ -308,6 +335,10 @@ flowchart LR
 | Data | `db/` | Postgres 17 with PostGIS and pgvector. |
 | Hosting | `deploy/` | One Nebius Serverless Endpoint runs the API, Postgres, poller, push and AI workers. Serverless Jobs run embeddings, backups and guidance generation. MysteryBox holds secrets; Object Storage holds backups. |
 
+</details>
+
+<p align="right"><a href="#top">Back to top ↑</a></p>
+
 ---
 
 ## Run from source
@@ -321,7 +352,10 @@ flowchart LR
 | iOS builds | macOS, Xcode with an iOS Simulator runtime, CocoaPods (`brew install cocoapods`) |
 | The backend | Docker and [uv](https://docs.astral.sh/uv/) (Python 3.14 is installed from `.python-version`) |
 
-### A. The app with demo data
+<a id="a-the-app-with-demo-data"></a>
+<a id="ios-from-source"></a>
+<details open>
+<summary><b>A. The app with demo data (no backend, about 2 minutes)</b></summary>
 
 No backend, accounts or keys. Without `EXPO_PUBLIC_API_URL` the app uses built-in sample alerts, explanations
 and answers from `src/api/fixtures.ts`. The walkthrough above works the same way, and emergency mode opens on
@@ -345,7 +379,7 @@ npx expo run:android --variant release
 
 On Linux, point `JAVA_HOME` at JDK 17 and use `ANDROID_HOME=~/Android/Sdk`.
 
-<a id="ios-from-source"></a>**iOS:**
+**iOS:**
 
 ```bash
 MOBY_PREBUILD_PLATFORM=ios npx expo run:ios --configuration Release
@@ -366,7 +400,10 @@ signing lasts 7 days.
 | `npm run emulators` · `npm run test:rules` | Firebase emulators and the Firestore rules tests |
 | `npm run build:android:apk` | EAS cloud build (`preview` profile in [`eas.json`](eas.json)) |
 
-### B. The full stack
+</details>
+
+<details>
+<summary><b>B. The full stack (database, feeds, API, models)</b></summary>
 
 **1. Database and live feeds.** [`docker-compose.yml`](docker-compose.yml) starts Postgres 17 (PostGIS and
 pgvector), runs the migrations, and starts the feed poller, the report fusion worker and the brief worker. The
@@ -430,7 +467,11 @@ Evaluations that call models run only in the gated [`model-evals`](.github/workf
 The entry points are `moby.api.app`, `python -m moby.feeds` and `python -m moby.delivery`. Deployment to Nebius
 is `deploy/nebius/deploy.sh` (maintainer only).
 
-### Releasing (maintainers)
+</details>
+
+<a id="releasing-maintainers"></a>
+<details>
+<summary><b>Releasing (maintainers)</b></summary>
 
 Push a version tag: `git tag v1.1.0 && git push origin v1.1.0`.
 
@@ -453,6 +494,10 @@ One-time iOS setup (needs the paid Apple Developer Program):
    required reviewer.
 5. Before the first `submit`, fill in the store listing, screenshots, privacy answers and review notes (with a
    test account) in App Store Connect. The workflow submits the build; it doesn't write the listing.
+
+</details>
+
+<p align="right"><a href="#top">Back to top ↑</a></p>
 
 ---
 
@@ -483,6 +528,8 @@ keeps these principles:
 
 Everyone taking part follows the [Code of Conduct](CODE_OF_CONDUCT.md) (Contributor Covenant 2.1).
 
+<p align="right"><a href="#top">Back to top ↑</a></p>
+
 ---
 
 ## Sponsoring
@@ -495,6 +542,8 @@ the Bluetooth mesh and offline features.
 what each includes, and current sponsors. Sponsorship never buys a say in which warnings are shown, how they
 are ranked or labelled, or what the safety guidance says.
 
+<p align="right"><a href="#top">Back to top ↑</a></p>
+
 ---
 
 ## Privacy
@@ -503,7 +552,12 @@ Moby collects as little as it can. Export or delete your data in **Settings → 
 questions aren't stored, and a route check sends only its start and end points to OpenRouteService. See the
 [privacy policy](legal/privacy.md) and [terms](legal/terms.md).
 
+<p align="right"><a href="#top">Back to top ↑</a></p>
+
 ## Data sources
+
+<details>
+<summary><b>Official services and other sources Moby uses</b></summary>
 
 Warnings come from official services including the US National Weather Service, USGS, NASA EONET, GDACS, the
 Pacific Tsunami Warning Center, the National Hurricane Center, the Joint Typhoon Warning Center, EMSC, the Japan
@@ -512,14 +566,22 @@ publishing Common Alerting Protocol feeds. Safety guidance comes from FEMA (Read
 Service. Routes come from OpenRouteService and OpenStreetMap contributors. These organisations do not endorse
 Moby.
 
+</details>
+
 Moby was started for the Nebius × NVIDIA Global AI Hackathon. The first commit is from 20 September 2026,
 inside the submission period.
+
+<p align="right"><a href="#top">Back to top ↑</a></p>
 
 ## Security
 
 Please report vulnerabilities privately as described in [SECURITY.md](SECURITY.md), not in a public issue.
 
+<p align="right"><a href="#top">Back to top ↑</a></p>
+
 ## License
 
 Moby is free software under the [GNU General Public License v3.0](LICENSE). The on-device model is downloaded
 separately under the NVIDIA Nemotron Open Model License.
+
+<p align="right"><a href="#top">Back to top ↑</a></p>
