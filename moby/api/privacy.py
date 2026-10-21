@@ -81,6 +81,10 @@ async def erase_my_data(caller: User):
         # Reviewer attribution is about the reviewer: drop it, keep the decision.
         await conn.execute("UPDATE review_queue SET decided_by = NULL WHERE decided_by = %s", (me,))
         await conn.execute("UPDATE guidance_bundles SET published_by = NULL WHERE published_by = %s", (me,))
+        # Relaying is about the relayer too: drop me from what my phone uploaded, keep the message.
+        for table in ("reports", "sos_signals"):
+            await conn.execute(f"UPDATE {table} SET relayed_by = array_remove(relayed_by, %(me)s) "
+                               f"WHERE %(me)s = ANY(relayed_by)", {"me": me})
         await conn.execute("INSERT INTO erasure_log (reports, devices, areas) VALUES (%s, %s, %s)",
                            (reports, devices, areas))
     return Response(status_code=204)

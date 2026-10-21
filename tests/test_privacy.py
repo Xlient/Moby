@@ -37,15 +37,25 @@ def client(db_url, monkeypatch):
     get_settings.cache_clear()
 
 
-def add_report(db_url, owner, *, note="Water over the path, my name is Ana", days_ago=0):
+def add_report(db_url, owner, *, note="Water over the path, my name is Ana", days_ago=0, relayed_by=()):
     with psycopg.connect(db_url, autocommit=True) as c:
         (rid,) = c.execute(
             "INSERT INTO reports (client_event_id, reporter_hash, hazard_type, severity, location, observed_at, "
-            "received_at, note) VALUES (%s, %s, 'flood', 'high', "
+            "received_at, note, relayed_by) VALUES (%s, %s, 'flood', 'high', "
             "ST_SetSRID(ST_MakePoint(-122.41234, 37.77891), 4326)::geography, now() - make_interval(days => %s), "
-            "now() - make_interval(days => %s), %s) RETURNING report_id",
-            (str(uuid.uuid4()), owner, days_ago, days_ago, note)).fetchone()
+            "now() - make_interval(days => %s), %s, %s) RETURNING report_id",
+            (str(uuid.uuid4()), owner, days_ago, days_ago, note, list(relayed_by))).fetchone()
     return rid
+
+
+def add_sos(db_url, relayed_by):
+    with psycopg.connect(db_url, autocommit=True) as c:
+        (sid,) = c.execute(
+            "INSERT INTO sos_signals (mesh_key, reporter_hash, status, location, sent_at, hop_count, relayed_by) "
+            "VALUES (%s, 'mesh:0a0b0c0d', 'help', ST_SetSRID(ST_MakePoint(85.3, 27.7), 4326)::geography, now(), "
+            "2, %s) RETURNING sos_id",
+            (uuid.uuid4().hex[:16], list(relayed_by))).fetchone()
+    return sid
 
 
 def setup_account(client, db_url):
@@ -81,10 +91,25 @@ def test_erase_removes_my_data_and_keeps_others(client, db_url):
     assert export["reports"] == [] and export["areas"] == [] and export["alert_preferences"] is None
 
 
+def test_erase_drops_me_from_messages_my_phone_relayed(client, db_url):
+    with psycopg.connect(db_url, autocommit=True) as c:
+        c.execute("TRUNCATE sos_signals")
+    report = add_report(db_url, "mesh:01020304", relayed_by=[ME, "other-gateway"])
+    sos = add_sos(db_url, relayed_by=[ME, "other-gateway"])
+    assert client.delete("/v1/me").status_code == 204
+    with psycopg.connect(db_url) as c:
+        # The messages stay (they're someone else's); only my phone's part in them goes.
+        assert c.execute("SELECT relayed_by FROM reports WHERE report_id = %s", (report,)).fetchone() == (
+            ["other-gateway"],)
+        assert c.execute("SELECT relayed_by FROM sos_signals WHERE sos_id = %s", (sos,)).fetchone() == (
+            ["other-gateway"],)
+
+
 def test_retention_anonymises_old_reports(db_url):
     with psycopg.connect(db_url, autocommit=True) as c:
         c.execute("TRUNCATE reports, deliveries, devices CASCADE")
-    old, new = add_report(db_url, ME, days_ago=91), add_report(db_url, ME, days_ago=1)
+    old = add_report(db_url, ME, days_ago=91, relayed_by=["gateway"])
+    new = add_report(db_url, ME, days_ago=1, relayed_by=["gateway"])
 
     async def run():
         async with await psycopg.AsyncConnection.connect(db_url, autocommit=True) as conn:
@@ -92,11 +117,12 @@ def test_retention_anonymises_old_reports(db_url):
     assert asyncio.run(run())["reports_anonymised"] == 1
     assert asyncio.run(run())["reports_anonymised"] == 0                             # idempotent
     with psycopg.connect(db_url) as c:
-        note, rh, lon, lat, acc = c.execute(
-            "SELECT note, reporter_hash, ST_X(location::geometry), ST_Y(location::geometry), location_accuracy_m "
-            "FROM reports WHERE report_id = %s", (old,)).fetchone()
-        assert note is None and rh == f"anon:{old}" and (lon, lat) == (-122.41, 37.78) and acc >= 1000
-        assert c.execute("SELECT note FROM reports WHERE report_id = %s", (new,)).fetchone()[0] is not None
+        note, rh, relays, lon, lat, acc = c.execute(
+            "SELECT note, reporter_hash, relayed_by, ST_X(location::geometry), ST_Y(location::geometry), "
+            "location_accuracy_m FROM reports WHERE report_id = %s", (old,)).fetchone()
+        assert note is None and rh == f"anon:{old}" and relays == [] and (lon, lat) == (-122.41, 37.78) and acc >= 1000
+        assert c.execute("SELECT note, relayed_by FROM reports WHERE report_id = %s", (new,)).fetchone()[1] == [
+            "gateway"]
 
 
 def test_legal_pages(client):
