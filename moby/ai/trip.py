@@ -75,7 +75,7 @@ EFFECT_WORDS = {"rising_water": "rising water", "structural_damage": "damage to 
 # Country names for search queries and the prompt (every country with official domains).
 COUNTRY_NAMES = {"US": "United States", "JP": "Japan", "ID": "Indonesia", "PH": "Philippines", "MX": "Mexico",
                  "IT": "Italy", "GR": "Greece", "IS": "Iceland", "NZ": "New Zealand", "NP": "Nepal", "ES": "Spain",
-                 "PT": "Portugal", "IN": "India", "TH": "Thailand"}
+                 "PT": "Portugal", "IN": "India", "TH": "Thailand", "CN": "China"}
 
 # A statement may not name a hazard its sources don't mention.
 HAZARD_TERMS = {"flood", "flooding", "floods", "flash", "landslide", "landslides", "mudslide", "avalanche",
@@ -325,7 +325,11 @@ def search_query(hazards: list[str], place: str | None, country: str) -> str:
 
 async def web_sources(pool: AsyncConnectionPool, hazards: list[str], place: str | None,
                       country: str | None) -> tuple[list[Cited], str]:
-    """Official pages via Tavily, and what happened: searched | no_official_sites | no_key | over_cap | failed."""
+    """Official pages via Tavily, and what happened: searched | nothing_to_search | no_official_sites | no_key |
+    over_cap | failed. Only for the hazards found there: with none, the query is just "natural hazard warning
+    <country>", which brings back unrelated pages (Shenzhen bylaws and a Laos advisory for Chengdu)."""
+    if not hazards:
+        return [], "nothing_to_search"
     domains = OFFICIAL.get(country or "")
     if not domains:
         return [], "no_official_sites"
@@ -551,6 +555,7 @@ AI_NOTES = {
                    "listed are complete; this list wasn't written by AI.",
 }
 WEB_NOTES = {
+    "nothing_to_search": "No alerts or reports here, so Moby didn't search official websites for them.",
     "no_official_sites": "Moby has no list of official websites for this country, so none were searched.",
     "no_key": "Official websites weren't searched (web search isn't set up here).",
     "over_cap": "Official websites weren't searched: Moby has used all its web searches for today.",

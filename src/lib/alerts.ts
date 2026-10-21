@@ -100,3 +100,17 @@ export function formatDistanceFromEvent(m: number): string {
   if (m < 1000) return `${m} m away`;
   return `${(m / 1000).toFixed(1)} km away`;
 }
+
+// "Shibing County Meteorological Observatory issues a yellow lightning warning [Level III/Heavy]":
+// Chinese weather offices start every headline with their own name, so a two-line card shows
+// only "Shibing County Meteorological Ob…". The place is already on the card's location line.
+// Lifted or cancelled warnings keep their full headline, so that meaning is never dropped.
+const ISSUER_PREFIX =
+  /^.+?\bMeteorological\s+(?:Observatory|Station|Bureau|Service|Cent(?:er|re))\s+(?:(?:upgrades|updates|issued|issues|releases)(?:\s+and\s+(?:issues|releases))?)\s+(?:an?\s+|the\s+)?/i;
+
+/** The headline for a title: without the issuing office's name in front, when it has one. */
+export function displayHeadline(headline: string): string {
+  const rest = headline.replace(ISSUER_PREFIX, '');
+  if (rest === headline || rest.length < 4) return headline;
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+}

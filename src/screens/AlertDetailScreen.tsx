@@ -25,6 +25,7 @@ import { EmergencyNumbers } from '@/components/EmergencyNumbers';
 import { countryAt } from '@/data/emergencyNumbers';
 import { fetchCenter, isRealPlace, useUserCenter, useUserCenterPassive } from '@/location/UserLocationContext';
 import { isDemoAlert } from '@/lib/tryMoby';
+import { displayHeadline } from '@/lib/alerts';
 import { phoneLanguage } from '@/lib/language';
 
 interface AlertDetailScreenProps {
@@ -81,7 +82,7 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
 
   return (
     <View style={styles.container}>
-      <ScreenHeader title={alert ? alert.headline : 'Alert details'} onBack={onBack} />
+      <ScreenHeader title={alert ? displayHeadline(alert.headline) : 'Alert details'} onBack={onBack} />
 
       {!alert ? (
         <View style={styles.notFound}>

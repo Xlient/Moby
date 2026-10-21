@@ -5,7 +5,8 @@ import { alertDistanceKm } from '@/lib/geo';
 import { fetchCenter, useUserCenter, type UserCenter } from '@/location/UserLocationContext';
 import { RADIUS_OPTIONS, useNearbyRadius, type RadiusKm } from './useNearbyRadius';
 import { useAlerts } from './useAlerts';
-import { matchesAlertPreferences, useAlertPreferences } from './useAlertPreferences';
+import { matchesAlertPreferences, useAlertPreferences, wantsVerification } from './useAlertPreferences';
+import type { HiddenAlerts } from '@/lib/hiddenAlerts';
 
 export interface NearbyAlert {
   alert: Alert;
@@ -18,6 +19,8 @@ export interface UseNearbyAlertsResult {
   nearby: NearbyAlert[];
   /** Within the radius but filtered out by alert preferences (so the UI can say so). */
   hiddenCount: number;
+  /** hiddenCount split by reason, so the UI can name the setting that hides them. */
+  hidden: HiddenAlerts;
   preferences: AlertPreferences;
   radiusKm: RadiusKm;
   setRadiusKm: (next: RadiusKm) => void;
@@ -46,18 +49,23 @@ export function useNearbyAlerts(): UseNearbyAlertsResult {
   const { alerts, loading, error, isOffline, cachedAt } = useAlerts(q.lat, q.lon, MAX_RADIUS_KM);
   const [preferences] = useAlertPreferences();
 
-  const { nearby, hiddenCount } = useMemo(() => {
+  const { nearby, hiddenCount, hidden } = useMemo(() => {
     const inRadius = alerts.flatMap((alert): NearbyAlert[] => {
       const d = alertDistanceKm(alert, center, q);
       if (d === undefined) return [];
       return d <= radiusKm ? [{ alert, distanceKm: Math.round(d * 10) / 10 }] : [];
     });
     const wanted = inRadius.filter(({ alert }) => matchesAlertPreferences(preferences, alert));
+    const reports = inRadius.filter(
+      ({ alert }) => !wantsVerification(preferences, alert.verification_label),
+    ).length;
+    const hiddenCount = inRadius.length - wanted.length;
     return {
       nearby: wanted.sort((a, b) => compareAlerts(a.alert, b.alert)),
-      hiddenCount: inRadius.length - wanted.length,
+      hiddenCount,
+      hidden: { reports, other: hiddenCount - reports },
     };
   }, [alerts, center.lat, center.lon, q.lat, q.lon, radiusKm, preferences]);
 
-  return { nearby, hiddenCount, preferences, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt, center };
+  return { nearby, hiddenCount, hidden, preferences, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt, center };
 }
