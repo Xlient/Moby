@@ -3,7 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { useTheme } from '@/theme/ThemeContext';
 import { spacing, radius } from '@/theme/tokens';
 import type { Theme } from '@/theme/tokens';
-import { formatTimeAgo, hazardIcon, isExpired, severityLabel, trustText } from '@/lib/alerts';
+import { displayHeadline, formatTimeAgo, hazardIcon, isExpired, severityLabel, trustText } from '@/lib/alerts';
 import { isDemoAlert } from '@/lib/tryMoby';
 import { SeverityIndicator } from './SeverityIndicator';
 import type { Alert } from '@/api/types';
@@ -166,7 +166,7 @@ export function AlertCard({ alert, distanceKm, onPress }: AlertCardProps) {
         <View style={styles.body}>
           <View style={styles.headlineRow}>
             <Text variant="titleMedium" numberOfLines={2} style={[styles.headline, { color: theme.text.primary }]}>
-              {alert.headline}
+              {displayHeadline(alert.headline)}
             </Text>
             <SeverityIndicator severity={alert.severity} size="small" neutral={t.severityNeutral} />
           </View>
