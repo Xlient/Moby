@@ -13,6 +13,7 @@ import { MapPreviewCard } from '@/components/MapPreviewCard';
 import { MobyMark } from '@/components/MobyMark';
 import { RadiusPicker } from '@/components/RadiusPicker';
 import { formatTimeAgo } from '@/lib/alerts';
+import { hiddenAlertsText } from '@/lib/hiddenAlerts';
 import { useReportQueue } from '@/hooks/useReportQueue';
 import { useEmergencyAlert } from '@/hooks/useEmergencyAlert';
 import { useMesh } from '@/mesh/useMesh';
@@ -48,23 +49,22 @@ function EmptyState({
   theme,
   radiusKm,
   checkedAt,
-  hiddenCount,
+  hiddenText,
 }: {
   theme: Theme;
   radiusKm: number;
   checkedAt: string | null;
-  hiddenCount: number;
+  hiddenText: string | null;
 }) {
   // Alerts exist but the user's alert types hide them: never call that "all quiet".
-  if (hiddenCount > 0) {
+  if (hiddenText) {
     return (
       <View style={[styles.notChecked, { backgroundColor: theme.bg.recessed }]}>
         <Text variant="titleMedium" style={{ color: theme.text.primary }}>
-          Nothing that matches your alert types
+          Nothing that matches your settings
         </Text>
         <Text variant="bodyLarge" style={[styles.notCheckedBody, { color: theme.text.secondary }]}>
-          {hiddenCount} other alert{hiddenCount === 1 ? ' is' : 's are'} active within {radiusKm} km.
-          Change what you see in Settings → Alert types.
+          {hiddenText}
         </Text>
       </View>
     );
@@ -160,7 +160,9 @@ export function HomeScreen({
   const { theme } = useTheme();
   const r = useResponsive();
   const { firstName } = useAuth();
-  const { nearby, hiddenCount, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt, center } = useNearbyAlerts();
+  const { nearby, hidden, preferences, radiusKm, setRadiusKm, loading, error, isOffline, cachedAt, center } =
+    useNearbyAlerts();
+  const hiddenText = hiddenAlertsText(hidden, radiusKm, preferences.community_reports ?? 'corroborated');
   const [pickerVisible, setPickerVisible] = useState(false);
   const retryLocation = useRetryLocation();
   const myReports = useReportQueue();
@@ -302,7 +304,7 @@ export function HomeScreen({
           ) : visible.length === 0 && !cachedAt ? (
             <NotCheckedState theme={theme} isOffline={isOffline} />
           ) : visible.length === 0 ? (
-            <EmptyState theme={theme} radiusKm={radiusKm} checkedAt={cachedAt} hiddenCount={hiddenCount} />
+            <EmptyState theme={theme} radiusKm={radiusKm} checkedAt={cachedAt} hiddenText={hiddenText} />
           ) : (
             <View style={styles.cards}>
               {visible.map(({ alert, distanceKm }) => (

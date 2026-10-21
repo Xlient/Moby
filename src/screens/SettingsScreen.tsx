@@ -39,13 +39,16 @@ interface SettingsScreenProps {
 
 const APP_VERSION = Constants.expoConfig?.version ?? '0.1.0';
 
-/** "All types", "3 types, high and up", "5 types, critical only, marine"… */
+/** "All types", "3 types, high and up", "5 types, critical only, marine, official only"… */
 function summarizeAlertPreferences(p: AlertPreferences): string {
   const count = (p.hazard_types ?? ALL_HAZARDS).length;
   const parts = [count === ALL_HAZARDS.length ? 'All types' : `${count} type${count === 1 ? '' : 's'}`];
   if (p.min_severity === 'critical') parts.push('critical only');
   else if (p.min_severity !== 'low') parts.push(`${p.min_severity} and up`);
   if (p.include_marine) parts.push('marine');
+  // Reports from one person are hidden by default; say when that choice differs.
+  if (p.community_reports === 'off') parts.push('official only');
+  else if (p.community_reports === 'all') parts.push('single reports');
   return parts.join(', ');
 }
 
