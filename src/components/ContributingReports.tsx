@@ -6,6 +6,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { SeverityIndicator } from '@/components/SeverityIndicator';
 import { effectLabel, formatDistanceFromEvent, formatTimeAgo } from '@/lib/alerts';
 import type { EventReports } from '@/api/types';
+import { FlagAction } from './FlagContent';
 
 interface ContributingReportsProps {
   data: EventReports | undefined;
@@ -48,7 +49,7 @@ export function ContributingReports({ data, loading, error, onRetry }: Contribut
         </Text>
         {data.reports.map((rep, i) => (
           <View
-            key={i}
+            key={rep.report_id ?? i}
             style={[styles.row, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.line.hairline }]}
           >
             <View style={styles.rowMain}>
@@ -61,6 +62,13 @@ export function ContributingReports({ data, loading, error, onRetry }: Contribut
               </Text>
             </View>
             <SeverityIndicator severity={rep.severity} size="small" />
+            {rep.report_id && (
+              <FlagAction
+                icon
+                target={{ kind: 'community_report', targetId: rep.report_id }}
+                label={`This report looks wrong: ${effectLabel(rep.observed_effect)}, ${formatTimeAgo(rep.observed_at)}`}
+              />
+            )}
           </View>
         ))}
       </>

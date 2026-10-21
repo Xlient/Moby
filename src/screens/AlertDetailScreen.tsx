@@ -93,7 +93,7 @@ export function AlertDetailScreen({ alertId, onBack, onGuidance }: AlertDetailSc
       ) : (
         <ScrollView style={styles.container} contentContainerStyle={{ padding: r.gutter }}>
           <AlertCard alert={alert} distanceKm={distance} />
-          {!fromCommunity && <ExplanationCard {...explained} />}
+          {!fromCommunity && <ExplanationCard eventId={alert.event_id} {...explained} />}
           {/* Near the top on purpose: the brief puts the warning and the reports together. */}
           {isEnabled('situational_brief') && <BriefPanel state={briefState} onRetry={refetchBrief} />}
           {alert.body ? (

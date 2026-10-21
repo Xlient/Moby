@@ -15,6 +15,7 @@ import { isDemoAlert } from '@/lib/tryMoby';
 import { useUserCenterPassive } from '@/location/UserLocationContext';
 import { demoText } from '@/components/AlertCard';
 import type { HazardType } from '@/api/types';
+import { FlagAction } from '@/components/FlagContent';
 
 interface EmergencyScreenProps {
   alertId: string;
@@ -110,6 +111,7 @@ export function EmergencyScreen({ alertId, onClose, onHelp, onAlertDetail, onGui
               <Text variant="bodySmall" style={{ color: theme.text.secondary }}>
                 From the warning, in plain words by Moby’s AI (NVIDIA Nemotron). The agency’s own text is in the full alert.
               </Text>
+              {alert?.event_id && <FlagAction target={{ kind: 'explanation', targetId: alert.event_id }} />}
             </>
           ) : (
             firstSteps.map((card, i) => (

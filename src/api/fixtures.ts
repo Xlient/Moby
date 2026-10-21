@@ -359,7 +359,8 @@ const mockEventReports: Record<string, ReportSummary[]> = {
 };
 
 export function getMockEventReports(eventId: string): EventReports {
-  const reports = mockEventReports[eventId] ?? [];
+  // report_id as the real API sends it, so "This looks wrong" shows on each row.
+  const reports = (mockEventReports[eventId] ?? []).map((r, i) => ({ report_id: `${eventId}-report-${i}`, ...r }));
   return { event_id: eventId, distinct_reporter_count: reports.length, reports };
 }
 

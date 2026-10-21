@@ -695,6 +695,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report AI output or a community report ("This looks wrong")
+         * @description Signed-in. Stored for local partners to look at (GET /review/flags); nothing is hidden automatically. A flag on a community report also queues its event for review.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ContentFlag"];
+                };
+            };
+            responses: {
+                /** @description Received */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ContentFlagReceived"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                /** @description target_id names no event (explanation, brief) or report (community_report) */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Too many flags from this user; retry later */
+                429: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events/{event_id}/explain": {
         parameters: {
             query?: never;
@@ -1643,6 +1702,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/review/flags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Open "This looks wrong" flags, newest first
+         * @description Reviewer role required. A flag hides nothing by itself. For a community report, its event is in GET /review/queue (reason user_flag) while in_review_queue is true, and Reject there takes it down. Flags are deleted after 90 days.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK, at most 200 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ReviewFlag"][];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/review/flags/{flag_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a flag as dealt with (it leaves the list) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    flag_id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Resolved */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/review/{event_id}/decision": {
         parameters: {
             query?: never;
@@ -1945,6 +2082,8 @@ export interface components {
             reports: components["schemas"]["ReportSummary"][];
         };
         ReportSummary: {
+            /** @description Only for POST /flags (kind community_report). */
+            report_id?: string;
             hazard_type: components["schemas"]["HazardType"];
             observed_effect?: components["schemas"]["ObservedEffect"];
             severity: components["schemas"]["Severity"];
@@ -2351,13 +2490,48 @@ export interface components {
             radius_km: number;
             min_severity: components["schemas"]["Severity"];
         };
+        /** @description target_id is required for explanation and brief (the event_id) and community_report (ReportSummary.report_id); excerpt for ask_answer and trip_brief, which the server doesn't keep. Longer excerpts are cut to 2000 characters. */
+        ContentFlag: {
+            /** @enum {string} */
+            kind: "ask_answer" | "explanation" | "brief" | "trip_brief" | "community_report";
+            target_id?: string;
+            excerpt?: string;
+            /** @enum {string} */
+            reason: "wrong" | "harmful" | "spam" | "other";
+            note?: string;
+        };
+        ContentFlagReceived: {
+            flag_id: string;
+            /** @enum {string} */
+            status: "received";
+        };
+        ReviewFlag: {
+            flag_id: string;
+            /** @enum {string} */
+            kind: "ask_answer" | "explanation" | "brief" | "trip_brief" | "community_report";
+            target_id?: string;
+            event_id?: string;
+            event_title?: string;
+            excerpt?: string;
+            /** @enum {string} */
+            reason: "wrong" | "harmful" | "spam" | "other";
+            note?: string;
+            /** Format: date-time */
+            created_at: string;
+            /** @description Open flags on the same content */
+            same_count: number;
+            /** @description Its event is open in GET /review/queue. */
+            in_review_queue: boolean;
+            /** @description A reviewer rejected its event. */
+            taken_down: boolean;
+        };
         ReviewItem: {
             event_id: string;
             event: components["schemas"]["Event"];
             /** Format: date-time */
             queued_at: string;
             /** @enum {string} */
-            reason: "tier1_corroborated" | "severity_floor" | "conflicting_reports" | "low_confidence";
+            reason: "tier1_corroborated" | "severity_floor" | "conflicting_reports" | "low_confidence" | "user_flag";
             contributing_reports?: components["schemas"]["ReportSubmission"][];
             /** @description If the agentic adjudicator deferred or hit its budget, its reasoning is surfaced here so the reviewer sees why. */
             adjudicator_rationale?: string;

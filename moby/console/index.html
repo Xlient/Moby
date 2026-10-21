@@ -89,6 +89,7 @@
     <button data-mode="guidance" aria-pressed="false">Guidance</button>
     <button data-mode="pipeline" aria-pressed="false">Pipeline</button>
     <button data-mode="sos" aria-pressed="false">SOS</button>
+    <button data-mode="flags" aria-pressed="false">Flags</button>
   </div>
   <span class="muted num" id="count" aria-live="polite"></span>
   <span class="spacer"></span>
@@ -120,15 +121,22 @@ const ago = (iso) => {
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const REASONS = {
   severity_floor: 'Severity floor', tier1_corroborated: 'Corroborated',
-  conflicting_reports: 'Conflicting reports', low_confidence: 'Low confidence',
+  conflicting_reports: 'Conflicting reports', low_confidence: 'Low confidence', user_flag: 'Flagged by a user',
 };
+const FLAG_KINDS = {
+  ask_answer: 'Ask Moby answer', explanation: '“What this means for you”', brief: 'Situation brief',
+  trip_brief: '“Before you go” briefing', community_report: 'Community report',
+};
+const FLAG_REASONS = { wrong: 'Wrong or misleading', harmful: 'Offensive or harmful', spam: 'Spam', other: 'Other' };
 
 let getToken = async () => null;
 let signedIn = false;
 let items = [];
 let selected = 0;
-let mode = 'events';          // 'events' | 'guidance' | 'pipeline' | 'sos'
+let mode = 'events';          // 'events' | 'guidance' | 'pipeline' | 'sos' | 'flags'
 let sosList = [];             // GET /v1/review/sos
+let flags = [];               // GET /v1/review/flags
+let openEventId = null;       // Flags → "Open in Events": select this event once the queue loads
 let pipe = null;              // GET /v1/review/pipeline
 let bundles = [];
 let bundle = null;            // the selected bundle with its cards
@@ -136,6 +144,7 @@ const HINTS = {
   events: $('#hint').innerHTML,
   guidance: 'Read every card against its source lines. Drop anything wrong, then publish.',
   pipeline: 'Read-only: where community reports are in the fusion pipeline. Refreshes every 30 s.',
+  flags: '“This looks wrong” from the app. Flags hide nothing: fix the source, or take a community report down with Reject in Events. Resolve when done.',
   sos: 'Calls for help sent over Bluetooth from phones with no signal (last 24 h). Nobody has checked them, and Moby forwards them nowhere: you decide whether to call emergency services. Refreshes every 30 s.',
 };
 
@@ -231,6 +240,7 @@ function render() {
   if (mode === 'guidance') return renderGuidance();
   if (mode === 'pipeline') return renderPipeline();
   if (mode === 'sos') return renderSos();
+  if (mode === 'flags') return renderFlags();
   selected = Math.max(0, Math.min(selected, items.length - 1));
   renderList();
   renderDetail();
@@ -341,6 +351,43 @@ async function loadSos() {
   if (mode === 'sos') renderSos();
 }
 
+// ── Flags ("This looks wrong") ───────────────────────────────────
+function renderFlags() {
+  selected = Math.max(0, Math.min(selected, flags.length - 1));
+  $('#count').textContent = `${flags.length} open`;
+  $('#list').innerHTML = flags.map((f, i) => `<li role="option" tabindex="-1" data-i="${i}" aria-selected="${i === selected}">
+      <div class="row"><span class="grow"><b>${esc(FLAG_KINDS[f.kind] || f.kind)}</b></span><span class="pill${f.reason === 'harmful' ? ' critical' : ''}">${esc(FLAG_REASONS[f.reason] || f.reason)}</span></div>
+      <div class="row muted num"><span class="grow">${esc(f.event_title || (f.excerpt || '').slice(0, 60))}</span>${f.same_count > 1 ? `<span class="pill">×${f.same_count}</span>` : ''}<span>${ago(f.created_at)}</span></div>
+    </li>`).join('');
+  const f = flags[selected];
+  if (!f) { $('#detail').innerHTML = `<div class="empty">No open flags. People flag Ask Moby answers, explanations, briefs, trip briefings and community reports from the app.</div>`; return; }
+  const takeDown = f.kind !== 'community_report' ? ''
+    : f.taken_down ? '<p class="muted">A reviewer already took this report’s event down.</p>'
+    : f.in_review_queue ? `<p><button data-open-event="${esc(f.event_id)}">Open in Events to take it down</button></p>`
+    : '<p class="muted">This report isn’t part of an event yet, so there’s nothing to take down.</p>';
+  $('#detail').innerHTML = `
+    <div class="row"><h2 class="grow">${esc(FLAG_KINDS[f.kind] || f.kind)}</h2><button data-resolve="${esc(f.flag_id)}">Resolve</button></div>
+    <div class="muted">${esc(FLAG_REASONS[f.reason] || f.reason)} · ${ago(f.created_at)}${f.same_count > 1 ? ` · ${plural(f.same_count, 'open flag')} on this` : ''}</div>
+    ${f.note ? `<section><h3>Their note</h3><div class="rationale">${esc(f.note)}</div></section>` : ''}
+    <section><h3>What they flagged</h3>
+      ${f.event_id ? `<div class="muted">${esc(f.event_title || 'Event')} · <code>${esc(f.event_id)}</code></div>` : ''}
+      ${f.kind === 'community_report' ? `<div class="faint">Report <code>${esc(f.target_id)}</code></div>` : ''}
+      ${f.excerpt ? `<blockquote>${esc(f.excerpt)}</blockquote>` : ''}
+      ${takeDown}
+    </section>`;
+}
+
+async function loadFlags() {
+  try {
+    flags = await api('/v1/review/flags');
+  } catch (err) {
+    if (err.status === 403) return showSignin('This account doesn’t have the reviewer role.');
+    toast(`Couldn’t load flags: ${err.message}`);
+    return;
+  }
+  if (mode === 'flags') renderFlags();
+}
+
 // ── Guidance bundles ───────────────────────────────────────────────
 function renderGuidance() {
   selected = Math.max(0, Math.min(selected, bundles.length - 1));
@@ -399,13 +446,14 @@ function setMode(next) {
   selected = 0;
   document.querySelectorAll('.tabs button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === mode)));
   $('#hint').innerHTML = HINTS[mode];
-  $('#list').setAttribute('aria-label', { events: 'Review queue', guidance: 'Guidance bundles', pipeline: 'Community events', sos: 'SOS calls' }[mode]);
-  ({ events: load, guidance: loadGuidance, pipeline: loadPipeline, sos: loadSos })[mode]();
+  $('#list').setAttribute('aria-label', { events: 'Review queue', guidance: 'Guidance bundles', pipeline: 'Community events', sos: 'SOS calls', flags: 'Flags' }[mode]);
+  ({ events: load, guidance: loadGuidance, pipeline: loadPipeline, sos: loadSos, flags: loadFlags })[mode]();
 }
 
 async function load() {
   if (mode !== 'events') return;
-  const keep = items[selected]?.event_id;
+  const keep = openEventId ?? items[selected]?.event_id;
+  openEventId = null;
   try {
     items = await api('/v1/review/queue');
   } catch (err) {
@@ -461,6 +509,21 @@ document.addEventListener('click', async (ev) => {
     await loadGuidance();
     return;
   }
+  const resolve = ev.target.closest('button[data-resolve]');
+  if (resolve) {
+    try {
+      await api(`/v1/review/flags/${encodeURIComponent(resolve.dataset.resolve)}/resolve`, { method: 'POST' });
+      toast('Resolved');
+    } catch (err) { toast(`Not resolved: ${err.message}`); }
+    await loadFlags();
+    return;
+  }
+  const openEvent = ev.target.closest('button[data-open-event]');
+  if (openEvent) {
+    openEventId = openEvent.dataset.openEvent;
+    setMode('events');
+    return;
+  }
   const btn = ev.target.closest('button[data-d]');
   if (btn) decide(btn.dataset.d);
 });
@@ -508,7 +571,7 @@ async function start() {
     $('#app').hidden = false;
     load();
   }
-  setInterval(() => { if (signedIn) (mode === 'pipeline' ? loadPipeline() : mode === 'sos' ? loadSos() : load()); }, 30000);
+  setInterval(() => { if (signedIn) (mode === 'pipeline' ? loadPipeline() : mode === 'sos' ? loadSos() : mode === 'flags' ? loadFlags() : load()); }, 30000);
 }
 
 start();

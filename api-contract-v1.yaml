@@ -1,11 +1,20 @@
 openapi: 3.1.0
 info:
   title: Disaster Early-Warning API
-  version: 0.11.1
+  version: 0.12.0
   description: >
     Contract v1. Region-aware by design; US is the only enabled region in v1.
 
     CHANGELOG
+    0.12.0 — "This looks wrong": reporting AI output and community reports in the app (additive):
+      + POST /flags (signed-in, 20 per hour): kind (ask_answer | explanation | brief | trip_brief |
+        community_report), target_id (event_id, or report_id for a community report) or an
+        excerpt for content the server doesn't keep (Ask Moby answers, trip briefings; capped
+        at 2000 characters), reason (wrong | harmful | spam | other), optional note. Hides
+        nothing by itself; a flagged community report's event is queued for review (user_flag)
+      + GET /review/flags, POST /review/flags/{flag_id}/resolve (reviewer role)
+      + ReportSummary.report_id; ReviewItem.reason user_flag
+      + ContentFlag, ContentFlagReceived, ReviewFlag schemas
     0.11.1 — Trip briefings search official websites only for hazards found (additive):
       + TripBrief.web_status: nothing_to_search (no alerts or reports there, so no search)
     0.11.0 — Official alerts in the phone's language (additive):
@@ -96,6 +105,7 @@ tags:
   - name: subscriptions
   - name: mesh
   - name: review
+  - name: flags
   - name: config
 
 paths:
@@ -432,6 +442,31 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/EventReports' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /flags:
+    post:
+      tags: [flags]
+      summary: Report AI output or a community report ("This looks wrong")
+      description: >
+        Signed-in. Stored for local partners to look at (GET /review/flags); nothing is hidden
+        automatically. A flag on a community report also queues its event for review.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContentFlag' }
+      responses:
+        '201':
+          description: Received
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ContentFlagReceived' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: target_id names no event (explanation, brief) or report (community_report)
+        '429':
+          description: Too many flags from this user; retry later
 
   /events/{event_id}/explain:
     get:
@@ -1020,6 +1055,38 @@ paths:
                 items: { $ref: '#/components/schemas/SosSignal' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /review/flags:
+    get:
+      tags: [review]
+      summary: Open "This looks wrong" flags, newest first
+      description: >
+        Reviewer role required. A flag hides nothing by itself. For a community report, its
+        event is in GET /review/queue (reason user_flag) while in_review_queue is true, and
+        Reject there takes it down. Flags are deleted after 90 days.
+      responses:
+        '200':
+          description: OK, at most 200
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ReviewFlag' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /review/flags/{flag_id}/resolve:
+    post:
+      tags: [review]
+      summary: Mark a flag as dealt with (it leaves the list)
+      parameters:
+        - name: flag_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Resolved }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /review/{event_id}/decision:
     post:
       tags: [review]
@@ -1408,6 +1475,7 @@ components:
       type: object
       required: [hazard_type, severity, observed_at, distance_from_event_m]
       properties:
+        report_id: { type: string, description: 'Only for POST /flags (kind community_report).' }
         hazard_type: { $ref: '#/components/schemas/HazardType' }
         observed_effect: { $ref: '#/components/schemas/ObservedEffect' }
         severity: { $ref: '#/components/schemas/Severity' }
@@ -1899,6 +1967,44 @@ components:
         radius_km: { type: number }
         min_severity: { $ref: '#/components/schemas/Severity' }
 
+    ContentFlag:
+      type: object
+      required: [kind, reason]
+      description: >
+        target_id is required for explanation and brief (the event_id) and community_report
+        (ReportSummary.report_id); excerpt for ask_answer and trip_brief, which the server
+        doesn't keep. Longer excerpts are cut to 2000 characters.
+      properties:
+        kind: { type: string, enum: [ask_answer, explanation, brief, trip_brief, community_report] }
+        target_id: { type: string, maxLength: 64 }
+        excerpt: { type: string }
+        reason: { type: string, enum: [wrong, harmful, spam, other] }
+        note: { type: string, maxLength: 500 }
+
+    ContentFlagReceived:
+      type: object
+      required: [flag_id, status]
+      properties:
+        flag_id: { type: string }
+        status: { type: string, enum: [received] }
+
+    ReviewFlag:
+      type: object
+      required: [flag_id, kind, reason, created_at, same_count, in_review_queue, taken_down]
+      properties:
+        flag_id: { type: string }
+        kind: { type: string, enum: [ask_answer, explanation, brief, trip_brief, community_report] }
+        target_id: { type: string }
+        event_id: { type: string }
+        event_title: { type: string }
+        excerpt: { type: string }
+        reason: { type: string, enum: [wrong, harmful, spam, other] }
+        note: { type: string }
+        created_at: { type: string, format: date-time }
+        same_count: { type: integer, description: Open flags on the same content, this one included. }
+        in_review_queue: { type: boolean, description: Its event is open in GET /review/queue. }
+        taken_down: { type: boolean, description: A reviewer rejected its event. }
+
     ReviewItem:
       type: object
       required: [event_id, event, queued_at, reason]
@@ -1908,7 +2014,7 @@ components:
         queued_at: { type: string, format: date-time }
         reason:
           type: string
-          enum: [tier1_corroborated, severity_floor, conflicting_reports, low_confidence]
+          enum: [tier1_corroborated, severity_floor, conflicting_reports, low_confidence, user_flag]
         contributing_reports:
           type: array
           items: { $ref: '#/components/schemas/ReportSubmission' }
