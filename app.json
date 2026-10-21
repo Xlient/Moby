@@ -68,7 +68,8 @@
           "enableOpenCLAndHexagon": false
         }
       ],
-      "./plugins/withSceneLifecycle"
+      "./plugins/withSceneLifecycle",
+      "./plugins/withIosCapabilities"
     ]
   }
 }
