@@ -28,11 +28,17 @@ explains them in plain words with NVIDIA Nemotron, and tells you what to do, eve
 
 | Platform | Where | Status |
 |---|---|---|
-| **Android** (phone or emulator) | `Moby-<version>.apk` on [GitHub Releases](https://github.com/Xlient/Moby/releases) | Built and signed by [`android-release.yml`](.github/workflows/android-release.yml) on every `v*` tag. **TODO: no release is tagged yet**, so the Releases page is empty until the first `v0.1.0` tag. |
+| **Android** (phone or emulator) | `Moby-<version>.apk` on [GitHub Releases](https://github.com/Xlient/Moby/releases) | Built and signed by [`android-release.yml`](.github/workflows/android-release.yml) on every `v*` tag. Latest: **v1.0.0**. |
 | **Android, Google Play** | Not listed | The release workflow can upload to a Play testing track, but there is no public listing or opt-in link yet. **TODO:** add the closed-test link here once it exists. |
 | **iOS Simulator** (Mac) | `Moby-simulator.zip` on [GitHub Releases](https://github.com/Xlient/Moby/releases) | Built by [`ios-simulator.yml`](.github/workflows/ios-simulator.yml) and attached to the same `v*` release. |
-| **iPhone (device)** | Not on the App Store or TestFlight | Both need a paid Apple Developer membership. Build it onto your own iPhone from source instead: [iOS](#ios). |
+| **iPhone (device)** | Not on the App Store or TestFlight yet | Both need a paid Apple Developer membership; the [TestFlight pipeline](#releasing-maintainers) is ready for it. Until then, build it onto your own iPhone from source: [iOS](#ios). No Bluetooth mesh or SOS on iPhone (see below). |
 | **Web** | No hosted version | Run it in your browser with demo data in about 2 minutes: [demo mode](#a-the-app-with-demo-data-2-minutes). |
+
+> **Bluetooth mesh and SOS to nearby phones are Android-only.** On iPhone and the iOS Simulator, *Share through
+> nearby phones* and *Send SOS to nearby phones* are hidden. iOS doesn't let apps put data in Bluetooth
+> advertisements, so the iPhone version needs a different design (a GATT service), tracked in
+> [#83](https://github.com/Xlient/Moby/issues/83). Everything else, including offline guidance and *I need help*
+> with your location and emergency numbers, works on both.
 
 **Sign in** with any Google account, or (judges) the test account in the Devpost testing instructions.
 
@@ -177,6 +183,31 @@ Evaluations that call models run only in the gated [`model-evals`](.github/workf
 `main.py` at the root is empty; the entry points are `moby.api.app`, `python -m moby.feeds` and
 `python -m moby.delivery`. Deployment to Nebius is `deploy/nebius/deploy.sh` (maintainer only).
 
+### Releasing (maintainers)
+
+Push a version tag: `git tag v1.1.0 && git push origin v1.1.0`.
+
+| Workflow | On a `v*` tag | By hand |
+|---|---|---|
+| [`android-release.yml`](.github/workflows/android-release.yml) | Signed APK + AAB, attached to the GitHub Release | Optional Google Play upload, approved in the `play` environment |
+| [`ios-simulator.yml`](.github/workflows/ios-simulator.yml) | Simulator `.app`, attached to the GitHub Release | Any time |
+| [`ios-release.yml`](.github/workflows/ios-release.yml) | App Store build uploaded to **TestFlight** (once `IOS_RELEASE_ENABLED` is set) | `testflight` again, or `submit`: send a TestFlight build you tested to App Store review, approved in the `app-store` environment |
+
+One-time iOS setup (needs the paid Apple Developer Program):
+1. Create the app in App Store Connect with bundle id `com.xlient.moby`, and add an iOS app with that
+   bundle id in Firebase. Turn on App Attest and DeviceCheck for App Check, and upload an APNs key for push.
+2. App Store Connect → Users and Access → Integrations: create an API key with the **Admin** role (Xcode
+   needs it to create the distribution certificate and profile; nothing is stored in the repo).
+3. Repository secrets: `APP_STORE_CONNECT_API_KEY_BASE64` (`base64 -i AuthKey_XXXX.p8`),
+   `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APPLE_TEAM_ID`,
+   `GOOGLE_SERVICES_PLIST_BASE64` (`base64 -i GoogleService-Info.plist`). `EXPO_PUBLIC_API_URL` is shared.
+4. Repository variable `IOS_RELEASE_ENABLED` = `true`, and an environment `app-store` with yourself as
+   required reviewer.
+5. Before the first `submit`: fill in the store listing, screenshots, privacy answers and review notes
+   (a test account) in App Store Connect. The workflow submits the build; it doesn't write the listing.
+
+The iPhone build has everything except Bluetooth mesh and SOS ([#83](https://github.com/Xlient/Moby/issues/83)).
+
 ---
 
 ## What Moby is
@@ -191,7 +222,7 @@ in a language they don't read, from agencies they've never heard of. Moby is bui
 | **A rumour can look like a government warning** | Trust is visible. Every item is labelled **Official** (an agency issued it) or **Unverified** (reports from people nearby, with how many people reported). Community reports never wait for a reviewer and never look official; each user chooses whether to hear about them. |
 | **Warnings in a language you don't read** | Translated (every number checked against the original) and explained in plain words in 17 languages, with the agency's text one tap away. |
 | **No signal when it matters** | Offline guidance: safety steps from official sources and local emergency numbers stay on the phone, and Ask Moby can answer offline with an on-device model. |
-| **No signal and you need help** | **Bluetooth mesh SOS** (Android, opt-in): send an SOS and the latest alerts phone to phone. Nearby Moby phones repeat it for up to 6 hours and upload it when one of them gets a connection. |
+| **No signal and you need help** | **Bluetooth mesh SOS** (Android only, opt-in; iPhone not yet, [#83](https://github.com/Xlient/Moby/issues/83)): send an SOS and the latest alerts phone to phone. Nearby Moby phones repeat it for up to 6 hours and upload it when one of them gets a connection. |
 | **Is the road ahead safe?** | **Route hazard check:** does the usual route cross an active official warning or community report, and is there one around it? Moby never calls a route safe; it only says what it knows about. |
 | **Planning a trip somewhere unfamiliar** | **Trip briefs** (*Before you go*): for a destination or route, every alert and report around it, explained with sources and saved offline with the emergency numbers. |
 

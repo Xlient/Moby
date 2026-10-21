@@ -2,7 +2,7 @@ import ExpoModulesCore
 
 // iOS can't put custom data in a Bluetooth advertisement (Core Bluetooth only lets an
 // app advertise a name and service UUIDs), so the Android design doesn't carry over.
-// The iOS version needs a GATT service instead: see docs/mesh-guide.md, "iOS".
+// The iOS version needs a GATT service instead: https://github.com/Xlient/Moby/issues/83
 // Until then this reports "unsupported" so the app hides the feature on iPhone.
 public class MobyMeshModule: Module {
   public func definition() -> ModuleDefinition {

@@ -7,7 +7,10 @@ const { withAppDelegate, withInfoPlist } = require('expo/config-plugins');
 
 const MARKER = '// @moby/scene-lifecycle';
 
-const START_IN_APP_DELEGATE = /\n#if os\(iOS\) \|\| os\(tvOS\)\n {4}window = UIWindow\(frame: UIScreen\.main\.bounds\)\n {4}factory\.startReactNative\([\s\S]*?\n#endif\n/;
+// Other plugins may insert generated blocks between the window and startReactNative
+// (@react-native-firebase/app adds FirebaseApp.configure() there); group 1 keeps them.
+const START_IN_APP_DELEGATE =
+  /\n#if os\(iOS\) \|\| os\(tvOS\)\n {4}window = UIWindow\(frame: UIScreen\.main\.bounds\)\n((?:\/\/ @generated begin [\s\S]*?\/\/ @generated end [^\n]*\n)*) {4}factory\.startReactNative\([\s\S]*?\n#endif\n/;
 
 function withSceneAppDelegate(config) {
   return withAppDelegate(config, (cfg) => {
@@ -20,7 +23,7 @@ function withSceneAppDelegate(config) {
       .replace('class AppDelegate: ExpoAppDelegate {', 'class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {')
       .replace(
         START_IN_APP_DELEGATE,
-        `\n    ${MARKER}\n    // SceneDelegate creates the window and starts React Native.\n`,
+        (_, generated) => `\n    ${MARKER}\n    // SceneDelegate creates the window and starts React Native.\n${generated}`,
       );
     src += `
 ${MARKER}
