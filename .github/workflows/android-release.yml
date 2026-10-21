@@ -36,7 +36,7 @@ jobs:
   build:
     name: Build signed APK + AAB
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     outputs:
       version_name: ${{ steps.version.outputs.name }}
     steps:
@@ -116,7 +116,9 @@ jobs:
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
           # Official builds prove themselves to the API with Play Integrity (App Check).
           EXPO_PUBLIC_APP_CHECK: "true"
-        run: ./gradlew assembleRelease bundleRelease --no-daemon
+        # Phones are arm64; emulators are x86_64 (or arm64 on Apple Silicon). All four ABIs
+        # take over an hour of native compiling on a hosted runner.
+        run: ./gradlew assembleRelease bundleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,x86_64
 
       - name: Collect outputs
         run: |
