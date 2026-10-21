@@ -38,10 +38,9 @@ explains them in plain words with NVIDIA Nemotron, and tells you what to do.
 
 ## Install
 
-<!-- Maintainer: add the Google Play closed-test link here once it exists. -->
-
 | Platform | Get it | Notes |
 |---|---|---|
+| **Android** (Google Play) | Join the [closed test](#android-join-the-google-play-test), then [install from Google Play](https://play.google.com/store/apps/details?id=com.xlient.moby) | Updates arrive through Play. |
 | **Android** (phone or emulator) | `Moby-<version>.apk` from [Releases](https://github.com/Xlient/Moby/releases) | Signed release build. Connects to the live service. |
 | **iOS Simulator** (Mac) | `Moby-simulator.zip` from [Releases](https://github.com/Xlient/Moby/releases) | Push notifications are Android-only for now. |
 | **iPhone** | Build from source ([iOS](#ios-from-source)) | Not on the App Store or TestFlight yet; the [TestFlight pipeline](#releasing-maintainers) is ready once there is an Apple Developer membership. |
@@ -52,6 +51,21 @@ explains them in plain words with NVIDIA Nemotron, and tells you what to do.
 **Bluetooth mesh and SOS to nearby phones are Android-only.** iOS doesn't let apps put data in Bluetooth
 advertisements, so on iPhone and the iOS Simulator those two options are hidden. The iPhone design is tracked
 in [#83](https://github.com/Xlient/Moby/issues/83). Everything else works on both.
+
+<a id="android-join-the-google-play-test"></a>
+<details>
+<summary><b>Android: join the Google Play test</b></summary>
+
+Moby is in a closed test on Google Play. Anyone can join:
+
+1. Join the testers group, [moby-testers@googlegroups.com](https://groups.google.com/g/moby-testers), with the
+   Google account you use on your phone (**Join group**).
+2. Open the [testing page](https://play.google.com/apps/testing/com.xlient.moby) with the same account and tap
+   **Become a tester**.
+3. Install Moby from [Google Play](https://play.google.com/store/apps/details?id=com.xlient.moby). It can
+   take a few minutes after joining before the Play listing shows up for you.
+
+</details>
 
 <details>
 <summary><b>Android: install the APK</b></summary>
