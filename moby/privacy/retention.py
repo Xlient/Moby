@@ -1,7 +1,7 @@
 """Retention (docs/spikes/privacy-gdpr.md): keep personal data only as long as it's useful.
 
-  reports     anonymised after REPORT_DAYS: note, reporter, structured extraction and
-              embedding removed; location rounded to ~1 km. The event they formed stays.
+  reports     anonymised after REPORT_DAYS: note, reporter, relaying phones, structured
+              extraction and embedding removed; location rounded to ~1 km. The event they formed stays.
   deliveries  deleted after DELIVERY_DAYS (only needed to avoid double pushes).
   devices     deleted after DEVICE_DAYS without re-registration (app uninstalled).
   sos_signals deleted after SOS_DAYS: an exact location of a person, useful only while it's current.
@@ -27,6 +27,7 @@ UPDATE reports SET
     structured = NULL,
     embedding = NULL,
     reporter_hash = 'anon:' || report_id::text,
+    relayed_by = '{}',
     location = ST_SetSRID(ST_MakePoint(round(ST_X(location::geometry)::numeric, 2),
                                        round(ST_Y(location::geometry)::numeric, 2)), 4326)::geography,
     location_accuracy_m = GREATEST(coalesce(location_accuracy_m, 0), 1000),
