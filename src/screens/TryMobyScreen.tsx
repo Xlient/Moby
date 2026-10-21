@@ -10,7 +10,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SeverityIndicator } from '@/components/SeverityIndicator';
-import { hazardIcon } from '@/lib/alerts';
+import { displayHeadline, hazardIcon } from '@/lib/alerts';
 import { setDemoMode, setViewing, useTryMoby } from '@/lib/tryMoby';
 
 interface TryMobyScreenProps {
@@ -156,7 +156,7 @@ export function TryMobyScreen({ onBack, onShow }: TryMobyScreenProps) {
                       <SeverityIndicator severity={z.top_severity} size="small" />
                     </View>
                     <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>{zoneSummary(z)}</Text>
-                    <Text variant="bodySmall" numberOfLines={1} style={{ color: theme.text.secondary }}>{z.lead_headline}</Text>
+                    <Text variant="bodySmall" numberOfLines={1} style={{ color: theme.text.secondary }}>{displayHeadline(z.lead_headline)}</Text>
                   </View>
                   <Icon source={current ? 'check' : 'chevron-right'} size={20} color={theme.text.faint} />
                 </Pressable>
