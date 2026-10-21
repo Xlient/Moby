@@ -8,6 +8,9 @@ import type { GuidanceCard } from '@/api/types';
  * Wording is taken closely from the cited official pages (checked 2026-10-04).
  * Keep it that way: change these only by re-reading the source, and update
  * REVIEWED when you do. Synced cards with the same card_id replace these.
+ *
+ * One deliberate change from the source: these cards show worldwide, so the wildfire
+ * card says "call emergency services" where Ready.gov says "call 9-1-1" (US-only).
  */
 const REVIEWED = '2026-10-04T12:00:00Z'; // midday UTC, so it reads as the same date in every time zone
 
@@ -81,7 +84,7 @@ export const FALLBACK_CARDS: GuidanceCard[] = [
     applies_when: 'Wildfire nearby',
     title: 'Wildfire: leave when told',
     body:
-      'Evacuate immediately if authorities tell you to do so. If trapped, call 9-1-1 and give your location, but be aware ' +
+      'Evacuate immediately if authorities tell you to do so. If trapped, call emergency services and give your location, but be aware ' +
       'that emergency response could be delayed or impossible. Turn on lights to help rescuers find you. Use an N95 mask ' +
       'to protect yourself from smoke. If you are not ordered to evacuate but it is smoky, stay inside in a safe location.',
     priority: 5,
