@@ -7,7 +7,7 @@
 # Caches: tag runs can only restore caches saved from main (GitHub scopes caches by ref),
 # so main saves them: the weekly run, or Run workflow on main. Gradle's dependencies and
 # build cache come from setup-gradle; compiled C++ from ccache (CMake picks ccache up from
-# CMAKE_*_COMPILER_LAUNCHER). A cold build takes far longer than a warm one.
+# CMAKE_*_COMPILER_LAUNCHER). llama.cpp itself comes prebuilt from llama.rn's postinstall.
 #
 # Secrets (Settings → Secrets and variables → Actions):
 #   ANDROID_UPLOAD_KEYSTORE_BASE64  base64 of the upload keystore (.jks)
@@ -88,6 +88,16 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Check llama.rn's prebuilt libraries
+        run: |
+          # llama.rn's postinstall downloads llama.cpp prebuilt for each ABI. The build uses them
+          # (-PrnllamaBuildFromSource=false below) instead of compiling llama.cpp, which llama.rn's
+          # own gradle.properties turns on and which took 50+ minutes on this runner.
+          for abi in arm64-v8a x86_64; do
+            ls node_modules/llama.rn/android/src/main/jniLibs/$abi/librnllama*.so >/dev/null 2>&1 || {
+              echo "::error::llama.rn prebuilt libraries for $abi are missing (its postinstall download failed?)"; exit 1; }
+          done
+
       - name: Upload key
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
@@ -147,7 +157,7 @@ jobs:
           # 64-bit only: arm64-v8a is every phone from recent years (Play has required 64-bit
           # since 2019), x86_64 is the emulator. 32-bit ABIs doubled the native work.
           ./gradlew assembleRelease bundleRelease --no-daemon --build-cache \
-            -PreactNativeArchitectures=arm64-v8a,x86_64
+            -PreactNativeArchitectures=arm64-v8a,x86_64 -PrnllamaBuildFromSource=false
           ccache --show-stats
 
       - name: Save ccache
