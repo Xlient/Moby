@@ -32,7 +32,8 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": [
-        "android.permission.ACCESS_NETWORK_STATE"
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.ACCESS_NOTIFICATION_POLICY"
       ],
       "predictiveBackGestureEnabled": false,
       "blockedPermissions": [
@@ -48,6 +49,15 @@
     "plugins": [
       "expo-sqlite",
       "expo-font",
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./assets/sounds/moby_alarm.wav"
+          ],
+          "defaultChannel": "critical_alarm"
+        }
+      ],
       "@react-native-google-signin/google-signin",
       "./plugins/withApkName",
       "./plugins/withReleaseSigning",

@@ -262,7 +262,10 @@ def test_push_text_prefers_drafted_alert_and_fcm_message_shape(db_url):
     assert build_push({**row, "alert_headline": "Leave the riverbank now", "alert_body": "Water rising 1 m/h."}).body \
         == "Water rising 1 m/h."
     m = message(p)["message"]
-    assert m["android"]["notification"]["channel_id"] == "critical" and m["android"]["priority"] == "high"
+    assert m["android"]["notification"]["channel_id"] == "critical_alarm" and m["android"]["priority"] == "high"
+    assert m["apns"]["payload"]["aps"]["sound"] == "moby_alarm.wav"
+    calm = message(Push(token=TOKEN, title="t", body="b", data={}, critical=False, tag="x"))["message"]
+    assert calm["android"]["notification"]["channel_id"] == "alerts" and calm["apns"]["payload"]["aps"]["sound"] == "default"
     assert m["data"]["event_id"] == str(row["event_id"]) and m["android"]["notification"]["tag"] == str(row["event_id"])
 
 

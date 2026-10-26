@@ -49,12 +49,17 @@ def message(push: Push) -> dict:
             "android": {
                 "priority": "high",
                 "notification": {
-                    # Channels are created by the app (src/lib/notifications.ts).
-                    "channel_id": "critical" if push.critical else "alerts",
+                    # Channels are created by the app (src/lib/notifications.ts). "critical_alarm"
+                    # plays Moby's alarm tone; apps from before it fall back to their own default.
+                    "channel_id": "critical_alarm" if push.critical else "alerts",
                     "tag": push.tag,
                 },
             },
-            "apns": {"payload": {"aps": {"interruption-level": "time-sensitive" if push.critical else "active"}}},
+            # Without "sound" iOS shows the alert silently. The tone ships in the app bundle.
+            "apns": {"payload": {"aps": {
+                "interruption-level": "time-sensitive" if push.critical else "active",
+                "sound": "moby_alarm.wav" if push.critical else "default",
+            }}},
         }
     }
 
