@@ -146,7 +146,7 @@ function CriticalAlarmSection() {
   return (
     <Section
       title="Critical alarm"
-      hint="Critical alerts near you play an alarm tone at alarm volume, even with the ringer on silent."
+      hint="Critical alerts near you play an alarm tone and vibrate. Keep the ringer on: silent and vibrate modes still mute the tone."
     >
       {Platform.OS === 'android' && (
         <>

@@ -7,8 +7,9 @@ import { kv } from '@/lib/storage';
 // (moby/delivery/fcm.py): CRITICAL_CHANNEL for critical alerts, "alerts" for the rest.
 //
 // Critical alerts sound like an emergency: their own tone (assets/sounds/moby_alarm.wav,
-// bundled by the expo-notifications plugin in app.json), played as an alarm, and through
-// Do Not Disturb once the person grants Moby DND access.
+// bundled by the expo-notifications plugin in app.json), a long vibration, and through
+// Do Not Disturb once the person grants Moby DND access. The ringer's silent/vibrate mode
+// still mutes them: see the note on audioAttributes below.
 //
 // Android never lets an app change a channel's sound, so the tone needs a new channel.
 // Servers deployed before it still send channel "critical": that channel is deleted here,
@@ -66,11 +67,12 @@ if (pushSupported) {
 async function ensureCriticalChannel(): Promise<Notifications.NotificationChannel | null> {
   return Notifications.setNotificationChannelAsync(CRITICAL_CHANNEL, {
     name: 'Critical alerts',
-    description: 'Life-threatening hazards near you or your saved areas. Plays an alarm, even in Do Not Disturb if you allow it.',
+    description: 'Life-threatening hazards near you or your saved areas. Plays an alarm tone, through Do Not Disturb if you allow it.',
     importance: Notifications.AndroidImportance.MAX,
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     sound: ALARM_SOUND,
-    // Alarm volume, not notification volume: it still plays with the ringer on silent.
+    // Alarm volume up to Android 14. Android 15+ turns alarm usage back into notification
+    // usage unless the notification's category is "alarm", which pushes can't set.
     audioAttributes: {
       usage: Notifications.AndroidAudioUsage.ALARM,
       contentType: Notifications.AndroidAudioContentType.SONIFICATION,
