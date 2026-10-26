@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { View, ScrollView, Pressable, Switch, StyleSheet } from 'react-native';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { AppState, View, ScrollView, Pressable, Switch, StyleSheet, Platform } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 import { useTheme } from '@/theme/ThemeContext';
 import { spacing, radius } from '@/theme/tokens';
@@ -10,6 +10,7 @@ import { SeverityIndicator } from '@/components/SeverityIndicator';
 import { CommunityReportsChoice } from '@/components/CommunityReportsChoice';
 import { hazardIcon } from '@/lib/alerts';
 import type { HazardType, Severity } from '@/api/types';
+import { criticalBypassesDnd, openDndAccessSettings, playTestAlarm, pushSupported } from '@/lib/notifications';
 
 interface AlertPreferencesScreenProps {
   onBack: () => void;
@@ -107,6 +108,74 @@ function Divider({ show }: { show: boolean }) {
   return show ? <View style={[styles.divider, { backgroundColor: theme.line.hairline }]} /> : null;
 }
 
+/** A row that does something when tapped (opens settings, plays the test alarm). */
+function ActionRow({ icon, title, detail, onPress }: { icon: string; title: string; detail: string; onPress: () => void }) {
+  const { theme } = useTheme();
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={title} accessibilityHint={detail} style={styles.row}>
+      <Icon source={icon} size={24} color={theme.text.secondary} />
+      <View style={styles.rowText}>
+        <Text variant="bodyLarge" style={{ color: theme.text.primary }}>
+          {title}
+        </Text>
+        <Text variant="bodyMedium" style={{ color: theme.text.secondary }}>
+          {detail}
+        </Text>
+      </View>
+      <Icon source="chevron-right" size={24} color={theme.text.faint} />
+    </Pressable>
+  );
+}
+
+/** How critical alerts sound: the alarm tone, and (Android) whether it gets through Do Not Disturb. */
+function CriticalAlarmSection() {
+  const [throughDnd, setThroughDnd] = useState<boolean | null>(null);
+  const [tested, setTested] = useState(false);
+
+  const refresh = useCallback(() => {
+    criticalBypassesDnd().then(setThroughDnd);
+  }, []);
+
+  // Coming back from system settings: show whether access was granted.
+  useEffect(() => {
+    refresh();
+    const sub = AppState.addEventListener('change', (s) => s === 'active' && refresh());
+    return () => sub.remove();
+  }, [refresh]);
+
+  return (
+    <Section
+      title="Critical alarm"
+      hint="Critical alerts near you play an alarm tone at alarm volume, even with the ringer on silent."
+    >
+      {Platform.OS === 'android' && (
+        <>
+          <ActionRow
+            icon={throughDnd ? 'bell-ring' : 'bell-cancel-outline'}
+            title={throughDnd ? 'Sounds in Do Not Disturb' : 'Allow in Do Not Disturb'}
+            detail={
+              throughDnd
+                ? 'Critical alerts get through Do Not Disturb. You can turn this off in system settings.'
+                : 'Do Not Disturb silences critical alerts right now. Tap, then turn on Moby.'
+            }
+            onPress={() => void openDndAccessSettings()}
+          />
+          <Divider show />
+        </>
+      )}
+      <ActionRow
+        icon="volume-high"
+        title="Play a test alarm"
+        detail={tested ? 'Sent. Check your notifications.' : 'Hear what a critical alert sounds like. Nothing real is happening.'}
+        onPress={() => {
+          setTested(true);
+          void playTestAlarm();
+        }}
+      />
+    </Section>
+  );
+}
+
 export function AlertPreferencesScreen({ onBack }: AlertPreferencesScreenProps) {
   const { theme } = useTheme();
   const r = useResponsive();
@@ -137,6 +206,8 @@ export function AlertPreferencesScreen({ onBack }: AlertPreferencesScreenProps) 
             onChange={(v) => setPrefs({ ...prefs, community_reports: v })}
           />
         </Section>
+
+        {pushSupported && <CriticalAlarmSection />}
 
         <Section title="Hazards" hint="Keep at least one on. Critical alerts show for every type.">
           {ALL_HAZARDS.map((h, i) => {
