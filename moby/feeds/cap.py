@@ -71,6 +71,44 @@ SOURCES: list[CapSource] = [
     CapSource("mo-smg-xx", "MO", "Macao Meteorological and Geophysical Bureau",
               "https://rss.smg.gov.mo/cap_rss.xml", mutable_docs=True),
     CapSource("tw-ncdr-zh", "TW", "NCDR (Taiwan)", "https://alerts.ncdr.nat.gov.tw/RssAtomFeed.ashx"),
+    # Africa (docs/spikes/global-coverage.md, "Africa"). Registry feeds that published
+    # since August, one language per country (English where offered). All polygon areas.
+    # Left out for now: South Africa (its servers send an incomplete certificate chain) and
+    # Congo (index times out).
+    CapSource("dz-meteo-en", "DZ", "Office National de la Météorologie (Algeria)",
+              "https://ametvigilance.meteo.dz/rss/rss_meteo_dz.xml"),
+    CapSource("bj-meteo-fr", "BJ", "Météo Bénin", "https://www.meteobenin.bj/api/cap/rss.xml"),
+    CapSource("bw-met-en", "BW", "Department of Meteorological Services (Botswana)",
+              "https://cap-sources.s3.amazonaws.com/bw-met-en/rss.xml"),
+    CapSource("bf-meteo-fr", "BF", "ANAM (Burkina Faso)", "https://www.meteoburkina.bf/api/cap/rss.xml"),
+    CapSource("bi-igebu-fr", "BI", "IGEBU (Burundi)", "https://www.igebu.bi/api/cap/rss.xml"),
+    CapSource("cm-meteo-fr", "CM", "Météorologie Nationale (Cameroon)",
+              "https://cap-sources.s3.amazonaws.com/cm-meteo-fr/rss.xml"),
+    CapSource("td-anam-fr", "TD", "ANAM (Chad)", "https://www.meteotchad.org/api/cap/rss.xml"),
+    CapSource("dj-meteo-fr", "DJ", "Météo Djibouti", "https://meteodjibouti.dj/api/cap/rss.xml"),
+    CapSource("gm-dwr-en", "GM", "Department of Water Resources (Gambia)", "https://meteogambia.gm/api/cap/rss.xml"),
+    CapSource("gh-gmet-en", "GH", "Ghana Meteorological Agency", "https://www.meteo.gov.gh/api/cap/rss.xml"),
+    CapSource("gn-anm-fr", "GN", "ANM (Guinea)", "https://anmeteo.gov.gn/api/cap/rss.xml"),
+    CapSource("gw-inm-pt", "GW", "INM (Guinea-Bissau)", "https://meteoguinebissau.gw/api/cap/rss.xml"),
+    CapSource("ke-kmd-en", "KE", "Kenya Meteorological Department", "https://meteo.go.ke/api/cap/rss.xml"),
+    CapSource("ls-lms-en", "LS", "Lesotho Meteorological Services", "https://lesmet.gov.ls/api/cap/rss.xml"),
+    # Libya's English feed stopped in 2025; the Arabic one is current.
+    CapSource("ly-nmc-ar", "LY", "National Meteorological Centre (Libya)",
+              "https://cap-sources.s3.amazonaws.com/ly-nmc-ar/rss.xml"),
+    CapSource("mg-meteo-en", "MG", "Météo Madagascar", "https://cap-sources.s3.amazonaws.com/mg-meteo-en/rss.xml"),
+    CapSource("mw-met-en", "MW", "DCCMS (Malawi)", "https://www.metmalawi.gov.mw/api/cap/rss.xml"),
+    CapSource("ml-meteo-fr", "ML", "Mali Météo", "https://www.malimeteo.ml/api/cap/rss.xml"),
+    CapSource("mr-onm-fr", "MR", "ONM (Mauritania)", "https://meteomauritanie.mr/api/cap/rss.xml"),
+    CapSource("mz-inam-pt", "MZ", "INAM (Mozambique)", "https://inam.gov.mz/api/cap/rss.xml"),
+    CapSource("ng-nimet-en", "NG", "NiMet (Nigeria)", "https://cap-sources.s3.amazonaws.com/ng-nimet-en/rss.xml"),
+    CapSource("sc-meteo-en", "SC", "Seychelles Meteorological Authority", "https://www.meteo.sc/api/cap/rss.xml"),
+    CapSource("so-snma-en", "SO", "SNMA (Somalia)", "https://meteosomalia.so/api/cap/rss.xml"),
+    CapSource("sd-sma-en", "SD", "Sudan Meteorological Authority", "https://meteosudan.sd/api/cap/rss.xml"),
+    CapSource("tz-tma-en", "TZ", "Tanzania Meteorological Authority",
+              "https://cap-sources.s3.amazonaws.com/tz-tma-en/rss.xml"),
+    CapSource("tg-anamet-fr", "TG", "Météo Togo", "https://meteotogo.tg/api/cap/rss.xml"),
+    CapSource("zw-msd-en", "ZW", "Meteorological Services Department (Zimbabwe)",
+              "https://www.weatherzw.org.zw/api/cap/rss.xml"),
 ]
 
 INTERVAL = timedelta(minutes=5)
@@ -170,23 +208,34 @@ def index_links(xml: bytes | str, index_url: str | None = None) -> list[str]:
 SEVERITY: dict[str, Severity] = {"Extreme": "critical", "Severe": "high", "Moderate": "medium", "Minor": "low"}
 
 # Keyword → hazard, checked in order against the event name + headline (lowercased).
-# Covers the pilot languages: English, Spanish, Indonesian, Icelandic.
+# Covers the pilot languages (English, Spanish, Indonesian, Icelandic) and Africa's
+# (French, Portuguese, Swahili, Arabic). Substrings, so mind ones hidden in common words:
+# "vent" is in "event" and "vento" in "evento", hence the leading space in " vent", " vento".
 HAZARD_WORDS: list[tuple[HazardType, tuple[str, ...]]] = [
-    ("earthquake", ("earthquake", "quake", "sismo", "terremoto", "gempa", "jarðskj")),
-    ("landslide", ("landslide", "mudslide", "debris flow", "deslizamiento", "deslave", "longsor", "aurskri")),
+    # Heat has no type of its own; first, so "heatwave" isn't a storm because of "wave".
+    ("other", ("heatwave", "heat wave", "extreme temperature", "high temperature", "canicule", "vague de chaleur",
+               "onda de calor", "temperaturas elevadas", "ola de calor", "موجة حر")),
+    ("earthquake", ("earthquake", "quake", "sismo", "terremoto", "gempa", "jarðskj", "séisme", "seisme",
+                    "tetemeko", "زلزال")),
+    ("landslide", ("landslide", "mudslide", "debris flow", "deslizamiento", "deslave", "longsor", "aurskri",
+                   "glissement de terrain", "deslizamento", "maporomoko")),
     ("flood", ("flood", "tsunami", "storm surge", "inundaci", "crecida", "lluvia", "rain", "banjir", "hujan",
-               "flóð", "rigning")),
-    ("fire", ("fire", "incendio", "kebakaran", "bushfire", "eld")),
+               "flóð", "rigning", "pluie", "pluvio", "inondation", "crue", "chuva", "inundaç", "cheia",
+               "mvua", "mafuriko", "أمطار", "امطار", "سيول", "فيضان")),
+    ("fire", ("fire", "incendio", "kebakaran", "bushfire", "eld", "incendie", "feux de brousse", "حريق")),
     ("storm", ("storm", "thunder", "lightning", "wind", "gale", "typhoon", "cyclone", "hurricane", "tornado",
                "tormenta", "viento", "ciclón", "huracán", "tifón", "badai", "petir", "angin", "hail", "granizo",
-               "snow", "nieve", "blizzard", "vind", "stormur", "wave", "oleaje")),
+               "snow", "nieve", "blizzard", "vind", "stormur", "wave", "oleaje", "orage", "tempête", "rafale",
+               " vent", "houle", "trovoada", "tempestade", "ciclone", " vento", "rajada", "upepo", "dhoruba",
+               "mawimbi", "رياح",
+               "عاصفة", "رعد")),
 ]
 MARINE_WORDS = ("marine", "small craft", "large waves", "coastal", "sea ", "seas", "swell", "oleaje", "costero",
-                "gelombang", "sjó", "maritim")
+                "gelombang", "sjó", "maritim", "houle", "mer agitée", "mar agitado", "mawimbi", "rough sea")
 
 
 def classify(event: str, headline: str, category: str | None) -> HazardType:
-    text = f"{event} {headline}".lower()
+    text = f" {event} {headline}".lower()
     for hazard, words in HAZARD_WORDS:
         if any(w in text for w in words):
             return hazard
