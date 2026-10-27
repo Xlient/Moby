@@ -57,6 +57,27 @@ def test_alert_with_polygon():
     assert e.raw_payload["properties"]["areaDesc"] == "Metro Manila; Rizal"
 
 
+def test_environment_agency_flood_alert_uses_default_hazard_and_area_title():
+    source = next(s for s in cap.SOURCES if s.source_id == "uk-env-en")
+    document = """<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+      <identifier>131161</identifier><sender>www.gov.uk/environment-agency</sender>
+      <sent>2026-10-26T18:50:04+00:00</sent><status>Actual</status><msgType>Update</msgType>
+      <references>www.gov.uk/environment-agency,130093,2026-10-25T14:43:55+00:00</references>
+      <info><language>en-GB</language><category>Met</category><event>Update</event>
+        <urgency>Immediate</urgency><severity>Minor</severity><certainty>Likely</certainty>
+        <expires>2026-11-05T18:50:04+00:00</expires>
+        <description>High river levels may lead to flooding.</description>
+        <area><areaDesc>Mansbridge and Riverside Park</areaDesc>
+          <polygon>50.93852,-1.35513 50.93842,-1.35514 50.93838,-1.35518</polygon>
+          <geocode><valueName>TargetAreaCode</valueName><value>065WAF124</value></geocode>
+        </area>
+      </info></alert>"""
+    event, outcome = normalize_cap(document, source, now=datetime(2026, 10, 26, tzinfo=timezone.utc))
+    assert outcome == "stored"
+    assert event.hazard_type == "flood"
+    assert event.title == "Flood alert for Mansbridge and Riverside Park"
+
+
 def test_circle_becomes_an_area():
     e, _ = normalize_cap(cap_doc(area="<circle>-8.34,115.51 10</circle>", event="Volcanic ash"), SRC)
     assert e.area_wkt and abs(e.lat - -8.34) < 0.01 and abs(e.lon - 115.51) < 0.01

@@ -41,6 +41,7 @@ class CapSource:
     # Some services (Macao SMG) rewrite one fixed URL per warning type instead of
     # publishing a new document per message: re-read those every poll.
     mutable_docs: bool = False
+    default_hazard: HazardType | None = None
 
 
 # Pilot (docs/spikes/global-coverage.md). URLs from the registry, checked 2026-10-04.
@@ -109,6 +110,8 @@ SOURCES: list[CapSource] = [
     CapSource("tg-anamet-fr", "TG", "Météo Togo", "https://meteotogo.tg/api/cap/rss.xml"),
     CapSource("zw-msd-en", "ZW", "Meteorological Services Department (Zimbabwe)",
               "https://www.weatherzw.org.zw/api/cap/rss.xml"),
+    CapSource("uk-env-en", "GB", "Environment Agency",
+              "https://environment.data.gov.uk/cap/flood-alerts.atom", default_hazard="flood"),
 ]
 
 INTERVAL = timedelta(minutes=5)
@@ -367,12 +370,18 @@ def normalize_cap(xml: bytes | str, source: CapSource, *, now: datetime | None =
     langs = [(_text(i, "language") or "") for i in _children(alert, "info")]
     severity = SEVERITY.get(_text(info, "severity") or "", "low")
     text_l = f"{event_name} {headline}".lower()
+    hazard_type = classify(event_name, headline, _text(info, "category"))
+    if hazard_type == "other" and source.default_hazard:
+        hazard_type = source.default_hazard
+    title = headline[:300] if headline else None
+    if source.default_hazard and headline == event_name and area_names:
+        title = f"{source.default_hazard.title()} alert for {area_names[0]}"[:300]
     event = NormalizedEvent(
         source_feed="cap",
         external_id=item_id,
-        hazard_type=classify(event_name, headline, _text(info, "category")),
+        hazard_type=hazard_type,
         severity=severity,
-        title=headline[:300] if headline else None,
+        title=title,
         description=description[:4000] if description else None,
         first_reported_at=sent,
         last_updated_at=sent,
