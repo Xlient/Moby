@@ -102,6 +102,47 @@ def test_prefers_english_info_and_classifies_other_languages():
     assert e.marine
 
 
+# Headlines as African feeds sent them (2026-10), French, Portuguese, Swahili and Arabic.
+@pytest.mark.parametrize(("text", "hazard"), [
+    ("Orages et pluies dans la majeure partie du pays", "flood"),
+    ("Phénomènes pluvio-orageux sur le Togo", "flood"),
+    ("Vents modérés dans les régions du Sud", "storm"),
+    ("Previsão de chuvas: ocorrência de precipitações moderadas", "flood"),
+    ("Alerta de Vento para Marinha", "storm"),
+    ("Mvua kubwa inatarajiwa", "flood"),
+    ("Upepo mkali", "storm"),
+    ("امطار علي بعض مناطق الشمال", "flood"),
+    ("Glissement de terrain à Bukavu", "landslide"),
+    ("Séisme ressenti à Goma", "earthquake"),
+    # Heat has no type of its own, and "heatwave" mustn't become a storm because of "wave".
+    ("UPDATE ON HEATWAVE WARNING", "other"),
+    ("Calor Intenso Tete e Manica: onda de calor", "other"),
+    ("Vague de chaleur dans le Sahel", "other"),
+    # Wind words hidden inside "event"/"evento" don't count.
+    ("Weather event", "other"),
+    ("Evento meteorológico", "other"),
+])
+def test_classifies_african_languages(text, hazard):
+    assert cap.classify(text, "", "Met") == hazard
+
+
+def test_african_alert_parses_like_any_other():
+    e, outcome = normalize_cap(cap_doc(event="Houle dangereuse sur le littoral"), SRC)
+    assert outcome == "stored" and e.hazard_type == "storm" and e.marine
+
+
+def test_sources_are_unique_https_and_one_language_per_african_country():
+    ids = [s.source_id for s in cap.SOURCES]
+    assert len(ids) == len(set(ids))
+    assert all(s.url.startswith("https://") for s in cap.SOURCES)
+    africa = [s for s in cap.SOURCES if s.country in {
+        "DZ", "BJ", "BW", "BF", "BI", "CM", "TD", "DJ", "GM", "GH", "GN", "GW", "KE", "LS", "LY", "MG", "MW", "ML",
+        "MR", "MZ", "NG", "SC", "SO", "SD", "TZ", "TG", "ZW"}]
+    assert len(africa) == 27
+    assert len({s.country for s in africa}) == len(africa)      # e.g. Tanzania's Swahili twin stays out
+    assert all(s.source_id.split("-")[0] == s.country.lower() for s in africa)
+
+
 def test_index_links_rss_atom_newest_first_and_ip_hosts():
     rss = """<rss><channel><link>https://alerts.example.gov</link>
       <item><link>https://alerts.example.gov/cap/old.xml</link><pubDate>Fri, 02 Oct 2026 10:00:00 GMT</pubDate></item>
