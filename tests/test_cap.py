@@ -58,8 +58,7 @@ def test_alert_with_polygon():
 
 
 def test_environment_agency_flood_alert_uses_default_hazard_and_area_title():
-    source = CapSource("uk-env-en", "GB", "Environment Agency",
-                       "https://environment.data.gov.uk/cap/flood-alerts.atom", default_hazard="flood")
+    source = next(s for s in cap.SOURCES if s.source_id == "uk-env-en")
     document = """<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
       <identifier>131161</identifier><sender>www.gov.uk/environment-agency</sender>
       <sent>2026-10-26T18:50:04+00:00</sent><status>Actual</status><msgType>Update</msgType>
