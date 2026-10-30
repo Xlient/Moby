@@ -26,7 +26,7 @@ const SOURCES: { group: string; names: string }[] = [
 
 // What each model does, and the checks around it (models never decide how urgent anything is).
 const AI_ROLES: { model: string; role: string }[] = [
-  { model: 'NVIDIA Nemotron Nano', role: 'Translates warnings into English. Every number must survive the translation, or the original is shown instead.' },
+  { model: 'NVIDIA Nemotron Lightning', role: 'Translates warnings into English. Every number must survive the translation, or the original is shown instead.' },
   { model: 'NVIDIA Nemotron Super', role: '“What this means for you” on official warnings, and Ask Moby’s answers. Both use only the official text and are checked against it before you see them.' },
   { model: 'NVIDIA Nemotron Ultra', role: 'Writes the offline safety guidance from official pages, and explains “Before you go” trip briefings. Each line must cite what it came from; Moby’s database, not the AI, decides which alerts and reports are included.' },
   { model: 'Qwen3 embeddings', role: 'Finds the guidance that answers your question in Ask Moby.' },

@@ -823,7 +823,7 @@ export interface paths {
         put?: never;
         /**
          * Ask Moby, a safety assistant that answers only from sources it can cite
-         * @description Sources: active official alerts near the given point, Moby's guidance cards (retrieved with Qwen3 embeddings), and, when those don't cover it, the country's official websites via Tavily (searched with a generic query that NVIDIA Nemotron Nano rewrites to drop personal details). NVIDIA Nemotron Super answers with citations; the answer is withheld (abstained = true) if it isn't grounded in the sources it cites. Questions are not stored. Signed-in only; 20 questions per hour.
+         * @description Sources: active official alerts near the given point, Moby's guidance cards (retrieved with Qwen3 embeddings), and, when those don't cover it, the country's official websites via Tavily (searched with a generic query that NVIDIA Nemotron Lightning rewrites to drop personal details). NVIDIA Nemotron Super answers with citations; the answer is withheld (abstained = true) if it isn't grounded in the sources it cites. Questions are not stored. Signed-in only; 20 questions per hour.
          */
         post: {
             parameters: {
@@ -2101,7 +2101,7 @@ export interface components {
             summary: string;
             /** @description Instructions taken from the warning itself (empty if it gives none) */
             actions: string[];
-            /** @description e.g. nvidia/nemotron-3-super-120b-a12b */
+            /** @description e.g. nvidia/Nemotron-3.5-Super-VL */
             model: string;
             /** Format: date-time */
             generated_at?: string;

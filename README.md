@@ -288,14 +288,22 @@ model output passes a check before anyone sees it, and when a check fails the re
 
 | Model | Runs on | Used for | Checks |
 |---|---|---|---|
-| **NVIDIA Nemotron 3 Nano** (`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`) | Token Factory | Translating non-English warnings on ingest (`moby/feeds/translate.py`), rewriting Ask Moby questions into search queries without personal details (`moby/ai/ask.py`), extracting fields from report notes (`moby/graph/structure.py`). | Every number in the original must survive translation, or the original is shown. Extraction may only fill fields the note states. |
-| **NVIDIA Nemotron 3 Super** (`nvidia/nemotron-3-super-120b-a12b`) | Token Factory | *What this means for you* and push text (`moby/ai/explain.py`), Ask Moby answers with `[n]` citations, translation into the phone's language (`moby/ai/localize.py`), "what changed" since the last brief (`moby/graph/brief_changes.py`). | Grounding checks (`moby/ai/grounding.py`): no number missing from the source, wording traceable to the cited sources. Ask Moby abstains when its sources don't cover the question. |
+| **NVIDIA Nemotron 3.5 Lightning** (`nvidia/Nemotron-3_5-Lightning`) | Token Factory | Translating non-English warnings on ingest (`moby/feeds/translate.py`), rewriting Ask Moby questions into search queries without personal details (`moby/ai/ask.py`), extracting fields from report notes (`moby/graph/structure.py`). | Every number in the original must survive translation, or the original is shown. Extraction may only fill fields the note states. |
+| **NVIDIA Nemotron 3.5 Super** (`nvidia/Nemotron-3.5-Super-VL`) | Token Factory | *What this means for you* and push text (`moby/ai/explain.py`), Ask Moby answers with `[n]` citations, translation into the phone's language (`moby/ai/localize.py`), "what changed" since the last brief (`moby/graph/brief_changes.py`). | Grounding checks (`moby/ai/grounding.py`): no number missing from the source, wording traceable to the cited sources. Ask Moby abstains when its sources don't cover the question. |
 | **NVIDIA Nemotron 3 Ultra** (`nvidia/Nemotron-3-Ultra-550b-a55b`) | Token Factory | Trip briefs (`moby/ai/trip.py`), situation briefs for people near a hazard (`moby/graph/brief_writer.py`), and the offline safety guidance cards built from official pages, as a Serverless Job (`moby/jobs/guidance.py`). | Every statement cites an alert, report or official page, and its numbers, names and hazards must appear there. Each guidance line cites its source line. |
 | **Qwen3-Embedding-8B** (1024-d) | Token Factory | Retrieval over the guidance cards for Ask Moby (pgvector), and event embeddings. | Similarity cut-offs tuned on real questions. |
 | **NVIDIA Nemotron 3 Nano 4B** (Q4_K_M GGUF, 2.8 GB) | The phone, via [llama.rn](https://github.com/mybigday/llama.rn) | Offline Ask Moby (`src/ondevice/`), answering from the guidance stored on the phone. Downloaded on request over Wi-Fi from NVIDIA's Hugging Face repo; needs about 8 GB of RAM. | The same grounding rules, on the phone (`src/ondevice/grounding.ts`). `scripts/ondevice-eval.ts` evaluates it with llama.cpp. |
 
-Nano handles the high-volume, latency-sensitive work, Super what people read interactively, Ultra the slow,
+Lightning handles the high-volume, latency-sensitive work, Super what people read interactively, Ultra the slow,
 careful work done ahead of time, and the 4B Nano covers the phone when there is no network.
+
+> **Model switch, October 30, 2026:** Token Factory is retiring Nemotron 3 Nano
+> (`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`) and Nemotron 3 Super (`nvidia/nemotron-3-super-120b-a12b`) on
+> November 9, 2026, so Moby moved to Nemotron 3.5 Lightning and Nemotron 3.5 Super before the deadline. Lightning
+> reasons for longer on community reports, so that call's timeout went from 10 to 30 seconds. Report structuring
+> scored 90% on `scripts/eval_structure.py`, and every model output still passes the same checks. Ultra,
+> Qwen3-Embedding-8B and the on-device 4B Nano are unchanged. Footage recorded before the switch may show the
+> earlier models.
 
 When Moby's own sources don't cover a question, Ask Moby and trip briefs search **official government domains
 only** with [Tavily](https://tavily.com/) (`moby/search/official.py`). Every paid call has a daily cap
@@ -320,7 +328,7 @@ flowchart LR
     People[Reports from people nearby]
   end
   Official --> Poller[Feed poller<br/>conditional polling, de-duplication]
-  Poller --> Translate[Nemotron Nano<br/>number-checked translation]
+  Poller --> Translate[Nemotron Lightning<br/>number-checked translation]
   Poller --> DB[(Postgres<br/>PostGIS + pgvector)]
   Translate --> DB
   People --> API
