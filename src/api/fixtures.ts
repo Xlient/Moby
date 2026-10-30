@@ -398,7 +398,7 @@ export function getMockExplanation(eventId: string): AlertExplanation | undefine
       'Flash flooding is expected in low-lying areas along the Russian River. '
       + 'The warning tells anyone there to move to higher ground immediately.',
     actions: ['Move to higher ground immediately.'],
-    model: 'nvidia/nemotron-3-super-120b-a12b',
+    model: 'nvidia/Nemotron-3.5-Super-VL',
     generated_at: new Date().toISOString(),
   };
 }
@@ -406,7 +406,7 @@ export function getMockExplanation(eventId: string): AlertExplanation | undefine
 // Ask Moby sample: answers about floods, abstains on anything else (like the real one off-topic).
 export function getMockAnswer(question: string): AskAnswer {
   if (!/flood|water|road/i.test(question)) {
-    return { answer: null, abstained: true, sources: [], model: 'nvidia/nemotron-3-super-120b-a12b', searched_web: false, search_limited: false };
+    return { answer: null, abstained: true, sources: [], model: 'nvidia/Nemotron-3.5-Super-VL', searched_web: false, search_limited: false };
   }
   return {
     answer: 'Turn around and find another route: never drive through a flooded road [1]. '
@@ -414,7 +414,7 @@ export function getMockAnswer(question: string): AskAnswer {
     abstained: false,
     sources: [{ n: 1, kind: 'guidance', title: 'Flooded road: turn around', publisher: 'National Weather Service',
       url: 'https://www.weather.gov/safety/flood-turn-around-dont-drown' }],
-    model: 'nvidia/nemotron-3-super-120b-a12b',
+    model: 'nvidia/Nemotron-3.5-Super-VL',
     searched_web: false,
   };
 }

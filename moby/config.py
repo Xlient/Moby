@@ -34,8 +34,8 @@ class Settings(BaseSettings):
         return None if isinstance(v, str) and not v.strip() else v
 
     # Exact model strings, verified by scripts/verify_models.py (see docs/models.md).
-    model_nano: str = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
-    model_super: str = "nvidia/nemotron-3-super-120b-a12b"
+    model_nano: str = "nvidia/Nemotron-3_5-Lightning"
+    model_super: str = "nvidia/Nemotron-3.5-Super-VL"
     model_ultra: str = "nvidia/Nemotron-3-Ultra-550b-a55b"
 
     # ── Storage ──────────────────────────────────────────────────────────

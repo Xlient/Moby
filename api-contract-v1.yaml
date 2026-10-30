@@ -512,7 +512,7 @@ paths:
       description: >
         Sources: active official alerts near the given point, Moby's guidance cards (retrieved
         with Qwen3 embeddings), and, when those don't cover it, the country's official websites
-        via Tavily (searched with a generic query that NVIDIA Nemotron Nano rewrites to drop
+        via Tavily (searched with a generic query that NVIDIA Nemotron Lightning rewrites to drop
         personal details). NVIDIA Nemotron Super answers with citations; the answer is withheld
         (abstained = true) if it isn't grounded in the sources it cites. Questions are not
         stored. Signed-in only; 20 questions per hour.
@@ -1495,7 +1495,7 @@ components:
           maxItems: 3
           items: { type: string }
           description: Instructions taken from the warning itself (empty if it gives none)
-        model: { type: string, description: e.g. nvidia/nemotron-3-super-120b-a12b }
+        model: { type: string, description: e.g. nvidia/Nemotron-3.5-Super-VL }
         generated_at: { type: string, format: date-time }
         language: { type: string, description: "Language of summary and actions (ISO 639-1); 'en' unless translated by Moby" }
 

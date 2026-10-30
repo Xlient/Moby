@@ -18,10 +18,11 @@ def extract_details(report: dict) -> ReportDetails:
         f"What they saw: {report.get('observed_effect') or 'not given'}\n"
         f"Note: {report['note']}"
     )
-    # One retry: a stuck call gives up after about 20 s (2 × 10 s) and the report is fused without details.
+    # One retry: a stuck call gives up after about 60 s (2 × 30 s) and the report is fused without details.
+    # Lightning reasons for 8-11 s per report; with reasoning off, accuracy fell from 90% to 71%.
     # function_calling: tested on the examples (scripts/eval_structure.py), the default json_schema
     # mode made Nano fill every field (e.g. trend 'steady' when the note said nothing): 69% → 92%.
-    llm = chat_model("nano", temperature=0, timeout=10, max_retries=1).with_structured_output(
+    llm = chat_model("nano", temperature=0, timeout=30, max_retries=1).with_structured_output(
         ReportDetails, method="function_calling")
     return llm.invoke([("system", REPORT_SYS_PROMPT), ("user", message)])
 
